@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import Farm from '../models/Farm.js';
 import User from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
-import { getGameItem, listGameItems } from '../config/gameItems/index.js';
+import { getGameItem, listGameItems, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 
 const router = express.Router();
@@ -46,18 +46,27 @@ const serializeAdminUser = (user, farm) => ({
     level: getLevelProgress(user.xp ?? 0).level,
     inventory: serializeInventory(user.inventory),
     createdAt: user.createdAt,
+    isBanned: user.isBanned ?? false,
+    banUntil: user.banUntil ?? null,
+    banReason: user.banReason ?? '',
     farmItems: (farm?.tiles ?? [])
-        .filter((tile) => !tile.isDirt)
         .map((tile) => {
             const item = getGameItem(tile.itemId);
             return {
                 itemId: tile.itemId,
-                name: item?.name ?? tile.itemId,
-                type: item?.type ?? 'UNKNOWN',
+                name: tile.isDirt ? 'Грядка' : item?.name ?? tile.itemId,
+                type: tile.isDirt ? 'DIRT' : item?.type ?? 'UNKNOWN',
+                image: item?.shopImage ?? item?.growthImages?.at(-1) ?? item?.yieldImage ?? '',
                 x: tile.x,
                 y: tile.y,
                 quadrant: tile.quadrant,
+                isDirt: tile.isDirt ?? false,
+                stage: tile.stage ?? 0,
+                occupiedQuadrants: tile.occupiedQuadrants ?? [],
+                occupiedCells: tile.occupiedCells ?? [],
+                flipX: tile.flipX ?? false,
                 placedAt: tile.placedAt,
+                lastHarvestedAt: tile.lastHarvestedAt,
             };
         }),
 });
@@ -71,13 +80,43 @@ router.get('/catalog', (_req, res) => {
         yieldName: item.yieldName,
         yieldIcon: item.yieldIcon,
         yieldImage: item.yieldImage,
+        shopImage: item.shopImage ?? item.growthImages?.at(-1),
         placementSurface: item.placementSurface,
         price: item.price,
+        sellPrice: item.sellPrice,
         plantingXp: item.plantingXp,
         footprint: item.footprint,
         largeFootprint: item.largeFootprint,
     }));
     return res.json({ items });
+});
+
+router.patch('/catalog/:itemId/prices', async (req, res) => {
+    try {
+        const item = getGameItem(req.params.itemId);
+        if (!item) return res.status(404).json({ message: 'Предмет не знайдено в каталозі' });
+
+        const updates = {};
+        if (req.body.price !== undefined) {
+            if (!Number.isSafeInteger(req.body.price) || req.body.price < 0) {
+                return res.status(400).json({ message: 'Ціна купівлі має бути невід’ємним цілим числом' });
+            }
+            updates.price = req.body.price;
+        }
+        if (req.body.sellPrice !== undefined) {
+            if (!item.yieldItem) return res.status(400).json({ message: 'Цей предмет не має ціни продажу' });
+            if (!Number.isSafeInteger(req.body.sellPrice) || req.body.sellPrice < 0) {
+                return res.status(400).json({ message: 'Ціна продажу має бути невід’ємним цілим числом' });
+            }
+            updates.sellPrice = req.body.sellPrice;
+        }
+        if (Object.keys(updates).length === 0) return res.status(400).json({ message: 'Не передано нових цін' });
+
+        const updatedItem = await updateGameItemPrices(item.id, updates);
+        return res.json({ item: updatedItem });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося оновити ціни', error: error.message });
+    }
 });
 
 router.get('/users', async (req, res) => {
@@ -93,7 +132,7 @@ router.get('/users', async (req, res) => {
         const [total, users] = await Promise.all([
             User.countDocuments(filter),
             User.find(filter)
-                .select('_id username role avatar coins xp inventory createdAt')
+                .select('_id username role avatar coins xp inventory createdAt isBanned banUntil banReason')
                 .sort({ createdAt: -1, _id: 1 })
                 .skip((page - 1) * limit)
                 .limit(limit)
@@ -113,6 +152,132 @@ router.get('/users', async (req, res) => {
         });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося завантажити гравців', error: error.message });
+    }
+});
+
+router.patch('/users/:userId/profile', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const user = await User.findById(req.params.userId);
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+
+        if (req.body.username !== undefined) {
+            const username = String(req.body.username).trim();
+            if (username.length < 2 || username.length > 24) return res.status(400).json({ message: 'Нік має містити від 2 до 24 символів' });
+            const duplicate = await User.exists({ username, _id: { $ne: user._id } });
+            if (duplicate) return res.status(409).json({ message: 'Такий нік уже зайнятий' });
+            user.username = username;
+        }
+
+        if (req.body.role !== undefined) {
+            if (!['user', 'admin'].includes(req.body.role)) return res.status(400).json({ message: 'Невідома роль' });
+            if (String(user._id) === req.adminId && req.body.role !== 'admin') {
+                return res.status(400).json({ message: 'Не можна зняти роль адміністратора із самого себе' });
+            }
+            user.role = req.body.role;
+        }
+
+        await user.save();
+        return res.json({ user: serializeAdminUser(user.toObject(), null) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося оновити профіль', error: error.message });
+    }
+});
+
+router.post('/users/:userId/ban', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        if (String(req.params.userId) === req.adminId) return res.status(400).json({ message: 'Не можна заблокувати власний акаунт' });
+        const { durationMinutes, reason = '' } = req.body;
+        const allowedDurations = [10, 60, 1440, 10080, 43200];
+        if (durationMinutes !== null && !allowedDurations.includes(durationMinutes)) {
+            return res.status(400).json({ message: 'Обери 10 хв, 1 год, 1 день, 1 тиждень, 1 місяць або безстроково' });
+        }
+        if (typeof reason !== 'string' || reason.length > 300) return res.status(400).json({ message: 'Причина має бути коротшою за 300 символів' });
+        const user = await User.findById(req.params.userId);
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+        if (user.role === 'admin') return res.status(403).json({ message: 'Не можна заблокувати іншого адміністратора' });
+
+        user.isBanned = true;
+        user.banUntil = durationMinutes === null ? null : new Date(Date.now() + durationMinutes * 60_000);
+        user.banReason = reason.trim();
+        user.bannedAt = new Date();
+        user.bannedBy = new mongoose.Types.ObjectId(req.adminId);
+        await user.save();
+        return res.json({ user: serializeAdminUser(user.toObject(), null) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося заблокувати гравця', error: error.message });
+    }
+});
+
+router.post('/users/:userId/unban', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const user = await User.findById(req.params.userId);
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+        user.isBanned = false;
+        user.banUntil = null;
+        user.banReason = '';
+        user.bannedAt = null;
+        user.bannedBy = null;
+        await user.save();
+        return res.json({ user: serializeAdminUser(user.toObject(), null) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося розблокувати гравця', error: error.message });
+    }
+});
+
+router.delete('/users/:userId', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        if (String(req.params.userId) === req.adminId) return res.status(400).json({ message: 'Не можна видалити власний акаунт' });
+        const user = await User.findById(req.params.userId).select('_id role');
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+        if (user.role === 'admin') return res.status(403).json({ message: 'Спочатку зніми роль admin із цього акаунта' });
+
+        await Promise.all([
+            Farm.deleteOne({ userId: user._id }),
+            User.updateMany({}, { $pull: {
+                friends: user._id,
+                friendRequestsReceived: user._id,
+                friendRequestsSent: user._id,
+            } }),
+            User.deleteOne({ _id: user._id }),
+        ]);
+        return res.json({ message: 'Акаунт і ферму видалено' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося видалити акаунт', error: error.message });
+    }
+});
+
+router.delete('/users/:userId/farm', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const farm = await Farm.findOne({ userId: req.params.userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        farm.tiles = [];
+        await farm.save();
+        return res.json({ message: 'Ферму повністю очищено' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося очистити ферму', error: error.message });
+    }
+});
+
+router.delete('/users/:userId/farm-items/:x/:y/:quadrant', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const coordinates = [req.params.x, req.params.y, req.params.quadrant].map(Number);
+        if (!coordinates.every(Number.isInteger)) return res.status(400).json({ message: 'Некоректні координати предмета' });
+        const [x, y, quadrant] = coordinates;
+        const farm = await Farm.findOne({ userId: req.params.userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        const index = farm.tiles.findIndex((tile) => tile.x === x && tile.y === y && tile.quadrant === quadrant);
+        if (index < 0) return res.status(404).json({ message: 'Предмет не знайдено' });
+        farm.tiles.splice(index, 1);
+        await farm.save();
+        return res.json({ message: 'Предмет видалено з ферми' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося видалити предмет', error: error.message });
     }
 });
 

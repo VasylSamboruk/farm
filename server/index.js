@@ -7,9 +7,9 @@ import farmRoutes from './routes/farm.js'; // ДОДАНО: імпорт мар�
 import gameConfigRoutes from './routes/gameConfig.js';
 import socialRoutes from './routes/social.js';
 import adminRoutes from './routes/admin.js';
+import { loadGameItemPriceOverrides } from './services/gameCatalog.js';
 
 dotenv.config();
-connectDB();
 
 const app = express();
 const clientOrigins = (process.env.CLIENT_ORIGINS ?? '')
@@ -42,6 +42,16 @@ app.get('/health', (_req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`🚀 Сервер запущено на порту ${PORT}`);
+
+const startServer = async () => {
+    await connectDB();
+    await loadGameItemPriceOverrides();
+    app.listen(PORT, () => {
+        console.log(`🚀 Сервер запущено на порту ${PORT}`);
+    });
+};
+
+startServer().catch(error => {
+    console.error('❌ Не вдалося запустити сервер:', error.message);
+    process.exit(1);
 });

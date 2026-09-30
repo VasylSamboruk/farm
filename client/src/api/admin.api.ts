@@ -4,10 +4,17 @@ export interface AdminFarmItem {
   itemId: string;
   name: string;
   type: string;
+  image?: string;
   x: number;
   y: number;
   quadrant: number;
+  isDirt?: boolean;
+  stage?: number;
+  occupiedQuadrants?: number[];
+  occupiedCells?: { x: number; y: number; quadrant: number }[];
+  flipX?: boolean;
   placedAt?: string;
+  lastHarvestedAt?: string;
 }
 
 export interface AdminUser {
@@ -20,6 +27,9 @@ export interface AdminUser {
   level: number;
   inventory: Record<string, number>;
   createdAt?: string;
+  isBanned: boolean;
+  banUntil: string | null;
+  banReason: string;
   farmItems: AdminFarmItem[];
 }
 
@@ -31,8 +41,10 @@ export interface AdminCatalogItem {
   yieldName?: string;
   yieldIcon?: string;
   yieldImage?: string;
+  shopImage?: string;
   placementSurface?: 'grass' | 'soil';
   price: number;
+  sellPrice?: number;
   plantingXp: number;
   footprint?: { width: number; height: number };
   largeFootprint?: { width: number; height: number };
@@ -50,9 +62,37 @@ export const adminApi = {
     const response = await api.get<{ items: AdminCatalogItem[] }>('/admin/catalog');
     return response.data.items;
   },
+  updatePrices: async (itemId: string, price: number, sellPrice?: number) => {
+    const response = await api.patch<{ item: AdminCatalogItem }>(`/admin/catalog/${itemId}/prices`, {
+      price,
+      ...(sellPrice === undefined ? {} : { sellPrice }),
+    });
+    return response.data.item;
+  },
   updateStats: async (userId: string, coinsDelta: number, xpDelta: number) => {
     const response = await api.patch<{ user: AdminUser }>(`/admin/users/${userId}/stats`, { coinsDelta, xpDelta });
     return response.data.user;
+  },
+  updateProfile: async (userId: string, changes: { username?: string; role?: 'user' | 'admin' }) => {
+    const response = await api.patch<{ user: AdminUser }>(`/admin/users/${userId}/profile`, changes);
+    return response.data.user;
+  },
+  banUser: async (userId: string, durationMinutes: number | null, reason: string) => {
+    const response = await api.post<{ user: AdminUser }>(`/admin/users/${userId}/ban`, { durationMinutes, reason });
+    return response.data.user;
+  },
+  unbanUser: async (userId: string) => {
+    const response = await api.post<{ user: AdminUser }>(`/admin/users/${userId}/unban`);
+    return response.data.user;
+  },
+  deleteUser: async (userId: string) => {
+    await api.delete(`/admin/users/${userId}`);
+  },
+  clearFarm: async (userId: string) => {
+    await api.delete(`/admin/users/${userId}/farm`);
+  },
+  deleteFarmItem: async (userId: string, item: Pick<AdminFarmItem, 'x' | 'y' | 'quadrant'>) => {
+    await api.delete(`/admin/users/${userId}/farm-items/${item.x}/${item.y}/${item.quadrant}`);
   },
   updateInventory: async (userId: string, itemId: string, amountDelta: number) => {
     const response = await api.post<{ inventory: Record<string, number> }>(`/admin/users/${userId}/inventory`, { itemId, amountDelta });

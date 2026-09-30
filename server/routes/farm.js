@@ -1,12 +1,27 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Farm from '../models/Farm.js';
 import User from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
-import { getGameItem, listGameItems } from '../config/gameItems/index.js';
+import { getGameItem, listGameItems } from '../services/gameCatalog.js';
 import { getTreeHarvestReadyAt } from '../services/treeMechanics.js';
 import { getMovedOccupiedCells, getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 
 const router = express.Router();
+
+router.use(async (req, res, next) => {
+    try {
+        const userId = req.body?.userId ?? (req.method === 'GET' ? req.path.slice(1).split('/')[0] : null);
+        if (!mongoose.isValidObjectId(userId)) return next();
+        const user = await User.findById(userId).select('isBanned banUntil');
+        if (user?.isBanned && (!user.banUntil || user.banUntil > new Date())) {
+            return res.status(403).json({ message: 'Акаунт заблоковано', banUntil: user.banUntil });
+        }
+        return next();
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося перевірити статус акаунта', error: error.message });
+    }
+});
 
 const getTileOccupiedCells = (tile) => {
     const cells = getOccupiedCells(tile.x, tile.y, tile.quadrant, getGameItem(tile.itemId), tile.flipX ?? false);

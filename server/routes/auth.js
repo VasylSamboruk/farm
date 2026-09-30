@@ -60,11 +60,29 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ message: 'Невірний логін або пароль' });
         }
 
+        if (user.isBanned && (!user.banUntil || user.banUntil > new Date())) {
+            return res.status(403).json({
+                message: user.banUntil
+                    ? `Акаунт заблоковано до ${user.banUntil.toISOString()}`
+                    : 'Акаунт заблоковано безстроково',
+                banUntil: user.banUntil,
+            });
+        }
+
+        let userNeedsSave = false;
+        if (user.isBanned) {
+            user.isBanned = false;
+            user.banUntil = null;
+            user.banReason = '';
+            user.bannedAt = null;
+            user.bannedBy = null;
+            userNeedsSave = true;
+        }
+
         const adminUsernames = new Set([
             ...(process.env.ADMIN_USERNAMES ?? '').split(','),
             ...(process.env.ADMIN_USERNAME ?? '').split(','),
         ].map(value => value.trim()).filter(Boolean));
-        let userNeedsSave = false;
         if (adminUsernames.has(user.username) && user.role !== 'admin') {
             user.role = 'admin';
             userNeedsSave = true;

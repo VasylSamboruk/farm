@@ -1,5 +1,5 @@
 import express from 'express';
-import { listGameItems } from '../config/gameItems/index.js';
+import { listGameItems } from '../services/gameCatalog.js';
 
 const router = express.Router();
 

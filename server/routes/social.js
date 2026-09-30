@@ -8,15 +8,20 @@ import { getLevelProgress } from '../config/progression.js';
 const router = express.Router();
 const AVATAR_MAX_LENGTH = 180_000;
 
-router.use((req, res, next) => {
+router.use(async (req, res, next) => {
     const authorization = req.get('authorization') ?? '';
     const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
     if (!token) return res.status(401).json({ message: 'Потрібно увійти в акаунт' });
 
     try {
         const payload = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(payload.userId).select('isBanned banUntil');
+        if (!user) return res.status(401).json({ message: 'Гравця не знайдено' });
+        if (user.isBanned && (!user.banUntil || user.banUntil > new Date())) {
+            return res.status(403).json({ message: 'Акаунт заблоковано', banUntil: user.banUntil });
+        }
         req.authUserId = payload.userId;
-        next();
+        return next();
     } catch {
         return res.status(401).json({ message: 'Сесія завершилася. Увійди знову.' });
     }
