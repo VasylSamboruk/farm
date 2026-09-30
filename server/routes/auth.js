@@ -60,9 +60,22 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ message: 'Невірний логін або пароль' });
         }
 
+        const adminUsernames = new Set([
+            ...(process.env.ADMIN_USERNAMES ?? '').split(','),
+            process.env.ADMIN_USERNAME ?? '',
+        ].map(value => value.trim()).filter(Boolean));
+        let userNeedsSave = false;
+        if (adminUsernames.has(user.username) && user.role !== 'admin') {
+            user.role = 'admin';
+            userNeedsSave = true;
+        }
+
         const progression = getLevelProgress(user.xp);
         if (user.level !== progression.level) {
             user.level = progression.level;
+            userNeedsSave = true;
+        }
+        if (userNeedsSave) {
             await user.save();
         }
 

@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js';
 import farmRoutes from './routes/farm.js'; // ДОДАНО: імпорт маршрутів ферми
 import gameConfigRoutes from './routes/gameConfig.js';
 import socialRoutes from './routes/social.js';
+import adminRoutes from './routes/admin.js';
 
 dotenv.config();
 connectDB();
@@ -30,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/farm', farmRoutes); // ДОДАНО: підключення маршрутів ферми
 app.use('/api/game-config', gameConfigRoutes);
 app.use('/api/social', socialRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/', (req, res) => {
     res.send('API Ферми працює! 🚜');

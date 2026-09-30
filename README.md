@@ -58,11 +58,14 @@ MONGO_URI=<private MongoDB connection URL>
 JWT_SECRET=<long random secret>
 CLIENT_ORIGINS=http://localhost:5173
 NODE_ENV=production
+ADMIN_USERNAMES=<first-login,second-login>
 ```
 
 Для `MONGO_URI` можна використати Railway variable reference на private URL MongoDB service. `PORT` вручну не задавай: Railway встановлює його автоматично.
 
 Згенеруй `JWT_SECRET` локально командою PowerShell `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"`, встав його безпосередньо у Railway Variables і нікому не надсилай. Після deploy перевір Railway URL: `/health` має повернути `{"ok":true}`.
+
+Щоб призначити одного або кількох перших адміністраторів, спочатку зареєструй їхні акаунти. Тимчасово задай `ADMIN_USERNAMES` зі списком точних логінів через кому, наприклад `vasyl,friend1,friend2`. Кожен акаунт отримає роль admin після свого наступного успішного входу. Коли всі увійдуть, видали `ADMIN_USERNAMES` з Railway Variables і застосуй зміни; ролі залишаться збереженими в MongoDB. Старий `ADMIN_USERNAME` також підтримується для одного логіна.
 
 ### 2. Клієнт на Cloudflare Pages
 

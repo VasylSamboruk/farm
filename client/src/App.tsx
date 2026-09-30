@@ -4,6 +4,7 @@ import { useFarmStore } from './store/useFarmStore';
 import { useGameConfigStore } from './store/useGameConfigStore';
 import { AuthForm } from './components/auth/AuthForm';
 import { PlayerProfile } from './components/auth/PlayerProfile';
+import { AdminPanel } from './components/auth/AdminPanel';
 import { GameHUD } from './components/game/GameHUD';
 import { FarmCanvas } from './components/game/FarmCanvas';
 import { loadGameImage, preloadGameImages } from './game/sprites';
@@ -28,6 +29,7 @@ export const App: React.FC = () => {
   const [startupError, setStartupError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [playSessionKey, setPlaySessionKey] = useState<string | null>(null);
+  const [showAdmin, setShowAdmin] = useState(false);
   const playRequested = Boolean(sessionKey && sessionKey === playSessionKey);
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('farmcanvas:theme') === 'light' ? 'light' : 'dark'
@@ -97,10 +99,14 @@ export const App: React.FC = () => {
     return <div className="app-shell" data-theme={theme}><AuthForm /></div>;
   }
 
+  if (user.role === 'admin' && showAdmin) {
+    return <div className="app-shell" data-theme={theme}><AdminPanel onBack={() => setShowAdmin(false)} /></div>;
+  }
+
   if (!playRequested) {
     return (
       <div className="app-shell" data-theme={theme}>
-        <PlayerProfile key={user.id} user={user} theme={theme} onToggleTheme={toggleTheme} onPlay={startPlaying} />
+        <PlayerProfile key={user.id} user={user} theme={theme} onToggleTheme={toggleTheme} onPlay={startPlaying} onOpenAdmin={() => setShowAdmin(true)} />
       </div>
     );
   }

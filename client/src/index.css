@@ -870,6 +870,108 @@ html, body, #root {
   .farmer-topbar { justify-content: flex-end; }
 }
 
+.admin-lobby .admin-topbar { justify-content: space-between; gap: 12px; }
+.admin-topbar-title { display: flex; align-items: center; gap: 8px; color: #fff4d4; font: 800 14px 'Trebuchet MS', system-ui, sans-serif; text-shadow: 0 1px 2px #342114; }
+.admin-topbar-title > svg { color: #f2d27d; }
+.admin-topbar-title strong { margin-left: 5px; padding: 5px 9px; border: 1px solid rgba(255, 227, 171, 0.35); border-radius: 12px; color: #ffe39b; background: rgba(70, 42, 23, 0.5); font-size: 10px; }
+.admin-back-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 0 10px; border: 2px solid #80502a; border-radius: 8px; color: #fff2d0; background: linear-gradient(180deg, #a66c37, #60391f); box-shadow: inset 0 1px 0 rgba(255, 222, 164, 0.4), 0 2px 0 #432a1a; font: 700 10px 'Trebuchet MS', system-ui, sans-serif; cursor: pointer; }
+.admin-back-button:hover { filter: brightness(1.1); }
+.admin-workspace { display: grid; grid-template-columns: minmax(250px, 310px) minmax(0, 1fr); gap: 15px; width: min(1440px, 100%); flex: 1; min-height: 0; margin: 0 auto; padding: 12px 18px 20px; }
+.admin-users-panel, .admin-details-panel { min-width: 0; min-height: 0; border: 6px solid #815127; border-radius: 16px 12px 15px 12px; color: #422d1b; background: linear-gradient(145deg, rgba(255, 247, 222, 0.98), rgba(236, 210, 161, 0.97)); box-shadow: inset 0 0 0 2px #d6ae6d, inset 0 0 0 4px rgba(255, 249, 220, 0.7), 0 6px 0 #55351f, 0 10px 18px rgba(24, 34, 22, 0.28); }
+.admin-users-panel { display: flex; flex-direction: column; overflow: hidden; padding: 14px 12px 9px; }
+.admin-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.admin-kicker { color: #8a6636; font: 800 8px/1.3 'Trebuchet MS', system-ui, sans-serif; letter-spacing: 1px; }
+.admin-section-heading h1 { margin: 2px 0 0; color: #432b19; font: 800 21px/1.2 Georgia, serif; }
+.admin-count { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid #ddc18c; border-radius: 12px; color: #70502c; background: rgba(255, 252, 236, 0.65); font: 800 10px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-search { display: flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 6px 0 10px; border: 2px solid #d4b67f; border-radius: 20px; color: #8a704b; background: rgba(255, 252, 234, 0.88); }
+.admin-search input { min-width: 0; flex: 1; border: 0; outline: 0; color: #49341f; background: transparent; font: 600 11px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-search input::placeholder { color: #9b8463; }
+.admin-search button { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border: 0; border-radius: 50%; color: #fff5d9; background: #4d8a32; cursor: pointer; }
+.admin-user-list { display: grid; align-content: start; gap: 6px; min-height: 0; flex: 1; overflow: auto; margin-top: 10px; padding: 1px 3px 5px 1px; }
+.admin-user-row { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 58px; padding: 6px 8px; border: 2px solid #dec79b; border-radius: 10px; color: #49321e; background: linear-gradient(145deg, rgba(255, 250, 232, 0.9), rgba(238, 219, 179, 0.86)); text-align: left; cursor: pointer; }
+.admin-user-row:hover, .admin-user-row.is-selected { border-color: #ae783a; background: linear-gradient(145deg, #fff8dc, #e7c982); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8), 0 2px 0 rgba(129, 81, 42, 0.14); }
+.admin-avatar { display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px; overflow: hidden; border: 2px solid #89582d; border-radius: 50%; color: #fff7d9; background: linear-gradient(145deg, #8bbd4b, #456c31); font: 800 15px Georgia, serif; }
+.admin-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.admin-user-copy { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 3px; }
+.admin-user-copy strong { overflow: hidden; color: #49321e; text-overflow: ellipsis; white-space: nowrap; font: 800 11px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-user-copy small { overflow: hidden; color: #826a4a; text-overflow: ellipsis; white-space: nowrap; font: 500 8px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-user-level { position: relative; display: grid; place-items: center; flex: 0 0 31px; width: 31px; height: 31px; }
+.admin-user-level img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.admin-user-level strong { position: relative; color: #fff; font: 900 9px system-ui, sans-serif; text-shadow: 0 1px 1px #392413, 1px 0 #392413, -1px 0 #392413; }
+.admin-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; padding-top: 7px; border-top: 1px solid rgba(132, 83, 39, 0.2); color: #775a35; font: 700 10px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-pagination button { display: grid; place-items: center; width: 27px; height: 25px; border: 1px solid #c9a66d; border-radius: 6px; color: #634321; background: #f7e8c4; cursor: pointer; }
+.admin-pagination button:disabled { opacity: 0.45; cursor: default; }
+.admin-details-panel { overflow: auto; padding: 17px; }
+.admin-player-card { display: flex; align-items: center; gap: 13px; padding: 3px 2px 13px; border-bottom: 1px solid rgba(132, 83, 39, 0.22); }
+.admin-avatar-large { flex-basis: 62px; width: 62px; height: 62px; font-size: 22px; }
+.admin-player-name { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 4px; }
+.admin-player-name h2 { overflow: hidden; margin: 0; color: #382416; text-overflow: ellipsis; white-space: nowrap; font: 800 20px Georgia, serif; }
+.admin-player-name code { overflow: hidden; color: #795e3f; text-overflow: ellipsis; white-space: nowrap; font: 500 9px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-player-level { position: relative; display: grid; place-items: center; flex: 0 0 66px; width: 66px; height: 66px; }
+.admin-player-level img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.admin-player-level strong { position: relative; padding-bottom: 5px; color: #fff; font: 900 19px system-ui, sans-serif; text-shadow: 0 2px 1px #392413, 1px 0 #392413, -1px 0 #392413; }
+.admin-player-level span { position: absolute; bottom: 8px; color: #fff6cf; font: 800 6px system-ui, sans-serif; text-shadow: 0 1px 1px #392413; }
+.admin-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.admin-stat-card { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; column-gap: 7px; min-width: 0; padding: 8px; border: 2px solid #dec79b; border-radius: 9px; background: linear-gradient(145deg, rgba(255, 250, 232, 0.9), rgba(238, 219, 179, 0.86)); }
+.admin-stat-card > img, .admin-stat-card > svg { grid-row: span 2; width: 25px; height: 25px; object-fit: contain; color: #92622d; }
+.admin-stat-card > span { overflow: hidden; color: #806346; text-overflow: ellipsis; white-space: nowrap; font: 600 8px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-stat-card > strong { overflow: hidden; color: #402b1a; text-overflow: ellipsis; white-space: nowrap; font: 900 13px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-message { margin: 8px 0; padding: 8px 10px; border-radius: 6px; font: 600 10px/1.4 'Trebuchet MS', system-ui, sans-serif; }
+.admin-error { color: #8d392b; background: #f4d9c8; }
+.admin-success { color: #3f712b; background: #e1f0cd; }
+.admin-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 9px; }
+.admin-action-card { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 11px; border: 2px solid #dec79b; border-radius: 10px; background: linear-gradient(145deg, rgba(255, 250, 232, 0.9), rgba(238, 219, 179, 0.86)); }
+.admin-action-title { display: flex; align-items: center; gap: 7px; color: #80552c; }
+.admin-action-title h3 { margin: 0; color: #49321e; font: 800 11px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-action-card > p { margin: 0; color: #826a4a; font: 500 9px/1.4 'Trebuchet MS', system-ui, sans-serif; }
+.admin-action-card label { display: grid; gap: 4px; min-width: 0; color: #705536; font: 700 9px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-action-card input, .admin-action-card select { width: 100%; min-width: 0; height: 34px; padding: 0 8px; border: 1px solid #c9a66d; border-radius: 5px; outline-color: #67933a; color: #432d1b; background: rgba(255, 252, 237, 0.94); font: 600 10px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-input-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.admin-primary-button { min-height: 34px; padding: 0 9px; border: 2px solid #347a28; border-radius: 7px; color: #fff8db; background: linear-gradient(180deg, #72c540, #348c27); box-shadow: inset 0 1px 0 rgba(232, 255, 187, 0.6), 0 2px 0 #2b6421; font: 800 10px 'Trebuchet MS', system-ui, sans-serif; cursor: pointer; }
+.admin-primary-button:disabled { opacity: 0.6; cursor: wait; }
+.admin-farm-items, .admin-inventory-list { max-height: 260px; overflow: auto; }
+.admin-action-card ul { display: grid; gap: 5px; max-height: 190px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.admin-action-card li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(132, 83, 39, 0.14); color: #4a351f; font: 700 9px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-action-card li span { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.admin-action-card li small { color: #826a4a; font-size: 8px; font-weight: 500; }
+.admin-action-card li strong { overflow: hidden; max-width: 45%; color: #755a38; text-overflow: ellipsis; white-space: nowrap; font-size: 8px; }
+.admin-empty, .admin-no-selection { display: grid; place-items: center; gap: 8px; min-height: 100px; color: #846a49; text-align: center; font: 600 11px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-no-selection { min-height: 260px; }
+
+@media (max-width: 760px) {
+  .admin-lobby .admin-topbar { flex: 0 0 54px; padding: 5px 9px; gap: 7px; }
+  .admin-logo { flex: 0 0 112px !important; min-width: 112px; min-height: 40px !important; gap: 3px; font-size: 9px; }
+  .admin-logo > svg { width: 15px; }
+  .admin-logo > span span { font-size: 7px; }
+  .admin-topbar-title { gap: 4px; font-size: 10px; }
+  .admin-topbar-title > svg { width: 15px; }
+  .admin-topbar-title strong { margin-left: 0; padding: 4px 5px; font-size: 8px; }
+  .admin-back-button { min-height: 32px; gap: 4px; padding: 0 6px; font-size: 8px; }
+  .admin-back-button > svg { width: 14px; }
+  .admin-workspace { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 8px 10px 14px; }
+  .admin-users-panel { flex: 0 0 245px; min-height: 245px; }
+  .admin-user-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-user-row { min-height: 50px; gap: 5px; padding: 4px; }
+  .admin-avatar { flex-basis: 30px; width: 30px; height: 30px; font-size: 11px; }
+  .admin-user-copy strong { font-size: 9px; }
+  .admin-user-copy small { font-size: 7px; }
+  .admin-user-level { flex-basis: 26px; width: 26px; height: 26px; }
+  .admin-user-level strong { font-size: 8px; }
+  .admin-details-panel { flex: 0 0 auto; overflow: visible; padding: 11px; }
+  .admin-player-card { gap: 8px; }
+  .admin-avatar-large { flex-basis: 48px; width: 48px; height: 48px; }
+  .admin-player-name h2 { font-size: 15px; }
+  .admin-player-name code { font-size: 7px; }
+  .admin-player-level { flex-basis: 52px; width: 52px; height: 52px; }
+  .admin-player-level strong { font-size: 15px; }
+  .admin-stat-grid { gap: 5px; }
+  .admin-stat-card { grid-template-columns: 20px minmax(0, 1fr); gap: 4px; padding: 6px 4px; }
+  .admin-stat-card > img, .admin-stat-card > svg { width: 18px; height: 18px; }
+  .admin-stat-card > span { font-size: 7px; }
+  .admin-stat-card > strong { font-size: 10px; }
+  .admin-action-grid { grid-template-columns: 1fr; }
+}
+
 .farmer-lobby { flex-direction: column; }
 .farmer-main { width: 100%; }
 .farmer-topbar { flex: 0 0 66px; }
