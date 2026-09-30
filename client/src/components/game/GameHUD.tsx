@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus } from 'lucide-react';
-import { API_BASE_URL } from '../../api/axios';
+import { ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
@@ -66,29 +65,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({ onReturnToProfile }) => {
     return () => clearTimeout(timer);
   }, [gameMessage, dismissGameMessage]);
 
-  // ФУНКЦІЯ: Накрутити 100 монет для тесту
-  const addTestCoins = async () => {
-    if (!user) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/farm/add-coins`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, amount: 100 })
-      });
-      const data = await res.json();
-      if (data.success) {
-        useAuthStore.setState({ user: { ...user, coins: data.coins } });
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   const progression = getLevelProgress(user?.xp ?? 0);
   const xpPercent = (progression.xpInLevel / progression.xpToNextLevel) * 100;
   return (
     <div style={styles.hudOverlay}>
       {gameMessage && <div style={styles.gameToast} role="status">{gameMessage}</div>}
+      {(activeTool === 'move' || activeTool?.startsWith('place_')) && (
+        <div className="game-touch-hint" role="status">
+          {activeTool === 'move' ? 'Перетягни предмет у потрібну клітинку' : 'Торкнись місця на фермі, щоб розмістити'}
+        </div>
+      )}
       
       {/* ВЕРХНІЙ ЛІВИЙ КУТОК */}
       <div style={styles.topLeftWrapper}>
@@ -114,7 +100,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({ onReturnToProfile }) => {
           <div className="game-currency-chip game-coin-chip">
             <img src="/assets/ui/coin.png" alt="" draggable={false} />
             <span style={styles.currencyValue}>{(user?.coins ?? 0).toLocaleString('uk-UA')}</span>
-            <button onClick={addTestCoins} style={styles.addCoinsBtn} aria-label="Додати 100 монет" title="Додати 100 монет"><Plus size={15} strokeWidth={3} /></button>
           </div>
           <div className="game-currency-chip game-ruby-chip">
             <img src="/assets/ui/rubin.png" alt="" draggable={false} />
@@ -219,7 +204,6 @@ const styles: Record<string, React.CSSProperties> = {
   topRightContainer: { position: 'absolute', top: '12px', right: '12px', display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto', zIndex: 15 },
   currencyBar: { display: 'flex', alignItems: 'center', gap: '8px' },
   currencyValue: { color: '#fff4d4', fontWeight: '900', fontSize: '13px', textShadow: '0 1px 2px #342114' },
-  addCoinsBtn: { display: 'grid', placeItems: 'center', width: '25px', height: '25px', background: 'linear-gradient(180deg, #8ede4c, #398d28)', border: '2px solid #2c6d22', borderRadius: '50%', color: '#fffbe1', padding: 0, cursor: 'pointer', marginLeft: '2px', boxShadow: 'inset 0 1px 0 rgba(239, 255, 193, 0.75), 0 2px 0 #254f1c' },
   settingsBtn: { display: 'grid', placeItems: 'center', background: 'linear-gradient(180deg, #a36a36, #60391f)', border: '2px solid #3f2819', borderRadius: '12px', width: '40px', height: '40px', color: '#fff0c9', cursor: 'pointer', outline: 'none', boxShadow: 'inset 0 1px 0 rgba(255, 222, 164, 0.45), 0 3px 0 rgba(31, 23, 15, 0.65)' },
   actionPanel: { position: 'absolute', bottom: 'calc(20px + clamp(48px, 15vw, 64px) + 8px)', left: '50%', display: 'flex', flexDirection: 'column', gap: '3px', pointerEvents: 'auto', transition: 'opacity 0.18s ease, transform 0.18s ease' },
   bottomPanelNoBg: { position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 'clamp(6px, 2vw, 18px)', pointerEvents: 'auto' },

@@ -48,6 +48,8 @@ export interface AdminCatalogItem {
   price: number;
   sellPrice?: number;
   plantingXp: number;
+  requiredLevel: number;
+  sortOrder: number;
   productionTimeMs?: number | null;
   canFlip?: boolean;
   flipX?: boolean;
@@ -55,6 +57,8 @@ export interface AdminCatalogItem {
   growthImages?: string[];
   footprint?: { width: number; height: number };
   largeFootprint?: { width: number; height: number } | null;
+  access: 'all' | 'admin';
+  custom?: boolean;
 }
 
 export const adminApi = {
@@ -68,6 +72,10 @@ export const adminApi = {
   getCatalog: async () => {
     const response = await api.get<{ items: AdminCatalogItem[] }>('/admin/catalog');
     return response.data.items;
+  },
+  createCatalogItem: async (item: { templateItemId: string; name: string; price: number; access: 'all' | 'admin' }) => {
+    const response = await api.post<{ item: AdminCatalogItem }>('/admin/catalog', item);
+    return response.data.item;
   },
   updatePrices: async (itemId: string, price: number, sellPrice?: number) => {
     const response = await api.patch<{ item: AdminCatalogItem }>(`/admin/catalog/${itemId}/prices`, {

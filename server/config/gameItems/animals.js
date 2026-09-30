@@ -21,6 +21,28 @@ export const animals = [
 		placementSurface: 'grass'
 	},
 
+{
+		id: 'goose',
+		name: 'Гуска',
+		type: 'ANIMAL',
+		footprint: { width: 1, height: 1 },
+		spriteScale: 0.89,
+		price: 100,
+		plantingXp: 5,
+		shopImage: '/assets/animals/goose.png',
+        growthImages: [
+            '/assets/animals/goose.png',
+        ],
+		productionTimeMs: 120000,
+		yieldItem: 'feather',
+		yieldName: 'Піря',
+		yieldIcon: '�',
+		yieldImage: '/assets/animals/product/goosefeather.png',
+		yieldAmount: 1,
+		sellPrice: 10,
+		placementSurface: 'grass'
+	},
+
 	{
 		id: 'sheep',
 		name: 'Овечка',
@@ -43,12 +65,56 @@ export const animals = [
 		placementSurface: 'grass'
 	},
 
+{
+		id: 'pig',
+		name: 'Свиня',
+		type: 'ANIMAL',
+		footprint: { width: 1, height: 1 },
+		spriteScale: 0.99,
+		price: 100,
+		plantingXp: 5,
+		shopImage: '/assets/animals/pig.png',
+        growthImages: [
+            '/assets/animals/pig.png',
+        ],
+		productionTimeMs: 10000,
+		yieldItem: 'bacon',
+		yieldName: 'Бекон',
+		yieldIcon: '🥓',
+		yieldImage: '/assets/animals/product/bekon.png',
+		yieldAmount: 1,
+		sellPrice: 10,
+		placementSurface: 'grass'
+	},
+
+	{
+		id: 'boar',
+		name: 'Кабан',
+		type: 'ANIMAL',
+		footprint: { width: 1, height: 1 },
+		spriteScale: 0.99,
+		price: 100,
+		plantingXp: 5,
+		shopImage: '/assets/animals/boar.png',
+        growthImages: [
+            '/assets/animals/boar.png',
+        ],
+		productionTimeMs: 10000,
+		yieldItem: 'baconkaban',
+		yieldName: 'Бекон з кабана',
+		yieldIcon: '🥓',
+		yieldImage: '/assets/animals/product/bekonkaban.png',
+		yieldAmount: 1,
+		sellPrice: 10,
+		placementSurface: 'grass'
+	},
+
 	{
 		id: 'cow',
 		name: 'Корова',
 		type: 'ANIMAL',
 		footprint: { width: 2, height: 1 },
-		spriteScale: 1.15,
+		spriteScale: 1.35,
 		canFlip: false,
 		price: 500,
 		plantingXp: 10,

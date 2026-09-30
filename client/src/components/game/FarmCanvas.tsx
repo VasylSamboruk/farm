@@ -68,6 +68,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
   const startPan = useRef({ x: 0, y: 0 });
   const hoveredTile = useRef<{ row: number; col: number; quadrant: number } | null>(null);
   const lastPinchRef = useRef<{ distance: number; centerX: number; centerY: number } | null>(null);
+  const touchMoveSourceRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
+  const touchObjectDragRef = useRef(false);
 
   const activeToolRef = useRef(activeTool);
   const tilesRef = useRef(tiles);
@@ -163,25 +165,28 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       ctx.save();
       ctx.font = '700 13px sans-serif';
       const title = name.length > 24 ? `${name.slice(0, 23)}…` : name;
-      ctx.font = '700 13px sans-serif';
-      const width = Math.max(ctx.measureText(title).width, ctx.measureText(status).width) + 24;
+      const titleOnly = status.length === 0;
+      const height = titleOnly ? 28 : 42;
+      const width = Math.max(ctx.measureText(title).width, titleOnly ? 0 : ctx.measureText(status).width) + 24;
       const left = centerX - width / 2;
-      const top = topY - 46;
+      const top = topY - height - 4;
 
       ctx.fillStyle = 'rgba(18, 28, 24, 0.94)';
       ctx.strokeStyle = 'rgba(213, 236, 192, 0.8)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(left, top, width, 42, 9);
+      ctx.roundRect(left, top, width, height, 9);
       ctx.fill();
       ctx.stroke();
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(title, centerX, top + 13);
-      ctx.font = '600 11px sans-serif';
-      ctx.fillStyle = '#c5e8a6';
-      ctx.fillText(status, centerX, top + 30);
+      ctx.fillText(title, centerX, titleOnly ? top + height / 2 : top + 13);
+      if (!titleOnly) {
+        ctx.font = '600 11px sans-serif';
+        ctx.fillStyle = '#c5e8a6';
+        ctx.fillText(status, centerX, top + 30);
+      }
       ctx.restore();
     };
 
@@ -630,10 +635,12 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
         }
 
         if (!activeTool && isHovered) {
-          let status = itemState.isReady ? 'Готово до збору' : 'До готовності: ...';
-          if (queueIndex >= 0) {
+          let status = item.type === 'BUILDING'
+            ? ''
+            : itemState.isReady ? 'Готово до збору' : 'До готовності: ...';
+          if (item.type !== 'BUILDING' && queueIndex >= 0) {
             status = queueIndex === 0 && activeHarvestStartedAtRef.current !== null ? 'Збираємо' : 'Очікує збору';
-          } else if (!itemState.isReady && Number.isFinite(itemState.readyAt)) {
+          } else if (item.type !== 'BUILDING' && !itemState.isReady && Number.isFinite(itemState.readyAt)) {
             status = `До готовності: ${formatTimeLeft(itemState.readyAt - now)}`;
           }
           drawItemTooltip(
@@ -985,6 +992,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
         };
         isDragging.current = false;
         pointerDownOnCanvas.current = false;
+        touchMoveSourceRef.current = null;
+        touchObjectDragRef.current = false;
         return;
       }
 
@@ -994,6 +1003,10 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       isDragging.current = true;
       pointerDownPosition.current = { x: touch.clientX, y: touch.clientY };
       startPan.current = { x: touch.clientX - cameraRef.current.x, y: touch.clientY - cameraRef.current.y };
+      touchMoveSourceRef.current = !readOnly && activeToolRef.current === 'move'
+        ? getReadyItemAtScreen(touch.clientX, touch.clientY, false)
+        : null;
+      touchObjectDragRef.current = false;
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -1018,13 +1031,26 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       }
 
       const touch = e.touches[0];
-      if (!touch || !isDragging.current) return;
+      if (!touch) return;
+      const moveSource = touchMoveSourceRef.current;
+      if (moveSource && activeToolRef.current === 'move') {
+        const distance = Math.hypot(
+          touch.clientX - pointerDownPosition.current.x,
+          touch.clientY - pointerDownPosition.current.y
+        );
+        if (!touchObjectDragRef.current && distance < 8) return;
+        touchObjectDragRef.current = true;
+        movingItemRef.current = moveSource;
+        hoveredTile.current = getGridTileFromScreen(touch.clientX, touch.clientY);
+        return;
+      }
+      if (!isDragging.current) return;
       hoveredTile.current = null;
       cameraRef.current.x = touch.clientX - startPan.current.x;
       cameraRef.current.y = touch.clientY - startPan.current.y;
     };
 
-    const handleTouchEnd = (e: TouchEvent) => {
+    const handleTouchEnd = async (e: TouchEvent) => {
       e.preventDefault();
       if (lastPinchRef.current) {
         lastPinchRef.current = null;
@@ -1032,6 +1058,28 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       }
       const touch = e.changedTouches[0];
       if (!touch) return;
+      const moveSource = touchMoveSourceRef.current;
+      const wasObjectDrag = touchObjectDragRef.current;
+      touchMoveSourceRef.current = null;
+      touchObjectDragRef.current = false;
+      if (wasObjectDrag && moveSource && !readOnly) {
+        pointerDownOnCanvas.current = false;
+        isDragging.current = false;
+        const target = getGridTileFromScreen(touch.clientX, touch.clientY);
+        if (target && userRef.current?.id) {
+          const moved = await moveTile(
+            moveSource.row,
+            moveSource.col,
+            moveSource.quadrant,
+            target.row,
+            target.col,
+            target.quadrant,
+            userRef.current.id
+          );
+          if (moved) movingItemRef.current = null;
+        }
+        return;
+      }
       void handleMouseUp({ clientX: touch.clientX, clientY: touch.clientY } as MouseEvent);
     };
 

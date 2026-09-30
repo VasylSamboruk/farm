@@ -11,6 +11,8 @@ export interface GameItemConfig {
   canFlip?: boolean;
   price: number;
   plantingXp: number;
+  requiredLevel?: number;
+  sortOrder?: number;
   shopImage?: string;
   shopIcon?: string;
   growthImages?: string[];
@@ -22,4 +24,6 @@ export interface GameItemConfig {
   yieldAmount?: number;
   sellPrice?: number;
   placementSurface?: 'grass' | 'soil';
+  access?: 'all' | 'admin';
+  custom?: boolean;
 }

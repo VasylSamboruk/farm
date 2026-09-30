@@ -45,6 +45,54 @@ export const trees = [
         sellPrice: 300,
         placementSurface: 'grass'
     },
+{
+        id: 'cherry_tree',
+        name: 'Вишня',
+        type: 'TREE',
+        footprint: { width: 1, height: 1 },
+        price: 150,
+        plantingXp: 15,
+        shopImage: '/assets/trees/cherry_tree/wyshnya4.png',
+        growthImages: [
+            '/assets/trees/cherry_tree/wyshnya1.png',
+            '/assets/trees/cherry_tree/wyshnya2.png',
+            '/assets/trees/cherry_tree/wyshnya3.png',
+            '/assets/trees/cherry_tree/wyshnya4.png',
+        ],
+        productionTimeMs: 10000,
+        yieldItem: 'cherry',
+        yieldName: 'Вишні',
+        yieldIcon: '�',
+        yieldImage: '/assets/trees/product/cherry.png',
+        yieldAmount: 1,
+        sellPrice: 300,
+        placementSurface: 'grass'
+    },
+
+{
+        id: 'plum_tree',
+        name: 'Слива',
+        type: 'TREE',
+        footprint: { width: 1, height: 1 },
+        price: 157,
+        plantingXp: 15,
+        shopImage: '/assets/trees/plum_tree/slyva4.png',
+        growthImages: [
+            '/assets/trees/plum_tree/slyva1.png',
+            '/assets/trees/plum_tree/slyva2.png',
+            '/assets/trees/plum_tree/slyva3.png',
+            '/assets/trees/plum_tree/slyva4.png',
+        ],
+        productionTimeMs: 10800,
+        yieldItem: 'plum',
+        yieldName: 'Сливи',
+        yieldIcon: '🍑',
+        yieldImage: '/assets/trees/product/plum.png',
+        yieldAmount: 1,
+        sellPrice: 300,
+        placementSurface: 'grass'
+    },
+
 
     {
         id: 'malina', 

@@ -880,10 +880,10 @@ html, body, #root {
 .admin-back-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 0 10px; border: 2px solid #80502a; border-radius: 8px; color: #fff2d0; background: linear-gradient(180deg, #a66c37, #60391f); box-shadow: inset 0 1px 0 rgba(255, 222, 164, 0.4), 0 2px 0 #432a1a; font: 700 10px 'Trebuchet MS', system-ui, sans-serif; cursor: pointer; }
 .admin-back-button:hover { filter: brightness(1.1); }
 .admin-workspace { display: grid; grid-template-columns: minmax(250px, 310px) minmax(0, 1fr); gap: 15px; width: min(1440px, 100%); flex: 1; min-height: 0; margin: 0 auto; padding: 12px 18px 20px; }
-.admin-workspace.is-price-view { display: block; overflow: auto; }
-.admin-workspace.is-price-view > .admin-users-panel, .admin-workspace.is-price-view > .admin-details-panel { display: none; }
+.admin-workspace.is-mechanics-view { display: block; overflow: auto; }
+.admin-workspace.is-mechanics-view > .admin-users-panel, .admin-workspace.is-mechanics-view > .admin-details-panel { display: none; }
 .admin-price-panel { display: none; width: min(1440px, 100%); min-height: 100%; margin: 0 auto; padding: 17px; border: 6px solid #815127; border-radius: 16px 12px 15px 12px; color: #422d1b; background: linear-gradient(145deg, rgba(255, 247, 222, 0.98), rgba(236, 210, 161, 0.97)); box-shadow: inset 0 0 0 2px #d6ae6d, inset 0 0 0 4px rgba(255, 249, 220, 0.7), 0 6px 0 #55351f, 0 10px 18px rgba(24, 34, 22, 0.28); }
-.admin-workspace.is-price-view > .admin-price-panel { display: block; }
+.admin-workspace.is-mechanics-view > .admin-price-panel { display: block; }
 .admin-users-panel, .admin-details-panel { min-width: 0; min-height: 0; border: 6px solid #815127; border-radius: 16px 12px 15px 12px; color: #422d1b; background: linear-gradient(145deg, rgba(255, 247, 222, 0.98), rgba(236, 210, 161, 0.97)); box-shadow: inset 0 0 0 2px #d6ae6d, inset 0 0 0 4px rgba(255, 249, 220, 0.7), 0 6px 0 #55351f, 0 10px 18px rgba(24, 34, 22, 0.28); }
 .admin-users-panel { display: flex; flex-direction: column; overflow: hidden; padding: 14px 12px 9px; }
 .admin-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
@@ -909,7 +909,14 @@ html, body, #root {
 .admin-pagination button { display: grid; place-items: center; width: 27px; height: 25px; border: 1px solid #c9a66d; border-radius: 6px; color: #634321; background: #f7e8c4; cursor: pointer; }
 .admin-pagination button:disabled { opacity: 0.45; cursor: default; }
 .admin-details-panel { overflow: auto; padding: 17px; }
-.admin-workspace.is-price-view .admin-price-panel { min-height: 0; }
+.admin-workspace.is-mechanics-view .admin-price-panel { min-height: 0; }
+.admin-create-catalog-item { margin-bottom: 12px; }
+.admin-create-catalog-item .admin-primary-button { width: 100%; }
+.admin-catalog-category-tabs { display: flex; gap: 6px; margin: 0 0 11px; padding: 3px 2px 7px; overflow-x: auto; scrollbar-width: thin; }
+.admin-catalog-category-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 auto; min-height: 34px; padding: 0 11px; border: 1px solid #c8a66d; border-radius: 7px; color: #684a2b; background: rgba(255, 250, 231, 0.82); font: 800 10px 'Trebuchet MS', system-ui, sans-serif; cursor: pointer; }
+.admin-catalog-category-tabs button.is-active { border-color: #36732a; color: #fff9dd; background: linear-gradient(180deg, #76bd42, #438e28); box-shadow: inset 0 1px 0 rgba(235, 255, 187, 0.62), 0 2px 0 #2c6022; }
+.admin-catalog-category-tabs button span { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 10px; color: #674624; background: rgba(180, 133, 63, 0.18); font-size: 9px; }
+.admin-catalog-category-tabs button.is-active span { color: #fff9dd; background: rgba(28, 78, 27, 0.38); }
 .admin-price-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding-bottom: 11px; border-bottom: 1px solid rgba(132, 83, 39, 0.22); }
 .admin-price-heading h1 { margin: 3px 0 0; color: #432b19; font: 800 21px Georgia, serif; }
 .admin-price-heading > span { padding: 5px 9px; border-radius: 12px; color: #70502c; background: rgba(171, 119, 53, 0.13); font: 800 9px 'Trebuchet MS', system-ui, sans-serif; }
@@ -933,6 +940,7 @@ html, body, #root {
 .admin-dimensions input { min-width: 0; }
 .admin-item-field-grid .admin-toggle-field { display: flex; align-items: center; justify-content: space-between; gap: 7px; padding: 0 8px; border: 1px solid #d5b982; border-radius: 5px; background: rgba(255, 252, 237, 0.6); }
 .admin-item-field-grid .admin-toggle-field input { width: 15px; height: 15px; accent-color: #4e9432; }
+.game-touch-hint { display: none; }
 .admin-price-card .admin-primary-button { grid-column: 1 / -1; }
 .admin-player-card { display: flex; align-items: center; gap: 13px; padding: 3px 2px 13px; border-bottom: 1px solid rgba(132, 83, 39, 0.22); }
 .admin-avatar-large { flex-basis: 62px; width: 62px; height: 62px; font-size: 22px; }
@@ -1122,4 +1130,8 @@ html, body, #root {
   .friend-level-medallion strong { font-size: 11px; }
   .friend-total-xp { font-size: 8px; }
   .friend-back-button { border-width: 2px; }
+}
+
+@media (pointer: coarse) {
+  .game-touch-hint { position: fixed; z-index: 12; bottom: calc(20px + clamp(48px, 15vw, 64px) + 14px); left: 50%; display: block; width: max-content; max-width: calc(100vw - 32px); transform: translateX(-50%); padding: 8px 12px; border: 1px solid rgba(255, 226, 164, 0.65); border-radius: 7px; color: #fff4d8; background: rgba(38, 29, 20, 0.9); box-shadow: 0 3px 12px rgba(0, 0, 0, 0.36); text-align: center; font: 700 12px/1.25 system-ui, sans-serif; pointer-events: none; }
 }

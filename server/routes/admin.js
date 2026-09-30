@@ -1,10 +1,11 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import Farm from '../models/Farm.js';
 import User from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
-import { getGameItem, listGameItems, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
+import { createGameItem, getGameItem, listGameItems, reorderGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 
 const router = express.Router();
@@ -71,30 +72,72 @@ const serializeAdminUser = (user, farm) => ({
         }),
 });
 
+const serializeCatalogItem = (item) => ({
+    id: item.id,
+    name: item.name,
+    type: item.type,
+    yieldItem: item.yieldItem,
+    yieldName: item.yieldName,
+    yieldIcon: item.yieldIcon,
+    yieldImage: item.yieldImage,
+    shopImage: item.shopImage ?? item.growthImages?.at(-1),
+    placementSurface: item.placementSurface,
+    price: item.price,
+    sellPrice: item.sellPrice,
+    plantingXp: item.plantingXp,
+    requiredLevel: item.requiredLevel ?? 1,
+    sortOrder: item.sortOrder,
+    productionTimeMs: item.productionTimeMs,
+    yieldAmount: item.yieldAmount,
+    canFlip: item.canFlip,
+    flipX: item.flipX,
+    spriteScale: item.spriteScale,
+    shopIcon: item.shopIcon,
+    growthImages: item.growthImages ?? [],
+    footprint: item.footprint,
+    largeFootprint: item.largeFootprint,
+    access: item.access ?? 'all',
+    custom: Boolean(item.custom),
+});
+
 router.get('/catalog', (_req, res) => {
-    const items = listGameItems().map((item) => ({
-        id: item.id,
-        name: item.name,
-        type: item.type,
-        yieldItem: item.yieldItem,
-        yieldName: item.yieldName,
-        yieldIcon: item.yieldIcon,
-        yieldImage: item.yieldImage,
-        shopImage: item.shopImage ?? item.growthImages?.at(-1),
-        placementSurface: item.placementSurface,
-        price: item.price,
-        sellPrice: item.sellPrice,
-        plantingXp: item.plantingXp,
-        productionTimeMs: item.productionTimeMs,
-        yieldAmount: item.yieldAmount,
-        canFlip: item.canFlip,
-        spriteScale: item.spriteScale,
-        shopIcon: item.shopIcon,
-        growthImages: item.growthImages ?? [],
-        footprint: item.footprint,
-        largeFootprint: item.largeFootprint,
-    }));
+    const items = listGameItems().map(serializeCatalogItem);
     return res.json({ items });
+});
+
+router.post('/catalog', async (req, res) => {
+    try {
+        const template = getGameItem(req.body?.templateItemId);
+        const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+        const price = req.body?.price;
+        const access = req.body?.access;
+        if (!template) return res.status(400).json({ message: 'Обери шаблон товару' });
+        if (name.length < 2 || name.length > 120) return res.status(400).json({ message: 'Назва має містити від 2 до 120 символів' });
+        if (!Number.isSafeInteger(price) || price < 0) return res.status(400).json({ message: 'Ціна має бути невід’ємним цілим числом' });
+        if (access !== 'all' && access !== 'admin') return res.status(400).json({ message: 'Некоректний доступ до товару' });
+
+        const id = `custom_${randomUUID().replaceAll('-', '')}`;
+        const item = {
+            ...template,
+            id,
+            name,
+            price,
+            sortOrder: listGameItems()
+                .filter((entry) => entry.type === template.type)
+                .reduce((maximum, entry) => Math.max(maximum, entry.sortOrder ?? 0), 0) + 1,
+            access,
+            custom: true,
+            ...(template.yieldItem ? {
+                yieldItem: `${id}_yield`,
+                yieldName: `${name} · продукт`,
+            } : {}),
+        };
+        const createdItem = await createGameItem(item);
+        if (!createdItem) return res.status(409).json({ message: 'Не вдалося створити товар' });
+        return res.status(201).json({ item: serializeCatalogItem(createdItem) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося створити товар', error: error.message });
+    }
 });
 
 router.patch('/catalog/:itemId/config', async (req, res) => {
@@ -104,7 +147,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         const allowedFields = new Set([
             'name', 'price', 'sellPrice', 'plantingXp', 'productionTimeMs', 'yieldItem', 'yieldName',
             'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'canFlip', 'footprint',
-            'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX',
+            'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX', 'access', 'requiredLevel', 'sortOrder',
         ]);
         const updates = {};
 
@@ -116,6 +159,20 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 const parsed = Number(value);
                 if (!Number.isSafeInteger(parsed) || parsed < 0) return res.status(400).json({ message: `${field} має бути невід’ємним цілим числом` });
                 updates[field] = parsed;
+                continue;
+            }
+            if (field === 'requiredLevel') {
+                if (!Number.isSafeInteger(value) || value < 1 || value > 999) {
+                    return res.status(400).json({ message: 'Мінімальний рівень має бути цілим числом від 1 до 999' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'sortOrder') {
+                if (!Number.isSafeInteger(value) || value < 1 || value > 9999) {
+                    return res.status(400).json({ message: 'Позиція в магазині має бути цілим числом від 1 до 9999' });
+                }
+                updates[field] = value;
                 continue;
             }
             if (field === 'productionTimeMs') {
@@ -133,6 +190,11 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             }
             if (field === 'canFlip' || field === 'flipX') {
                 if (typeof value !== 'boolean') return res.status(400).json({ message: `${field} має бути true або false` });
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'access') {
+                if (value !== 'all' && value !== 'admin') return res.status(400).json({ message: 'Доступ має бути all або admin' });
                 updates[field] = value;
                 continue;
             }
@@ -169,7 +231,11 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         }
 
         if (!Object.keys(updates).length) return res.status(400).json({ message: 'Не передано змін конфігурації' });
-        const updatedItem = await updateGameItemConfig(item.id, updates);
+        const { sortOrder, ...configUpdates } = updates;
+        let updatedItem = Object.keys(configUpdates).length
+            ? await updateGameItemConfig(item.id, configUpdates)
+            : item;
+        if (sortOrder !== undefined) updatedItem = await reorderGameItem(item.id, sortOrder);
         return res.json({ item: updatedItem });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося оновити предмет', error: error.message });

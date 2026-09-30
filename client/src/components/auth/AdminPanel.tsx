@@ -21,11 +21,20 @@ const getErrorMessage = (error: unknown) => {
 
 const formatNumber = (value: number) => value.toLocaleString('uk-UA');
 
+const SHOP_CATEGORIES: { type: AdminCatalogItem['type']; label: string }[] = [
+  { type: 'TREE', label: 'Дерева' },
+  { type: 'CROP', label: 'Рослини' },
+  { type: 'ANIMAL', label: 'Тварини' },
+  { type: 'BUILDING', label: 'Декор' },
+];
+
 interface AdminItemDraft {
   name: string;
   price: string;
   sellPrice: string;
   plantingXp: string;
+  requiredLevel: string;
+  sortOrder: string;
   productionTimeMs: string;
   yieldItem: string;
   yieldName: string;
@@ -37,6 +46,7 @@ interface AdminItemDraft {
   footprintHeight: string;
   largeFootprintWidth: string;
   largeFootprintHeight: string;
+  access: 'all' | 'admin';
 }
 
 const getItemDraft = (item: AdminCatalogItem): AdminItemDraft => ({
@@ -44,6 +54,8 @@ const getItemDraft = (item: AdminCatalogItem): AdminItemDraft => ({
   price: String(item.price),
   sellPrice: String(item.sellPrice ?? ''),
   plantingXp: String(item.plantingXp ?? 0),
+  requiredLevel: String(item.requiredLevel ?? 1),
+  sortOrder: String(item.sortOrder ?? 1),
   productionTimeMs: String(item.productionTimeMs ?? ''),
   yieldItem: item.yieldItem ?? '',
   yieldName: item.yieldName ?? '',
@@ -55,6 +67,7 @@ const getItemDraft = (item: AdminCatalogItem): AdminItemDraft => ({
   footprintHeight: String(item.footprint?.height ?? ''),
   largeFootprintWidth: String(item.largeFootprint?.width ?? ''),
   largeFootprintHeight: String(item.largeFootprint?.height ?? ''),
+  access: item.access ?? 'all',
 });
 
 const toFarmPreviewTiles = (farmItems: AdminFarmItem[]): Record<string, TileData> => {
@@ -83,7 +96,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const loadGameItems = useGameConfigStore((state) => state.loadItems);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [catalog, setCatalog] = useState<AdminCatalogItem[]>([]);
-  const [view, setView] = useState<'users' | 'prices'>('users');
+  const [view, setView] = useState<'users' | 'mechanics'>('users');
+  const [catalogCategory, setCatalogCategory] = useState<'ALL' | AdminCatalogItem['type']>('ALL');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -100,6 +114,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [banDuration, setBanDuration] = useState('10');
   const [banReason, setBanReason] = useState('');
   const [itemDrafts, setItemDrafts] = useState<Record<string, AdminItemDraft>>({});
+  const [createDraft, setCreateDraft] = useState({ templateItemId: '', name: '', price: '100', access: 'all' as 'all' | 'admin' });
   const [priceBusyId, setPriceBusyId] = useState<string | null>(null);
   const [showFarmPreview, setShowFarmPreview] = useState(false);
   const [confirmFarmClear, setConfirmFarmClear] = useState(false);
@@ -149,6 +164,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
       if (!active) return;
       setItemDrafts(Object.fromEntries(loadedCatalog.map((item) => [item.id, getItemDraft(item)])));
       setCatalog(loadedCatalog);
+      setCreateDraft((current) => ({ ...current, templateItemId: loadedCatalog[0]?.id ?? '' }));
       setUsers(result.users);
       setTotal(result.total);
       setPages(Math.max(1, result.pages));
@@ -169,6 +185,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   }, [loadGameItems]);
 
   const selectedUser = users.find((entry) => entry.id === selectedUserId) ?? null;
+  const visibleCatalog = catalog
+    .filter((item) => catalogCategory === 'ALL' || item.type === catalogCategory)
+    .sort((left, right) => left.sortOrder - right.sortOrder);
   const productCatalog = catalog.filter((item) => item.yieldItem);
   const farmCatalog = catalog.filter((item) => ['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type));
   const updateItemDraft = (itemId: string, changes: Partial<AdminItemDraft>) => {
@@ -320,6 +339,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     if (!draft) return;
     const price = Number(draft.price);
     const plantingXp = Number(draft.plantingXp);
+    const requiredLevel = Number(draft.requiredLevel);
+    const sortOrder = Number(draft.sortOrder);
     const yieldAmount = draft.yieldAmount.trim() === '' ? 0 : Number(draft.yieldAmount);
     const sellPrice = draft.sellPrice.trim() === '' ? undefined : Number(draft.sellPrice);
     const productionTimeMs = draft.productionTimeMs.trim() === '' ? null : Number(draft.productionTimeMs);
@@ -328,13 +349,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     const largeFootprintWidth = draft.largeFootprintWidth.trim() === '' ? null : Number(draft.largeFootprintWidth);
     const largeFootprintHeight = draft.largeFootprintHeight.trim() === '' ? null : Number(draft.largeFootprintHeight);
     if (!draft.name.trim() || !Number.isSafeInteger(price) || price < 0 || !Number.isSafeInteger(plantingXp) || plantingXp < 0 ||
+      !Number.isSafeInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 999 ||
+      !Number.isSafeInteger(sortOrder) || sortOrder < 1 || sortOrder > 9999 ||
         !Number.isSafeInteger(yieldAmount) || yieldAmount < 0 || (sellPrice !== undefined && (!Number.isSafeInteger(sellPrice) || sellPrice < 0)) ||
         (productionTimeMs !== null && (!Number.isSafeInteger(productionTimeMs) || productionTimeMs < 1000)) ||
         !Number.isInteger(footprintWidth) || footprintWidth < 1 || footprintWidth > 2 ||
         !Number.isInteger(footprintHeight) || footprintHeight < 1 || footprintHeight > 2 ||
         (largeFootprintWidth !== null && (!Number.isInteger(largeFootprintWidth) || largeFootprintWidth < 1 || largeFootprintWidth > 2)) ||
         (largeFootprintHeight !== null && (!Number.isInteger(largeFootprintHeight) || largeFootprintHeight < 1 || largeFootprintHeight > 2))) {
-      setError('Перевір назву, ціни, час росту й розміри footprint предмета.');
+      setError('Перевір назву, ціни, рівень доступу, позицію, час росту й розміри footprint предмета.');
       return;
     }
 
@@ -347,6 +370,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         price,
         ...(sellPrice === undefined ? {} : { sellPrice }),
         plantingXp,
+        requiredLevel,
+        sortOrder,
         productionTimeMs,
         yieldItem: draft.yieldItem.trim(),
         yieldName: draft.yieldName.trim(),
@@ -358,10 +383,46 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         largeFootprint: largeFootprintWidth === null || largeFootprintHeight === null
           ? null
           : { width: largeFootprintWidth, height: largeFootprintHeight },
+        access: draft.access,
       });
-      setCatalog((current) => current.map((entry) => entry.id === item.id ? updatedItem : entry));
-      setItemDrafts((current) => ({ ...current, [item.id]: getItemDraft(updatedItem) }));
+      const refreshedCatalog = await adminApi.getCatalog();
+      setCatalog(refreshedCatalog);
+      setItemDrafts((current) => Object.fromEntries(refreshedCatalog.map((entry) => {
+        const existingDraft = current[entry.id] ?? getItemDraft(entry);
+        return [entry.id, entry.id === item.id
+          ? getItemDraft(entry)
+          : { ...existingDraft, sortOrder: String(entry.sortOrder) }];
+      })));
       setNotice(`Налаштування «${updatedItem.name}» збережено.`);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+    } finally {
+      setPriceBusyId(null);
+    }
+  };
+
+  const handleCreateCatalogItem = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const price = Number(createDraft.price);
+    if (!createDraft.templateItemId || createDraft.name.trim().length < 2 || createDraft.name.trim().length > 120 || !Number.isSafeInteger(price) || price < 0) {
+      setError('Вкажи шаблон, назву від 2 символів і коректну ціну.');
+      return;
+    }
+    setPriceBusyId('new-item');
+    setError('');
+    setNotice('');
+    try {
+      const item = await adminApi.createCatalogItem({
+        templateItemId: createDraft.templateItemId,
+        name: createDraft.name.trim(),
+        price,
+        access: createDraft.access,
+      });
+      setCatalog((current) => [...current, item]);
+      setItemDrafts((current) => ({ ...current, [item.id]: getItemDraft(item) }));
+      setCreateDraft((current) => ({ ...current, name: '', price: '100' }));
+      await loadGameItems(true);
+      setNotice(`Товар «${item.name}» додано в механіку й магазин.`);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -399,12 +460,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
           <div className="admin-topbar-title"><ShieldCheck size={19} /><span>Адмін-панель</span><strong>{formatNumber(total)} гравців</strong></div>
           <div className="admin-view-tabs" role="tablist" aria-label="Розділи адмін-панелі">
             <button className={view === 'users' ? 'is-active' : ''} type="button" role="tab" aria-selected={view === 'users'} onClick={() => setView('users')}><Users size={15} />Гравці</button>
-            <button className={view === 'prices' ? 'is-active' : ''} type="button" role="tab" aria-selected={view === 'prices'} onClick={() => setView('prices')}><BadgeDollarSign size={15} />Ціни</button>
+            <button className={view === 'mechanics' ? 'is-active' : ''} type="button" role="tab" aria-selected={view === 'mechanics'} onClick={() => setView('mechanics')}><BadgeDollarSign size={15} />Механіка</button>
           </div>
           <button className="admin-back-button" type="button" onClick={onBack}><ArrowLeft size={17} /><span>До профілю</span></button>
         </header>
 
-        <div className={view === 'prices' ? 'admin-workspace is-price-view' : 'admin-workspace'}>
+        <div className={view === 'mechanics' ? 'admin-workspace is-mechanics-view' : 'admin-workspace'}>
           <aside className="admin-users-panel">
             <div className="admin-section-heading"><div><span className="admin-kicker">ОБЛІКОВІ ЗАПИСИ</span><h1>Гравці</h1></div><span className="admin-count"><Users size={15} />{total}</span></div>
             <form className="admin-search" onSubmit={handleSearch}>
@@ -539,12 +600,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             )}
           </section>
 
-          <section className="admin-price-panel" aria-label="Ціни каталогу">
-            <header className="admin-price-heading"><div><span className="admin-kicker">ЕКОНОМІКА ФЕРМИ</span><h1>Ціни предметів</h1></div><span>{catalog.length} позицій</span></header>
+          <section className="admin-price-panel" aria-label="Механіка магазину">
+            <header className="admin-price-heading"><div><span className="admin-kicker">КАТАЛОГ І ДОСТУПИ</span><h1>Механіка магазину</h1></div><span>{catalog.length} позицій</span></header>
             {error && <p className="admin-message admin-error" role="alert">{error}</p>}
             {notice && <p className="admin-message admin-success" role="status">{notice}</p>}
+            <form className="admin-action-card admin-create-catalog-item" onSubmit={(event) => void handleCreateCatalogItem(event)}>
+              <div className="admin-action-title"><PackagePlus size={18} /><h3>Додати товар за шаблоном</h3></div>
+              <div className="admin-input-pair">
+                <label>Шаблон<select value={createDraft.templateItemId} onChange={(event) => setCreateDraft((current) => ({ ...current, templateItemId: event.target.value }))} required><option value="">Обери предмет</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.type}</option>)}</select></label>
+                <label>Назва<input value={createDraft.name} onChange={(event) => setCreateDraft((current) => ({ ...current, name: event.target.value }))} minLength={2} maxLength={120} required /></label>
+                <label>Ціна<input type="number" min="0" step="1" value={createDraft.price} onChange={(event) => setCreateDraft((current) => ({ ...current, price: event.target.value }))} required /></label>
+                <label>Доступ<select value={createDraft.access} onChange={(event) => setCreateDraft((current) => ({ ...current, access: event.target.value as 'all' | 'admin' }))}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option></select></label>
+              </div>
+              <button className="admin-primary-button" type="submit" disabled={priceBusyId === 'new-item'}>{priceBusyId === 'new-item' ? 'Додаємо…' : 'Додати товар'}</button>
+            </form>
+            <div className="admin-catalog-category-tabs" role="tablist" aria-label="Категорії магазину">
+              <button className={catalogCategory === 'ALL' ? 'is-active' : ''} type="button" role="tab" aria-selected={catalogCategory === 'ALL'} onClick={() => setCatalogCategory('ALL')}>Усі <span>{catalog.length}</span></button>
+              {SHOP_CATEGORIES.map((category) => {
+                const count = catalog.filter((item) => item.type === category.type).length;
+                return <button key={category.type} className={catalogCategory === category.type ? 'is-active' : ''} type="button" role="tab" aria-selected={catalogCategory === category.type} onClick={() => setCatalogCategory(category.type)}>{category.label} <span>{count}</span></button>;
+              })}
+            </div>
             <div className="admin-price-grid">
-              {catalog.map((item) => {
+              {visibleCatalog.map((item) => {
                 const draft = itemDrafts[item.id] ?? getItemDraft(item);
                 return (
                   <article className="admin-price-card" key={item.id}>
@@ -554,10 +632,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                     <div className="admin-price-item-name"><strong>{item.name}</strong><small>{item.type} · {item.id}</small></div>
                     <label>Купівля<input type="number" min="0" step="1" value={draft.price} onChange={(event) => updateItemDraft(item.id, { price: event.target.value })} /></label>
                     {item.yieldItem && <label>Продаж<input type="number" min="0" step="1" value={draft.sellPrice} onChange={(event) => updateItemDraft(item.id, { sellPrice: event.target.value })} /></label>}
+                    <label>Позиція в магазині<input type="number" min="1" max="9999" step="1" value={draft.sortOrder} onChange={(event) => updateItemDraft(item.id, { sortOrder: event.target.value })} /></label>
                     <details className="admin-item-advanced">
                       <summary>Повні параметри</summary>
                       <div className="admin-item-field-grid">
                         <label>Назва<input value={draft.name} onChange={(event) => updateItemDraft(item.id, { name: event.target.value })} maxLength={120} /></label>
+                        <label>Доступ у магазині<select value={draft.access} onChange={(event) => updateItemDraft(item.id, { access: event.target.value as 'all' | 'admin' })}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option></select></label>
+                        <label>Мін. рівень покупки<input type="number" min="1" max="999" step="1" value={draft.requiredLevel} onChange={(event) => updateItemDraft(item.id, { requiredLevel: event.target.value })} /></label>
                         <label>Досвід за посадку<input type="number" min="0" step="1" value={draft.plantingXp} onChange={(event) => updateItemDraft(item.id, { plantingXp: event.target.value })} /></label>
                         {!item.yieldItem && <label>Ціна продажу<input type="number" min="0" step="1" value={draft.sellPrice} onChange={(event) => updateItemDraft(item.id, { sellPrice: event.target.value })} placeholder="—" /></label>}
                         <label>Час росту (мс)<input type="number" min="1000" step="1000" value={draft.productionTimeMs} placeholder="Без циклу" onChange={(event) => updateItemDraft(item.id, { productionTimeMs: event.target.value })} /></label>

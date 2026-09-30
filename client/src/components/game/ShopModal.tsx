@@ -38,9 +38,16 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const filteredItems = Object.values(items).filter((item) => item.type === activeCategory);
+  const filteredItems = Object.values(items).filter((item) =>
+    item.type === activeCategory && (item.access !== 'admin' || user?.role === 'admin')
+  ).sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0));
 
   const handleBuy = (item: (typeof filteredItems)[number]) => {
+    const requiredLevel = item.requiredLevel ?? 1;
+    if ((user?.level ?? 1) < requiredLevel) {
+      notifyGameMessage(`Цей товар доступний з ${requiredLevel} рівня.`);
+      return;
+    }
     if ((user?.coins ?? 0) < item.price) {
       notifyGameMessage('Не вистачає монет для цього предмета.');
       onClose();
@@ -103,19 +110,35 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                 ) : (
                   <span style={styles.cardEmoji}>{item.shopIcon ?? item.yieldIcon ?? '🌳'}</span>
                 )}
+                {item.yieldItem && (
+                  <div style={styles.yieldBadge} title={`${item.yieldName ?? item.name}${item.sellPrice !== undefined ? ` · +${item.sellPrice} монет за продаж` : ''}`}>
+                    <span style={styles.yieldCircle}>
+                      {item.yieldImage ? <img src={item.yieldImage} alt="" style={styles.yieldImage} draggable={false} /> : <span>{item.yieldIcon ?? '📦'}</span>}
+                    </span>
+                    {item.sellPrice !== undefined && (
+                      <span style={styles.yieldPrice}>+{item.sellPrice}<img src="/assets/ui/coin.png" alt="" style={styles.yieldCoin} draggable={false} /></span>
+                    )}
+                  </div>
+                )}
               </div>
               <div style={styles.statsContainer}>
-                {item.sellPrice !== undefined && <div style={styles.statRow}><span>Продаж одиниці:</span><span className="currency-inline shop-price">+{item.sellPrice}<img src="/assets/ui/coin.png" alt="" className="currency-small-icon" draggable={false} /></span></div>}
+                <div style={styles.statRow}><span>Доступно з:</span><span style={styles.levelRequirement}>{item.requiredLevel ?? 1} рівня</span></div>
                 {item.productionTimeMs !== undefined && (
                   <div style={styles.statRow}>
                     <span>Готовність:</span>
                     <span>{formatDuration(item.productionTimeMs)}</span>
                   </div>
                 )}
-                <div style={styles.statRow}><span>Досвід:</span><span style={{ color: '#b388ff', fontWeight: 'bold' }}>+{item.plantingXp}</span></div>
+                <div style={styles.statRow}><span>Досвід:</span><span style={{ color: '#8b5ac7', fontWeight: 'bold' }}>+{item.plantingXp} XP</span></div>
               </div>
-              <button style={styles.buyBtn} onClick={() => handleBuy(item)}>
-                <span>−{item.price.toLocaleString('uk-UA')}</span><img src="/assets/ui/coin.png" alt="" className="currency-small-icon" draggable={false} />
+              <button
+                style={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? { ...styles.buyBtn, ...styles.lockedBuyBtn } : styles.buyBtn}
+                onClick={() => handleBuy(item)}
+                disabled={(user?.level ?? 1) < (item.requiredLevel ?? 1)}
+                title={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Доступно з ${item.requiredLevel ?? 1} рівня` : undefined}
+              >
+                <span>{(user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Рівень ${item.requiredLevel ?? 1}` : `−${item.price.toLocaleString('uk-UA')}`}</span>
+                {(user?.level ?? 1) >= (item.requiredLevel ?? 1) && <img src="/assets/ui/coin.png" alt="" className="currency-small-icon" draggable={false} />}
               </button>
             </div>
           ))}
@@ -146,11 +169,18 @@ const styles: Record<string, React.CSSProperties> = {
   gridContainer: { padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px', overflowY: 'auto' },
   itemCard: { background: 'linear-gradient(145deg, #fff9e6, #ecd6aa)', border: '2px solid #d8b77e', borderRadius: '12px', padding: '11px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 3px 0 rgba(129, 81, 42, 0.16)' },
   cardTitle: { color: '#49301d', fontFamily: 'Trebuchet MS, sans-serif', fontWeight: '900', fontSize: '13px', marginBottom: '8px', textAlign: 'center' },
-  iconBox: { width: '100%', height: '82px', background: 'linear-gradient(145deg, #f7e7be, #e4c58b)', border: '1px solid rgba(140, 92, 45, 0.25)', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' },
+  iconBox: { position: 'relative', width: '100%', height: '82px', background: 'linear-gradient(145deg, #f7e7be, #e4c58b)', border: '1px solid rgba(140, 92, 45, 0.25)', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' },
   shopImage: { width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 3px 5px rgba(0,0,0,0.35))' },
+  yieldBadge: { position: 'absolute', top: -8, right: -7, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, padding: '3px 4px', border: '1px solid rgba(85, 60, 34, 0.32)', borderRadius: 24, background: 'rgba(255, 248, 225, 0.96)', boxShadow: '0 2px 5px rgba(60, 38, 18, 0.22)' },
+  yieldCircle: { display: 'grid', placeItems: 'center', flex: '0 0 28px', width: 28, height: 28, overflow: 'hidden', border: '1px solid #b88c50', borderRadius: '50%', background: 'linear-gradient(145deg, #fff8de, #e8cc91)', fontSize: 17 },
+  yieldImage: { width: '76%', height: '76%', objectFit: 'contain' },
+  yieldPrice: { display: 'inline-flex', alignItems: 'center', gap: 1, color: '#357c2b', font: '900 11px/1.1 "Trebuchet MS", sans-serif', textShadow: '0 0 0.4px currentColor', whiteSpace: 'nowrap' },
+  yieldCoin: { width: 12, height: 12, objectFit: 'contain' },
   cardEmoji: { fontSize: '38px' },
   priceBadge: { background: 'rgba(255, 193, 7, 0.2)', border: '1px solid rgba(255, 193, 7, 0.5)', borderRadius: '10px', padding: '3px 8px', color: '#ffd54f', fontWeight: '800', fontSize: '12px', marginBottom: '10px' },
   statsContainer: { width: '100%', fontFamily: 'Trebuchet MS, sans-serif', fontSize: '10px', color: '#755a38', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' },
   statRow: { display: 'flex', justifyContent: 'space-between', width: '100%' },
+  levelRequirement: { color: '#76502c', fontWeight: '800' },
   buyBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', minHeight: '36px', padding: '7px 8px', background: 'linear-gradient(180deg, #84d84b, #398d27)', borderRadius: '8px', color: '#fff9dd', fontFamily: 'Trebuchet MS, sans-serif', fontWeight: '900', fontSize: '12px', cursor: 'pointer', border: '2px solid #327327', boxShadow: 'inset 0 1px 0 rgba(235, 255, 187, 0.65), 0 2px 0 #2b5f21' },
+  lockedBuyBtn: { borderColor: '#8e7757', color: '#f5e8ce', background: 'linear-gradient(180deg, #a79a81, #756b5b)', boxShadow: 'inset 0 1px 0 rgba(255, 248, 224, 0.35), 0 2px 0 #5e5448', cursor: 'not-allowed' },
 };

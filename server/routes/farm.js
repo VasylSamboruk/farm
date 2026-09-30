@@ -52,20 +52,6 @@ router.get('/:userId', async (req, res) => {
     }
 });
 
-router.post('/add-coins', async (req, res) => {
-    try {
-        const { userId, amount } = req.body;
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
-        
-        user.coins += amount;
-        await user.save();
-        res.json({ success: true, coins: user.coins });
-    } catch (error) {
-        res.status(500).json({ message: 'Помилка', error: error.message });
-    }
-});
-
 // ПОСАДКА: Знімає гроші, дає XP
 router.post('/place', async (req, res) => {
     try {
@@ -81,6 +67,12 @@ router.post('/place', async (req, res) => {
         }
         
         const user = await User.findById(userId);
+        if (user && getLevelProgress(user.xp ?? 0).level < (item.requiredLevel ?? 1)) {
+            return res.status(403).json({ message: `Цей товар доступний з ${item.requiredLevel ?? 1} рівня` });
+        }
+        if (item.access === 'admin' && user?.role !== 'admin') {
+            return res.status(403).json({ message: 'Цей товар доступний лише адміністратору' });
+        }
         if (!user || user.coins < item.price) {
             return res.status(400).json({ message: 'Недостатньо монет!' });
         }
@@ -258,7 +250,6 @@ router.post('/harvest', async (req, res) => {
         if (!item || !['TREE', 'CROP', 'ANIMAL'].includes(item.type) || !item.yieldItem || !item.yieldAmount) {
             return res.status(400).json({ message: 'Цей об’єкт не дає врожай' });
         }
-
         const readyAt = getTreeHarvestReadyAt(tile, item);
         if (!Number.isFinite(readyAt) || Date.now() < readyAt) {
             return res.status(400).json({ message: 'Врожай ще не готовий' });
@@ -313,7 +304,6 @@ router.post('/sell', async (req, res) => {
 
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
-
         const inventory = user.inventory ?? new Map();
         const currentAmount = Number(inventory.get(itemId) ?? 0);
         if (currentAmount < amount) {
@@ -345,6 +335,35 @@ router.post('/sell', async (req, res) => {
 router.post('/save', async (req, res) => {
     try {
         const { userId, tiles } = req.body;
+        const user = await User.findById(userId).select('role xp');
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+        if (!Array.isArray(tiles)) return res.status(400).json({ message: 'Некоректні дані ферми' });
+        const playerLevel = getLevelProgress(user.xp ?? 0).level;
+        const isLockedItem = (item) => item && (
+            (item.access === 'admin' && user.role !== 'admin') ||
+            playerLevel < (item.requiredLevel ?? 1)
+        );
+        const existingFarm = await Farm.findOne({ userId }).select('tiles');
+        const existingLockedCounts = new Map();
+        for (const tile of existingFarm?.tiles ?? []) {
+            const item = tile.isDirt ? null : getGameItem(tile.itemId);
+            if (isLockedItem(item)) {
+                existingLockedCounts.set(tile.itemId, (existingLockedCounts.get(tile.itemId) ?? 0) + 1);
+            }
+        }
+        const submittedLockedCounts = new Map();
+        for (const tile of tiles) {
+            const item = tile.isDirt ? null : getGameItem(tile.itemId);
+            if (!isLockedItem(item)) continue;
+            const count = (submittedLockedCounts.get(tile.itemId) ?? 0) + 1;
+            submittedLockedCounts.set(tile.itemId, count);
+            if (count > (existingLockedCounts.get(tile.itemId) ?? 0)) {
+                if (item.access === 'admin' && user.role !== 'admin') {
+                    return res.status(403).json({ message: 'Цей товар може додавати лише адміністратор' });
+                }
+                return res.status(403).json({ message: `Цей товар доступний з ${item.requiredLevel ?? 1} рівня` });
+            }
+        }
         const updatedFarm = await Farm.findOneAndUpdate(
             { userId },
             { $set: { tiles } },
