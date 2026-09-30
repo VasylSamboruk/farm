@@ -1,0 +1,388 @@
+import React, { useState } from 'react';
+import { useAuthStore } from '../../store/authStore';
+
+interface ShopModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+type Category = 'plants' | 'trees' | 'animals';
+
+interface ShopItem {
+  id: string;
+  name: string;
+  price: number;
+  icon: string;
+  profit: number;
+  time: string;
+  xp: number;
+  category: Category;
+}
+
+// Тестові товари під сітку
+const SHOP_ITEMS: ShopItem[] = [
+  {
+    id: 'wheat',
+    name: 'Пшениця',
+    price: 15,
+    icon: '🌾',
+    profit: 30,
+    time: '2 хв',
+    xp: 2,
+    category: 'plants',
+  },
+  {
+    id: 'tomato',
+    name: 'Помідори',
+    price: 30,
+    icon: '🍅',
+    profit: 70,
+    time: '4 год',
+    xp: 5,
+    category: 'plants',
+  },
+  {
+    id: 'cucumber',
+    name: 'Огірки',
+    price: 90,
+    icon: '🥒',
+    profit: 150,
+    time: '8 год',
+    xp: 8,
+    category: 'plants',
+  },
+  {
+    id: 'apple_tree',
+    name: 'Яблуня',
+    price: 150,
+    icon: '🍎',
+    profit: 300,
+    time: '5 хв',
+    xp: 15,
+    category: 'trees',
+  },
+  {
+    id: 'cow',
+    name: 'Корівка',
+    price: 500,
+    icon: '🐮',
+    profit: 1000,
+    time: '12 год',
+    xp: 50,
+    category: 'animals',
+  },
+];
+
+export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
+  const [activeCategory, setActiveCategory] = useState<Category>('plants');
+  const { user } = useAuthStore();
+
+  if (!isOpen) return null;
+
+  const filteredItems = SHOP_ITEMS.filter((item) => item.category === activeCategory);
+
+  const handleBuy = (item: ShopItem) => {
+    if ((user?.coins || 0) < item.price) {
+      alert('Невистачає монет!');
+      return;
+    }
+    alert(`Ви придбали: ${item.name}!`);
+  };
+
+  return (
+    <div style={styles.overlay} onClick={onClose}>
+      <div style={styles.glassWindow} onClick={(e) => e.stopPropagation()}>
+        
+        {/* ВЕРХНЯ ШАПКА З ЗАГОЛОВКОМ, РЕСУРСАМИ ТА ЗАКРИТТЯМ */}
+        <div style={styles.header}>
+          <div style={styles.titleWrapper}>
+            <span style={{ fontSize: '22px' }}>🏪</span>
+            <h2 style={styles.headerTitle}>МАГАЗИН</h2>
+          </div>
+
+          {/* Індикатори Монет та Рубінів */}
+          <div style={styles.resourcesContainer}>
+            <div style={styles.resourceItem}>
+              <span style={styles.resourceIcon}>🪙</span>
+              <span style={styles.resourceValue}>{user?.coins || 1000}</span>
+            </div>
+
+            <div style={styles.resourceDivider} />
+
+            <div style={styles.resourceItem}>
+              <span style={styles.resourceIcon}>💎</span>
+              <span style={styles.resourceValue}>25</span>
+            </div>
+          </div>
+
+          <button style={styles.closeBtn} onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        {/* ТАБИ КАТЕГОРІЙ */}
+        <div style={styles.tabContainer}>
+          <button
+            style={activeCategory === 'plants' ? { ...styles.tabBtn, ...styles.activeTabBtn } : styles.tabBtn}
+            onClick={() => setActiveCategory('plants')}
+          >
+            🌱 Рослини
+          </button>
+          <button
+            style={activeCategory === 'trees' ? { ...styles.tabBtn, ...styles.activeTabBtn } : styles.tabBtn}
+            onClick={() => setActiveCategory('trees')}
+          >
+            🌳 Дерева
+          </button>
+          <button
+            style={activeCategory === 'animals' ? { ...styles.tabBtn, ...styles.activeTabBtn } : styles.tabBtn}
+            onClick={() => setActiveCategory('animals')}
+          >
+            🐮 Тварини
+          </button>
+        </div>
+
+        {/* СІТКА КАРТОК ТОВАРІВ */}
+        <div style={styles.gridContainer}>
+          {filteredItems.map((item) => (
+            <div key={item.id} style={styles.itemCard}>
+              
+              <div style={styles.cardTitle}>{item.name}</div>
+
+              <div style={styles.iconBox}>
+                <span style={styles.cardEmoji}>{item.icon}</span>
+              </div>
+
+              <div style={styles.priceBadge}>
+                🪙 {item.price}
+              </div>
+
+              <div style={styles.statsContainer}>
+                <div style={styles.statRow}>
+                  <span>Виручка:</span>
+                  <span style={{ color: '#81c784', fontWeight: 'bold' }}>+{item.profit}</span>
+                </div>
+                <div style={styles.statRow}>
+                  <span>Готовність:</span>
+                  <span>{item.time}</span>
+                </div>
+                <div style={styles.statRow}>
+                  <span>Дає досвід:</span>
+                  <span style={{ color: '#b388ff', fontWeight: 'bold' }}>+{item.xp} XP</span>
+                </div>
+              </div>
+
+              <button style={styles.buyBtn} onClick={() => handleBuy(item)}>
+                Купити
+              </button>
+
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+const styles: Record<string, React.CSSProperties> = {
+  overlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    zIndex: 100,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '12px',
+    boxSizing: 'border-box',
+    pointerEvents: 'auto',
+  },
+  glassWindow: {
+    width: '100%',
+    maxWidth: '680px',
+    maxHeight: '88vh',
+    background: 'rgba(25, 30, 45, 0.85)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: '28px',
+    boxShadow: '0 30px 60px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '14px 18px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    gap: '10px',
+  },
+  titleWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  headerTitle: {
+    margin: 0,
+    color: '#fff',
+    fontSize: '18px',
+    fontWeight: '800',
+    letterSpacing: '0.8px',
+    textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+  },
+  resourcesContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    background: 'rgba(0, 0, 0, 0.35)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '16px',
+    padding: '4px 12px',
+    gap: '10px',
+  },
+  resourceItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  resourceIcon: {
+    fontSize: '15px',
+  },
+  resourceValue: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: '13px',
+  },
+  resourceDivider: {
+    width: '1px',
+    height: '12px',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  closeBtn: {
+    background: 'rgba(255, 255, 255, 0.12)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: '50%',
+    width: '34px',
+    height: '34px',
+    color: '#fff',
+    fontSize: '15px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'transform 0.15s ease',
+    flexShrink: 0,
+  },
+  tabContainer: {
+    display: 'flex',
+    padding: '10px 16px',
+    gap: '8px',
+    background: 'rgba(0, 0, 0, 0.2)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+  },
+  tabBtn: {
+    flex: 1,
+    padding: '10px',
+    borderRadius: '14px',
+    border: '1px solid transparent',
+    background: 'transparent',
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontWeight: '700',
+    fontSize: '13px',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  activeTabBtn: {
+    background: 'rgba(255, 255, 255, 0.18)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    color: '#ffffff',
+    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.3)',
+  },
+  gridContainer: {
+    padding: '16px',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+    gap: '12px',
+    overflowY: 'auto',
+    maxHeight: '100%',
+  },
+  itemCard: {
+    background: 'rgba(255, 255, 255, 0.07)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '20px',
+    padding: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    backdropFilter: 'blur(10px)',
+    boxShadow: '0 8px 20px rgba(0, 0, 0, 0.3)',
+    position: 'relative',
+  },
+  cardTitle: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: '14px',
+    marginBottom: '8px',
+    textAlign: 'center',
+  },
+  iconBox: {
+    width: '100%',
+    height: '75px',
+    background: 'rgba(0, 0, 0, 0.25)',
+    borderRadius: '14px',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '8px',
+  },
+  cardEmoji: {
+    fontSize: '38px',
+    filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))',
+  },
+  priceBadge: {
+    background: 'rgba(255, 193, 7, 0.2)',
+    border: '1px solid rgba(255, 193, 7, 0.5)',
+    borderRadius: '10px',
+    padding: '3px 8px',
+    color: '#ffd54f',
+    fontWeight: '800',
+    fontSize: '12px',
+    marginBottom: '10px',
+  },
+  statsContainer: {
+    width: '100%',
+    fontSize: '10px',
+    color: 'rgba(255, 255, 255, 0.7)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px',
+    marginBottom: '12px',
+  },
+  statRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  buyBtn: {
+    width: '100%',
+    padding: '8px',
+    background: 'linear-gradient(135deg, #4caf50, #2e7d32)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: '12px',
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: '13px',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(46, 125, 50, 0.4)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  },
+};

@@ -1,0 +1,339 @@
+import React, { useRef, useEffect } from 'react';
+import { useFarmStore } from '../../store/useFarmStore';
+import { useToolStore } from '../../store/useToolStore';
+import { useAuthStore } from '../../store/authStore'; // Додано імпорт авторизації
+
+export const FarmCanvas: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const { tiles, digTile, removeTile } = useFarmStore();
+  const { activeTool } = useToolStore();
+  const { user } = useAuthStore(); // Дістаємо користувача
+
+  const cameraRef = useRef({
+    x: 0,
+    y: 0,
+    zoom: 1,
+    minZoom: 0.5,
+    maxZoom: 2.2,
+  });
+
+  const gridConfig = {
+    cols: 15,
+    rows: 15,
+    tileWidth: 200,
+    tileHeight: 100,
+  };
+
+  const isDragging = useRef(false);
+  const pointerDownOnCanvas = useRef(false);
+  const dragDistance = useRef(0);
+  const startPan = useRef({ x: 0, y: 0 });
+  const touchPinchDist = useRef<number | null>(null);
+  
+  const hoveredTile = useRef<{ row: number; col: number } | null>(null);
+
+  const activeToolRef = useRef(activeTool);
+  activeToolRef.current = activeTool;
+
+  const tilesRef = useRef(tiles);
+  tilesRef.current = tiles;
+
+  // Реф для юзера, щоб мати свіжі дані всередині useEffect
+  const userRef = useRef(user);
+  userRef.current = user;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+
+    const grassImage = new Image();
+    grassImage.src = '/assets/tiles/grass_tile.png';
+
+    const dirtImage = new Image();
+    dirtImage.src = '/assets/tiles/dirt_tile.png';
+
+    const resizeCanvas = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    cameraRef.current.x = canvas.width / 2;
+    cameraRef.current.y = canvas.height / 4.5;
+
+    const drawIsometricDiamond = (isoX: number, isoY: number, halfW: number, halfH: number, tHeight: number) => {
+      ctx.beginPath();
+      ctx.moveTo(isoX, isoY);
+      ctx.lineTo(isoX + halfW, isoY + halfH);
+      ctx.lineTo(isoX, isoY + tHeight);
+      ctx.lineTo(isoX - halfW, isoY + halfH);
+      ctx.closePath();
+    };
+
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.translate(cameraRef.current.x, cameraRef.current.y);
+      ctx.scale(cameraRef.current.zoom, cameraRef.current.zoom);
+
+      const { cols, rows, tileWidth, tileHeight } = gridConfig;
+      const halfW = tileWidth / 2;
+      const halfH = tileHeight / 2;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const isoX = (c - r) * halfW;
+          const isoY = (c + r) * halfH;
+
+          if (grassImage.complete && grassImage.naturalWidth !== 0) {
+            ctx.drawImage(grassImage, isoX - halfW, isoY, tileWidth, tileHeight);
+          } else {
+            drawIsometricDiamond(isoX, isoY, halfW, halfH, tileHeight);
+            ctx.fillStyle = (r + c) % 2 === 0 ? '#5c9432' : '#52852b';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.stroke();
+          }
+
+          const tileKey = `${r},${c}`;
+          const tileData = tilesRef.current[tileKey];
+
+          if (tileData && tileData.type === 'dirt') {
+            if (dirtImage.complete && dirtImage.naturalWidth !== 0) {
+              ctx.drawImage(dirtImage, isoX - halfW, isoY, tileWidth, tileHeight);
+            } else {
+              drawIsometricDiamond(isoX, isoY, halfW, halfH, tileHeight);
+              ctx.fillStyle = '#6d4c41';
+              ctx.fill();
+              ctx.strokeStyle = '#4e342e';
+              ctx.lineWidth = 2;
+              ctx.stroke();
+            }
+          }
+
+          if (
+            hoveredTile.current &&
+            hoveredTile.current.row === r &&
+            hoveredTile.current.col === c &&
+            activeToolRef.current
+          ) {
+            drawIsometricDiamond(isoX, isoY, halfW, halfH, tileHeight);
+
+            if (activeToolRef.current === 'shovel' && (!tileData || tileData.type !== 'dirt')) {
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+              ctx.fill();
+              ctx.shadowColor = '#ffffff';
+              ctx.shadowBlur = 12;
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 3;
+              ctx.stroke();
+              ctx.shadowBlur = 0;
+            } else if (activeToolRef.current === 'trash' && tileData && tileData.type === 'dirt') {
+              ctx.fillStyle = 'rgba(255, 82, 82, 0.45)';
+              ctx.fill();
+              ctx.shadowColor = '#ff5252';
+              ctx.shadowBlur = 12;
+              ctx.strokeStyle = '#ff1744';
+              ctx.lineWidth = 3;
+              ctx.stroke();
+              ctx.shadowBlur = 0;
+            }
+          }
+        }
+      }
+
+      ctx.restore();
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    const getGridTileFromScreen = (screenX: number, screenY: number) => {
+      const { tileWidth, tileHeight, cols, rows } = gridConfig;
+      const halfW = tileWidth / 2;
+      const halfH = tileHeight / 2;
+
+      const relX = (screenX - cameraRef.current.x) / cameraRef.current.zoom;
+      const relY = (screenY - cameraRef.current.y) / cameraRef.current.zoom;
+
+      const col = Math.floor((relX / halfW + relY / halfH) / 2);
+      const row = Math.floor((relY / halfH - relX / halfW) / 2);
+
+      if (row >= 0 && row < rows && col >= 0 && col < cols) {
+        return { row, col };
+      }
+      return null;
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.target !== canvas) return;
+      if (e.button !== 0) return;
+      
+      pointerDownOnCanvas.current = true;
+      isDragging.current = true;
+      dragDistance.current = 0;
+      startPan.current = {
+        x: e.clientX - cameraRef.current.x,
+        y: e.clientY - cameraRef.current.y,
+      };
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) {
+        hoveredTile.current = getGridTileFromScreen(e.clientX, e.clientY);
+        return;
+      }
+
+      hoveredTile.current = null;
+      const dx = Math.abs(e.clientX - (startPan.current.x + cameraRef.current.x));
+      const dy = Math.abs(e.clientY - (startPan.current.y + cameraRef.current.y));
+      dragDistance.current += dx + dy;
+
+      cameraRef.current.x = e.clientX - startPan.current.x;
+      cameraRef.current.y = e.clientY - startPan.current.y;
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (pointerDownOnCanvas.current && dragDistance.current < 8) {
+        const tile = getGridTileFromScreen(e.clientX, e.clientY);
+        // Перевіряємо чи є tile та ID юзера перед тим як копати
+        if (tile && userRef.current?.id) {
+          if (activeToolRef.current === 'shovel') {
+            digTile(tile.row, tile.col, userRef.current.id); // Передаємо ID
+          } else if (activeToolRef.current === 'trash') {
+            removeTile(tile.row, tile.col, userRef.current.id); // Передаємо ID
+          }
+        }
+      }
+      isDragging.current = false;
+      pointerDownOnCanvas.current = false;
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+      const newZoom = cameraRef.current.zoom * zoomFactor;
+
+      if (newZoom >= cameraRef.current.minZoom && newZoom <= cameraRef.current.maxZoom) {
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+
+        cameraRef.current.x = mouseX - (mouseX - cameraRef.current.x) * zoomFactor;
+        cameraRef.current.y = mouseY - (mouseY - cameraRef.current.y) * zoomFactor;
+        cameraRef.current.zoom = newZoom;
+      }
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.target !== canvas) return;
+      pointerDownOnCanvas.current = true;
+
+      if (e.touches.length === 1) {
+        isDragging.current = true;
+        dragDistance.current = 0;
+        startPan.current = {
+          x: e.touches[0].clientX - cameraRef.current.x,
+          y: e.touches[0].clientY - cameraRef.current.y,
+        };
+      } else if (e.touches.length === 2) {
+        isDragging.current = false;
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        touchPinchDist.current = dist;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isDragging.current && e.touches.length === 1) {
+        dragDistance.current += 10;
+        cameraRef.current.x = e.touches[0].clientX - startPan.current.x;
+        cameraRef.current.y = e.touches[0].clientY - startPan.current.y;
+      } else if (e.touches.length === 2 && touchPinchDist.current !== null) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const factor = dist / touchPinchDist.current;
+        const newZoom = cameraRef.current.zoom * factor;
+
+        if (newZoom >= cameraRef.current.minZoom && newZoom <= cameraRef.current.maxZoom) {
+          cameraRef.current.zoom = newZoom;
+        }
+        touchPinchDist.current = dist;
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (pointerDownOnCanvas.current && dragDistance.current < 15 && e.changedTouches.length > 0) {
+        const touch = e.changedTouches[0];
+        const tile = getGridTileFromScreen(touch.clientX, touch.clientY);
+        // Перевіряємо чи є tile та ID юзера перед тим як копати (для телефонів)
+        if (tile && userRef.current?.id) {
+          if (activeToolRef.current === 'shovel') {
+            digTile(tile.row, tile.col, userRef.current.id); // Передаємо ID
+          } else if (activeToolRef.current === 'trash') {
+            removeTile(tile.row, tile.col, userRef.current.id); // Передаємо ID
+          }
+        }
+      }
+      isDragging.current = false;
+      pointerDownOnCanvas.current = false;
+      touchPinchDist.current = null;
+    };
+
+    const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    canvas.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd);
+    canvas.addEventListener('contextmenu', handleContextMenu);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', resizeCanvas);
+      canvas.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      canvas.removeEventListener('wheel', handleWheel);
+
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, [digTile, removeTile]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        zIndex: 0,
+        backgroundColor: '#1b222d',
+        cursor: activeTool === 'shovel' ? 'crosshair' : activeTool === 'trash' ? 'pointer' : 'grab',
+        touchAction: 'none',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+      }}
+    />
+  );
+};
