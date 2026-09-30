@@ -62,7 +62,7 @@ router.post('/login', async (req, res) => {
 
         const adminUsernames = new Set([
             ...(process.env.ADMIN_USERNAMES ?? '').split(','),
-            process.env.ADMIN_USERNAME ?? '',
+            ...(process.env.ADMIN_USERNAME ?? '').split(','),
         ].map(value => value.trim()).filter(Boolean));
         let userNeedsSave = false;
         if (adminUsernames.has(user.username) && user.role !== 'admin') {
