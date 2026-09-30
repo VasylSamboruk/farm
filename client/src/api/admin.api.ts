@@ -40,14 +40,21 @@ export interface AdminCatalogItem {
   yieldItem?: string;
   yieldName?: string;
   yieldIcon?: string;
-  yieldImage?: string;
-  shopImage?: string;
+  yieldImage?: string | null;
+  yieldAmount?: number;
+  shopImage?: string | null;
+  shopIcon?: string;
   placementSurface?: 'grass' | 'soil';
   price: number;
   sellPrice?: number;
   plantingXp: number;
+  productionTimeMs?: number | null;
+  canFlip?: boolean;
+  flipX?: boolean;
+  spriteScale?: number;
+  growthImages?: string[];
   footprint?: { width: number; height: number };
-  largeFootprint?: { width: number; height: number };
+  largeFootprint?: { width: number; height: number } | null;
 }
 
 export const adminApi = {
@@ -67,6 +74,10 @@ export const adminApi = {
       price,
       ...(sellPrice === undefined ? {} : { sellPrice }),
     });
+    return response.data.item;
+  },
+  updateConfig: async (itemId: string, config: Partial<AdminCatalogItem> & { name?: string }) => {
+    const response = await api.patch<{ item: AdminCatalogItem }>(`/admin/catalog/${itemId}/config`, config);
     return response.data.item;
   },
   updateStats: async (userId: string, coinsDelta: number, xpDelta: number) => {
@@ -93,6 +104,17 @@ export const adminApi = {
   },
   deleteFarmItem: async (userId: string, item: Pick<AdminFarmItem, 'x' | 'y' | 'quadrant'>) => {
     await api.delete(`/admin/users/${userId}/farm-items/${item.x}/${item.y}/${item.quadrant}`);
+  },
+  updateFarmItem: async (
+    userId: string,
+    item: Pick<AdminFarmItem, 'x' | 'y' | 'quadrant'>,
+    changes: { x: number; y: number; quadrant: number; flipX: boolean }
+  ) => {
+    const response = await api.patch<{ message: string; item: AdminFarmItem }>(
+      `/admin/users/${userId}/farm-items/${item.x}/${item.y}/${item.quadrant}`,
+      changes
+    );
+    return response.data.item;
   },
   updateInventory: async (userId: string, itemId: string, amountDelta: number) => {
     const response = await api.post<{ inventory: Record<string, number> }>(`/admin/users/${userId}/inventory`, { itemId, amountDelta });

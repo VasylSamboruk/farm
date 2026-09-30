@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { ArrowLeft, BadgeDollarSign, Ban, Coins, Eye, PackagePlus, Search, ShieldCheck, ShieldOff, Sparkles, Sprout, Trash2, UserRound, Users, X } from 'lucide-react';
+import { ArrowLeft, BadgeDollarSign, Ban, Coins, Eye, PackagePlus, Pencil, Search, ShieldCheck, ShieldOff, Sparkles, Sprout, Trash2, UserRound, Users, X } from 'lucide-react';
 import { adminApi, type AdminCatalogItem, type AdminFarmItem, type AdminUser } from '../../api/admin.api';
 import { getLevelProgress } from '../../config/progression';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
@@ -20,6 +20,54 @@ const getErrorMessage = (error: unknown) => {
 };
 
 const formatNumber = (value: number) => value.toLocaleString('uk-UA');
+
+interface AdminItemDraft {
+  name: string;
+  price: string;
+  sellPrice: string;
+  plantingXp: string;
+  productionTimeMs: string;
+  yieldItem: string;
+  yieldName: string;
+  yieldIcon: string;
+  yieldAmount: string;
+  shopIcon: string;
+  shopImage: string;
+  yieldImage: string;
+  growthImages: string;
+  placementSurface: '' | 'grass' | 'soil';
+  spriteScale: string;
+  flipX: boolean;
+  canFlip: boolean;
+  footprintWidth: string;
+  footprintHeight: string;
+  largeFootprintWidth: string;
+  largeFootprintHeight: string;
+}
+
+const getItemDraft = (item: AdminCatalogItem): AdminItemDraft => ({
+  name: item.name,
+  price: String(item.price),
+  sellPrice: String(item.sellPrice ?? ''),
+  plantingXp: String(item.plantingXp ?? 0),
+  productionTimeMs: String(item.productionTimeMs ?? ''),
+  yieldItem: item.yieldItem ?? '',
+  yieldName: item.yieldName ?? '',
+  yieldIcon: item.yieldIcon ?? '',
+  yieldAmount: String(item.yieldAmount ?? ''),
+  shopIcon: item.shopIcon ?? '',
+  shopImage: item.shopImage ?? '',
+  yieldImage: item.yieldImage ?? '',
+  growthImages: (item.growthImages ?? []).join('\n'),
+  placementSurface: item.placementSurface ?? '',
+  spriteScale: String(item.spriteScale ?? ''),
+  flipX: item.flipX ?? false,
+  canFlip: item.canFlip ?? true,
+  footprintWidth: String(item.footprint?.width ?? ''),
+  footprintHeight: String(item.footprint?.height ?? ''),
+  largeFootprintWidth: String(item.largeFootprint?.width ?? ''),
+  largeFootprintHeight: String(item.largeFootprint?.height ?? ''),
+});
 
 const toFarmPreviewTiles = (farmItems: AdminFarmItem[]): Record<string, TileData> => {
   const tiles: Record<string, TileData> = {};
@@ -63,12 +111,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [roleDraft, setRoleDraft] = useState<'user' | 'admin'>('user');
   const [banDuration, setBanDuration] = useState('10');
   const [banReason, setBanReason] = useState('');
-  const [priceDrafts, setPriceDrafts] = useState<Record<string, { price: string; sellPrice: string }>>({});
+  const [itemDrafts, setItemDrafts] = useState<Record<string, AdminItemDraft>>({});
   const [priceBusyId, setPriceBusyId] = useState<string | null>(null);
   const [showFarmPreview, setShowFarmPreview] = useState(false);
   const [confirmFarmClear, setConfirmFarmClear] = useState(false);
   const [confirmAccountDelete, setConfirmAccountDelete] = useState(false);
   const [confirmFarmItemId, setConfirmFarmItemId] = useState<string | null>(null);
+  const [editingFarmItemId, setEditingFarmItemId] = useState<string | null>(null);
+  const [farmItemDraft, setFarmItemDraft] = useState({ x: '', y: '', quadrant: '', flipX: false });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -109,10 +159,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         preloadGameImages(Object.values(gameConfig.items)),
       ]);
       if (!active) return;
-      setPriceDrafts(Object.fromEntries(loadedCatalog.map((item) => [item.id, {
-        price: String(item.price),
-        sellPrice: String(item.sellPrice ?? ''),
-      }])));
+      setItemDrafts(Object.fromEntries(loadedCatalog.map((item) => [item.id, getItemDraft(item)])));
       setCatalog(loadedCatalog);
       setUsers(result.users);
       setTotal(result.total);
@@ -136,6 +183,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const selectedUser = users.find((entry) => entry.id === selectedUserId) ?? null;
   const productCatalog = catalog.filter((item) => item.yieldItem);
   const farmCatalog = catalog.filter((item) => ['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type));
+  const updateItemDraft = (itemId: string, changes: Partial<AdminItemDraft>) => {
+    setItemDrafts((current) => ({
+      ...current,
+      [itemId]: { ...current[itemId], ...changes } as AdminItemDraft,
+    }));
+  };
 
   const handleSearch = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -234,6 +287,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     setConfirmFarmItemId(null);
   };
 
+  const startFarmItemEdit = (item: AdminFarmItem) => {
+    const key = `${item.x},${item.y},${item.quadrant}`;
+    setEditingFarmItemId(key);
+    setFarmItemDraft({ x: String(item.x), y: String(item.y), quadrant: String(item.quadrant), flipX: item.flipX ?? false });
+    setConfirmFarmItemId(null);
+  };
+
+  const saveFarmItemEdit = async (item: AdminFarmItem) => {
+    if (!selectedUser) return;
+    const changes = {
+      x: Number(farmItemDraft.x),
+      y: Number(farmItemDraft.y),
+      quadrant: Number(farmItemDraft.quadrant),
+      flipX: farmItemDraft.flipX,
+    };
+    if (![changes.x, changes.y, changes.quadrant].every(Number.isInteger) ||
+        changes.x < 0 || changes.x > 14 || changes.y < 0 || changes.y > 14 || changes.quadrant < 0 || changes.quadrant > 3) {
+      setError('Координати мають бути в межах поля, сектор — від 0 до 3.');
+      return;
+    }
+    await runAction(() => adminApi.updateFarmItem(selectedUser.id, item, changes), 'Позицію предмета оновлено.');
+    setEditingFarmItemId(null);
+  };
+
   const handleDeleteAccount = async () => {
     if (!selectedUser) return;
     setBusy(true);
@@ -250,13 +327,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     }
   };
 
-  const handlePriceSave = async (item: AdminCatalogItem) => {
-    const draft = priceDrafts[item.id];
+  const handleConfigSave = async (item: AdminCatalogItem) => {
+    const draft = itemDrafts[item.id];
     if (!draft) return;
     const price = Number(draft.price);
-    const sellPrice = item.sellPrice === undefined ? undefined : Number(draft.sellPrice);
-    if (!Number.isSafeInteger(price) || price < 0 || (sellPrice !== undefined && (!Number.isSafeInteger(sellPrice) || sellPrice < 0))) {
-      setError('Ціни мають бути невід’ємними цілими числами.');
+    const plantingXp = Number(draft.plantingXp);
+    const yieldAmount = draft.yieldAmount.trim() === '' ? 0 : Number(draft.yieldAmount);
+    const sellPrice = draft.sellPrice.trim() === '' ? undefined : Number(draft.sellPrice);
+    const productionTimeMs = draft.productionTimeMs.trim() === '' ? null : Number(draft.productionTimeMs);
+    const spriteScale = draft.spriteScale.trim() === '' ? undefined : Number(draft.spriteScale);
+    const footprintWidth = Number(draft.footprintWidth);
+    const footprintHeight = Number(draft.footprintHeight);
+    const largeFootprintWidth = draft.largeFootprintWidth.trim() === '' ? null : Number(draft.largeFootprintWidth);
+    const largeFootprintHeight = draft.largeFootprintHeight.trim() === '' ? null : Number(draft.largeFootprintHeight);
+    if (!draft.name.trim() || !Number.isSafeInteger(price) || price < 0 || !Number.isSafeInteger(plantingXp) || plantingXp < 0 ||
+        !Number.isSafeInteger(yieldAmount) || yieldAmount < 0 || (sellPrice !== undefined && (!Number.isSafeInteger(sellPrice) || sellPrice < 0)) ||
+        (productionTimeMs !== null && (!Number.isSafeInteger(productionTimeMs) || productionTimeMs < 1000)) ||
+        (spriteScale !== undefined && (!Number.isFinite(spriteScale) || spriteScale < 0.1 || spriteScale > 5)) ||
+        !Number.isInteger(footprintWidth) || footprintWidth < 1 || footprintWidth > 2 ||
+        !Number.isInteger(footprintHeight) || footprintHeight < 1 || footprintHeight > 2 ||
+        (largeFootprintWidth !== null && (!Number.isInteger(largeFootprintWidth) || largeFootprintWidth < 1 || largeFootprintWidth > 2)) ||
+        (largeFootprintHeight !== null && (!Number.isInteger(largeFootprintHeight) || largeFootprintHeight < 1 || largeFootprintHeight > 2))) {
+      setError('Перевір назву, цілі значення, footprint і spriteScale предмета.');
       return;
     }
 
@@ -264,10 +356,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     setError('');
     setNotice('');
     try {
-      const updatedItem = await adminApi.updatePrices(item.id, price, sellPrice);
+      const updatedItem = await adminApi.updateConfig(item.id, {
+        name: draft.name.trim(),
+        price,
+        ...(sellPrice === undefined ? {} : { sellPrice }),
+        plantingXp,
+        productionTimeMs,
+        yieldItem: draft.yieldItem.trim(),
+        yieldName: draft.yieldName.trim(),
+        yieldIcon: draft.yieldIcon.trim(),
+        yieldAmount,
+        shopIcon: draft.shopIcon.trim(),
+        shopImage: draft.shopImage.trim() || null,
+        yieldImage: draft.yieldImage.trim() || null,
+        growthImages: draft.growthImages.split('\n').map((path) => path.trim()).filter(Boolean),
+        placementSurface: draft.placementSurface || 'grass',
+        ...(spriteScale === undefined ? {} : { spriteScale }),
+        flipX: draft.flipX,
+        canFlip: draft.canFlip,
+        footprint: { width: footprintWidth, height: footprintHeight },
+        largeFootprint: largeFootprintWidth === null || largeFootprintHeight === null
+          ? null
+          : { width: largeFootprintWidth, height: largeFootprintHeight },
+      });
       setCatalog((current) => current.map((entry) => entry.id === item.id ? updatedItem : entry));
-      setPriceDrafts((current) => ({ ...current, [item.id]: { price: String(updatedItem.price), sellPrice: String(updatedItem.sellPrice ?? '') } }));
-      setNotice(`Ціни для «${item.name}» оновлено.`);
+      setItemDrafts((current) => ({ ...current, [item.id]: getItemDraft(updatedItem) }));
+      setNotice(`Налаштування «${updatedItem.name}» збережено.`);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -413,7 +527,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                     {selectedUser.farmItems.length === 0 ? <p>На фермі поки немає розміщених предметів.</p> : (
                       <ul>{selectedUser.farmItems.map((item, index) => <li key={`${item.itemId}-${item.x}-${item.y}-${item.quadrant}-${index}`}>
                         <span className="admin-farm-item-identity">{item.image && <img src={item.image} alt="" />}<span>{item.name}<small>{item.type} · колонка {item.x + 1}, ряд {item.y + 1}</small></span></span>
-                        <button type="button" className="admin-remove-item" onClick={() => setConfirmFarmItemId(`${item.x},${item.y},${item.quadrant}`)} aria-label={`Видалити ${item.name}`} title="Видалити"><Trash2 size={14} /></button>
+                        <div className="admin-farm-row-actions"><button type="button" className="admin-remove-item" onClick={() => startFarmItemEdit(item)} aria-label={`Редагувати ${item.name}`} title="Змінити позицію"><Pencil size={14} /></button><button type="button" className="admin-remove-item" onClick={() => setConfirmFarmItemId(`${item.x},${item.y},${item.quadrant}`)} aria-label={`Видалити ${item.name}`} title="Видалити"><Trash2 size={14} /></button></div>
+                        {editingFarmItemId === `${item.x},${item.y},${item.quadrant}` && <div className="admin-farm-item-editor">
+                          <label>X<input type="number" min="0" max="14" value={farmItemDraft.x} onChange={(event) => setFarmItemDraft((current) => ({ ...current, x: event.target.value }))} /></label>
+                          <label>Y<input type="number" min="0" max="14" value={farmItemDraft.y} onChange={(event) => setFarmItemDraft((current) => ({ ...current, y: event.target.value }))} /></label>
+                          <label>Сектор<select value={farmItemDraft.quadrant} onChange={(event) => setFarmItemDraft((current) => ({ ...current, quadrant: event.target.value }))}><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+                          <label className="admin-flip-field"><input type="checkbox" checked={farmItemDraft.flipX} onChange={(event) => setFarmItemDraft((current) => ({ ...current, flipX: event.target.checked }))} />Перевернути</label>
+                          <button className="admin-primary-button" type="button" onClick={() => void saveFarmItemEdit(item)} disabled={busy}>Зберегти позицію</button>
+                          <button className="admin-cancel-edit" type="button" onClick={() => setEditingFarmItemId(null)}>Скасувати</button>
+                        </div>}
                         {confirmFarmItemId === `${item.x},${item.y},${item.quadrant}` && <div className="admin-inline-confirm"><span>Видалити?</span><button type="button" onClick={() => void handleDeleteFarmItem(item)} disabled={busy}>Так</button><button type="button" onClick={() => setConfirmFarmItemId(null)}>Ні</button></div>}
                       </li>)}</ul>
                     )}
@@ -432,13 +554,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                     {confirmAccountDelete ? <div className="admin-inline-confirm"><span>Видалити {selectedUser.username}?</span><button type="button" onClick={() => void handleDeleteAccount()} disabled={busy}>Так, видалити</button><button type="button" onClick={() => setConfirmAccountDelete(false)}>Скасувати</button></div> : <button className="admin-danger-button" type="button" onClick={() => setConfirmAccountDelete(true)} disabled={selectedUser.role === 'admin'}><Trash2 size={15} /> Видалити акаунт</button>}
                   </section>
 
-                  <section className="admin-action-card admin-delete-account">
-                    <div className="admin-action-title"><Trash2 size={18} /><h3>Видалення акаунта</h3></div>
-                    <p>Видаляє профіль, соціальні зв’язки та ферму. Адміністраторів видалити не можна.</p>
-                    {confirmAccountDelete ? (
-                      <div className="admin-inline-confirm"><span>Видалити {selectedUser.username}?</span><button type="button" onClick={() => void handleDeleteAccount()} disabled={busy}>Так, видалити</button><button type="button" onClick={() => setConfirmAccountDelete(false)}>Скасувати</button></div>
-                    ) : <button className="admin-danger-button" type="button" onClick={() => setConfirmAccountDelete(true)} disabled={selectedUser.role === 'admin'}><Trash2 size={15} /> Видалити акаунт</button>}
-                  </section>
                 </div>
               </>
             )}
@@ -450,16 +565,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             {notice && <p className="admin-message admin-success" role="status">{notice}</p>}
             <div className="admin-price-grid">
               {catalog.map((item) => {
-                const draft = priceDrafts[item.id] ?? { price: String(item.price), sellPrice: String(item.sellPrice ?? '') };
+                const draft = itemDrafts[item.id] ?? getItemDraft(item);
                 return (
                   <article className="admin-price-card" key={item.id}>
-                    <div className="admin-price-item-image">
+                    <div className="admin-price-item-image" title={item.name}>
                       {item.shopImage ? <img src={item.shopImage} alt="" /> : <span>{item.yieldIcon ?? '🌱'}</span>}
                     </div>
                     <div className="admin-price-item-name"><strong>{item.name}</strong><small>{item.type} · {item.id}</small></div>
-                    <label>Ціна купівлі<input type="number" min="0" step="1" value={draft.price} onChange={(event) => setPriceDrafts((current) => ({ ...current, [item.id]: { ...draft, price: event.target.value } }))} /></label>
-                    {item.sellPrice !== undefined && <label>Ціна продажу<input type="number" min="0" step="1" value={draft.sellPrice} onChange={(event) => setPriceDrafts((current) => ({ ...current, [item.id]: { ...draft, sellPrice: event.target.value } }))} /></label>}
-                    <button className="admin-primary-button" type="button" onClick={() => void handlePriceSave(item)} disabled={priceBusyId === item.id}>{priceBusyId === item.id ? 'Зберігаємо…' : 'Зберегти ціни'}</button>
+                    <label>Купівля<input type="number" min="0" step="1" value={draft.price} onChange={(event) => updateItemDraft(item.id, { price: event.target.value })} /></label>
+                    {item.yieldItem && <label>Продаж<input type="number" min="0" step="1" value={draft.sellPrice} onChange={(event) => updateItemDraft(item.id, { sellPrice: event.target.value })} /></label>}
+                    <details className="admin-item-advanced">
+                      <summary>Повні параметри</summary>
+                      <div className="admin-item-field-grid">
+                        <label>Назва<input value={draft.name} onChange={(event) => updateItemDraft(item.id, { name: event.target.value })} maxLength={120} /></label>
+                        <label>Досвід за посадку<input type="number" min="0" step="1" value={draft.plantingXp} onChange={(event) => updateItemDraft(item.id, { plantingXp: event.target.value })} /></label>
+                        {!item.yieldItem && <label>Ціна продажу<input type="number" min="0" step="1" value={draft.sellPrice} onChange={(event) => updateItemDraft(item.id, { sellPrice: event.target.value })} placeholder="—" /></label>}
+                        <label>Час росту (мс)<input type="number" min="1000" step="1000" value={draft.productionTimeMs} placeholder="Без циклу" onChange={(event) => updateItemDraft(item.id, { productionTimeMs: event.target.value })} /></label>
+                        <label>Кількість врожаю<input type="number" min="0" step="1" value={draft.yieldAmount} onChange={(event) => updateItemDraft(item.id, { yieldAmount: event.target.value })} /></label>
+                        <label>ID врожаю<input value={draft.yieldItem} onChange={(event) => updateItemDraft(item.id, { yieldItem: event.target.value })} /></label>
+                        <label>Назва врожаю<input value={draft.yieldName} onChange={(event) => updateItemDraft(item.id, { yieldName: event.target.value })} /></label>
+                        <label>Іконка врожаю<input value={draft.yieldIcon} onChange={(event) => updateItemDraft(item.id, { yieldIcon: event.target.value })} /></label>
+                        <label>Іконка магазину<input value={draft.shopIcon} onChange={(event) => updateItemDraft(item.id, { shopIcon: event.target.value })} /></label>
+                        <label>Поверхня<select value={draft.placementSurface} onChange={(event) => updateItemDraft(item.id, { placementSurface: event.target.value as '' | 'grass' | 'soil' })}><option value="grass">Трава</option><option value="soil">Грядка</option></select></label>
+                        <label>Масштаб спрайта<input type="number" min="0.1" max="5" step="0.05" value={draft.spriteScale} placeholder="1" onChange={(event) => updateItemDraft(item.id, { spriteScale: event.target.value })} /></label>
+                        <label className="admin-toggle-field">Дзеркальний спрайт<input type="checkbox" checked={draft.flipX} onChange={(event) => updateItemDraft(item.id, { flipX: event.target.checked })} /></label>
+                        <label className="admin-toggle-field">Можна перевертати<input type="checkbox" checked={draft.canFlip} onChange={(event) => updateItemDraft(item.id, { canFlip: event.target.checked })} /></label>
+                        <label>Footprint W×H<div className="admin-dimensions"><input aria-label="Footprint ширина" type="number" min="1" max="2" value={draft.footprintWidth} onChange={(event) => updateItemDraft(item.id, { footprintWidth: event.target.value })} /><input aria-label="Footprint висота" type="number" min="1" max="2" value={draft.footprintHeight} onChange={(event) => updateItemDraft(item.id, { footprintHeight: event.target.value })} /></div></label>
+                        <label>Large footprint W×H<div className="admin-dimensions"><input aria-label="Large footprint ширина" type="number" min="1" max="2" value={draft.largeFootprintWidth} placeholder="—" onChange={(event) => updateItemDraft(item.id, { largeFootprintWidth: event.target.value, largeFootprintHeight: draft.largeFootprintHeight || event.target.value })} /><input aria-label="Large footprint висота" type="number" min="1" max="2" value={draft.largeFootprintHeight} placeholder="—" onChange={(event) => updateItemDraft(item.id, { largeFootprintHeight: event.target.value, largeFootprintWidth: draft.largeFootprintWidth || event.target.value })} /></div></label>
+                        <label className="admin-wide-field">shopImage<input value={draft.shopImage} onChange={(event) => updateItemDraft(item.id, { shopImage: event.target.value })} placeholder="/assets/..." /></label>
+                        <label className="admin-wide-field">yieldImage<input value={draft.yieldImage} onChange={(event) => updateItemDraft(item.id, { yieldImage: event.target.value })} placeholder="/assets/..." /></label>
+                        <label className="admin-wide-field">Стадії росту · шлях на рядок<textarea rows={3} value={draft.growthImages} onChange={(event) => updateItemDraft(item.id, { growthImages: event.target.value })} placeholder="/assets/..." /></label>
+                      </div>
+                    </details>
+                    <button className="admin-primary-button" type="button" onClick={() => void handleConfigSave(item)} disabled={priceBusyId === item.id}>{priceBusyId === item.id ? 'Зберігаємо…' : 'Зберегти параметри'}</button>
                   </article>
                 );
               })}

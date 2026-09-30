@@ -8,6 +8,7 @@ export const loadGameItemPriceOverrides = async () => {
     priceOverrides.clear();
     for (const record of records) {
         priceOverrides.set(record.itemId, {
+            ...(record.config && typeof record.config === 'object' ? record.config : {}),
             ...(Number.isSafeInteger(record.price) ? { price: record.price } : {}),
             ...(Number.isSafeInteger(record.sellPrice) ? { sellPrice: record.sellPrice } : {}),
         });
@@ -36,6 +37,30 @@ export const updateGameItemPrices = async (itemId, updates) => {
     ).lean();
 
     priceOverrides.set(itemId, {
+        ...(Number.isSafeInteger(record.price) ? { price: record.price } : {}),
+        ...(Number.isSafeInteger(record.sellPrice) ? { sellPrice: record.sellPrice } : {}),
+    });
+    return getGameItem(itemId);
+};
+
+export const updateGameItemConfig = async (itemId, updates) => {
+    const item = GAME_ITEMS[itemId];
+    if (!item) return null;
+
+    const current = priceOverrides.get(itemId) ?? {};
+    const next = { ...current, ...updates };
+    const indexedPrices = {
+        ...(Number.isSafeInteger(next.price) ? { price: next.price } : {}),
+        ...(Number.isSafeInteger(next.sellPrice) ? { sellPrice: next.sellPrice } : {}),
+    };
+    const record = await GameItemPrice.findOneAndUpdate(
+        { itemId },
+        { $set: { itemId, config: next, ...indexedPrices } },
+        { new: true, upsert: true, runValidators: true }
+    ).lean();
+
+    priceOverrides.set(itemId, {
+        ...(record.config && typeof record.config === 'object' ? record.config : {}),
         ...(Number.isSafeInteger(record.price) ? { price: record.price } : {}),
         ...(Number.isSafeInteger(record.sellPrice) ? { sellPrice: record.sellPrice } : {}),
     });

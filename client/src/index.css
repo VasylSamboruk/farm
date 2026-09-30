@@ -913,16 +913,26 @@ html, body, #root {
 .admin-price-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding-bottom: 11px; border-bottom: 1px solid rgba(132, 83, 39, 0.22); }
 .admin-price-heading h1 { margin: 3px 0 0; color: #432b19; font: 800 21px Georgia, serif; }
 .admin-price-heading > span { padding: 5px 9px; border-radius: 12px; color: #70502c; background: rgba(171, 119, 53, 0.13); font: 800 9px 'Trebuchet MS', system-ui, sans-serif; }
-.admin-price-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 10px; }
-.admin-price-card { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 8px; padding: 9px; border: 2px solid #dec79b; border-radius: 10px; background: linear-gradient(145deg, rgba(255, 250, 232, 0.9), rgba(238, 219, 179, 0.86)); }
-.admin-price-item-image { display: grid; place-items: center; grid-row: span 2; width: 52px; height: 52px; border: 1px solid rgba(140, 92, 45, 0.25); border-radius: 8px; background: linear-gradient(145deg, #f7e7be, #e4c58b); }
-.admin-price-item-image img { width: 90%; height: 90%; object-fit: contain; }
+.admin-price-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(265px, 1fr)); gap: 10px; }
+.admin-price-card { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; overflow: hidden; padding: 9px; border: 2px solid #dec79b; border-radius: 10px; background: linear-gradient(145deg, rgba(255, 250, 232, 0.9), rgba(238, 219, 179, 0.86)); }
+.admin-price-item-image { display: grid; place-items: center; grid-column: 1; grid-row: 1 / span 2; width: 72px; height: 72px; overflow: hidden; padding: 4px; border: 1px solid rgba(140, 92, 45, 0.25); border-radius: 8px; background: linear-gradient(145deg, #f7e7be, #e4c58b); }
+.admin-price-item-image img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; }
 .admin-price-item-image span { font-size: 25px; }
-.admin-price-item-name { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.admin-price-item-name { display: flex; grid-column: 2; grid-row: 1; flex-direction: column; min-width: 0; gap: 2px; }
 .admin-price-item-name strong { overflow: hidden; color: #49321e; text-overflow: ellipsis; white-space: nowrap; font: 800 10px 'Trebuchet MS', system-ui, sans-serif; }
 .admin-price-item-name small { overflow: hidden; color: #866b48; text-overflow: ellipsis; white-space: nowrap; font: 500 8px 'Trebuchet MS', system-ui, sans-serif; }
 .admin-price-card label { display: grid; grid-column: span 1; gap: 3px; color: #705536; font: 700 8px 'Trebuchet MS', system-ui, sans-serif; }
 .admin-price-card input { width: 100%; min-width: 0; height: 30px; padding: 0 7px; border: 1px solid #c9a66d; border-radius: 5px; outline-color: #67933a; color: #432d1b; background: rgba(255, 252, 237, 0.94); font: 700 10px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-item-advanced { grid-column: 1 / -1; min-width: 0; padding-top: 3px; border-top: 1px solid rgba(132, 83, 39, 0.18); }
+.admin-item-advanced summary { padding: 6px 0; color: #75532d; font: 800 9px 'Trebuchet MS', system-ui, sans-serif; cursor: pointer; }
+.admin-item-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 3px 0 8px; }
+.admin-item-field-grid label { min-width: 0; }
+.admin-item-field-grid .admin-wide-field { grid-column: 1 / -1; }
+.admin-item-field-grid textarea { width: 100%; min-width: 0; resize: vertical; padding: 7px; border: 1px solid #c9a66d; border-radius: 5px; outline-color: #67933a; color: #432d1b; background: rgba(255, 252, 237, 0.94); font: 600 9px/1.4 'Trebuchet MS', system-ui, sans-serif; }
+.admin-dimensions { display: flex; gap: 4px; }
+.admin-dimensions input { min-width: 0; }
+.admin-item-field-grid .admin-toggle-field { display: flex; align-items: center; justify-content: space-between; gap: 7px; padding: 0 8px; border: 1px solid #d5b982; border-radius: 5px; background: rgba(255, 252, 237, 0.6); }
+.admin-item-field-grid .admin-toggle-field input { width: 15px; height: 15px; accent-color: #4e9432; }
 .admin-price-card .admin-primary-button { grid-column: 1 / -1; }
 .admin-player-card { display: flex; align-items: center; gap: 13px; padding: 3px 2px 13px; border-bottom: 1px solid rgba(132, 83, 39, 0.22); }
 .admin-avatar-large { flex-basis: 62px; width: 62px; height: 62px; font-size: 22px; }
@@ -970,6 +980,24 @@ html, body, #root {
 .admin-inline-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 7px; border: 1px solid #d0a971; border-radius: 6px; color: #6a4728; background: #fff1d2; font: 700 8px 'Trebuchet MS', system-ui, sans-serif; }
 .admin-inline-confirm button { min-height: 25px; padding: 0 7px; border: 1px solid #c5a16c; border-radius: 4px; color: #54371e; background: #f6e4bd; font: 800 8px 'Trebuchet MS', system-ui, sans-serif; cursor: pointer; }
 .admin-inline-confirm button:first-of-type { color: #fff8e4; border-color: #35782a; background: #4b932f; }
+.admin-farm-row-actions { display: flex; flex: 0 0 auto; gap: 4px; }
+.admin-farm-item-editor { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 6px; padding: 8px; border: 1px solid #d2b37b; border-radius: 7px; background: rgba(255, 241, 210, 0.72); }
+.admin-farm-item-editor label { display: grid; gap: 3px; color: #705536; font: 700 8px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-farm-item-editor input:not([type='checkbox']), .admin-farm-item-editor select { width: 100%; min-width: 0; height: 29px; padding: 0 6px; border: 1px solid #c9a66d; border-radius: 5px; outline-color: #67933a; color: #432d1b; background: rgba(255, 252, 237, 0.94); font: 700 9px 'Trebuchet MS', system-ui, sans-serif; }
+.admin-farm-item-editor .admin-flip-field { display: flex; align-items: center; min-height: 29px; gap: 5px; }
+.admin-farm-item-editor .admin-flip-field input { accent-color: #4e9432; }
+.admin-farm-item-editor .admin-primary-button, .admin-farm-item-editor .admin-cancel-edit { min-height: 29px; padding: 0 7px; font-size: 8px; }
+.admin-cancel-edit { border: 1px solid #c9a66d; border-radius: 6px; color: #624728; background: #f4e3bc; font: 700 8px 'Trebuchet MS', system-ui, sans-serif; cursor: pointer; }
+.admin-price-card .admin-item-advanced { grid-column: 1 / -1; min-width: 0; }
+.admin-price-card .admin-item-field-grid label { grid-column: auto; }
+.admin-price-card .admin-item-field-grid .admin-wide-field { grid-column: 1 / -1; }
+.admin-price-card .admin-item-field-grid .admin-toggle-field { display: flex; align-items: center; justify-content: space-between; gap: 7px; padding: 0 8px; }
+.admin-price-card .admin-item-field-grid .admin-toggle-field input { width: 15px; height: 15px; accent-color: #4e9432; }
+.admin-item-field-grid .admin-toggle-field { display: flex; align-items: center; justify-content: space-between; gap: 7px; padding: 0 8px; border: 1px solid #d5b982; border-radius: 5px; background: rgba(255, 252, 237, 0.6); }
+.admin-item-field-grid .admin-toggle-field input { width: 15px; height: 15px; accent-color: #4e9432; }
+.admin-price-card input, .admin-price-card select { width: 100%; min-width: 0; }
+.admin-price-card .admin-price-item-image { overflow: hidden; }
+.admin-price-card .admin-price-item-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .admin-farm-overlay { position: fixed; z-index: 300; inset: 0; overflow: hidden; background: #233d31; }
 .admin-farm-overlay-header { position: absolute; z-index: 5; top: 12px; left: 50%; display: flex; align-items: center; gap: 16px; transform: translateX(-50%); padding: 9px 13px; border: 4px solid #80512a; border-radius: 10px; color: #49311d; background: linear-gradient(145deg, #fff6dc, #ecd3a1); box-shadow: 0 4px 0 #50311c; pointer-events: auto; }
 .admin-farm-overlay-header > div { display: flex; flex-direction: column; gap: 3px; }
@@ -987,6 +1015,9 @@ html, body, #root {
   .admin-topbar-title strong { margin-left: 0; padding: 4px 5px; font-size: 8px; }
   .admin-back-button { min-height: 32px; gap: 4px; padding: 0 6px; font-size: 8px; }
   .admin-back-button > svg { width: 14px; }
+  .admin-view-tabs { gap: 2px; padding: 3px; }
+  .admin-view-tabs button { gap: 3px; min-height: 27px; padding: 0 5px; font-size: 8px; }
+  .admin-view-tabs button svg { width: 13px; }
   .admin-workspace { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 8px 10px 14px; }
   .admin-users-panel { flex: 0 0 245px; min-height: 245px; }
   .admin-user-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -997,6 +1028,10 @@ html, body, #root {
   .admin-user-level { flex-basis: 26px; width: 26px; height: 26px; }
   .admin-user-level strong { font-size: 8px; }
   .admin-details-panel { flex: 0 0 auto; overflow: visible; padding: 11px; }
+  .admin-price-grid { grid-template-columns: 1fr; }
+  .admin-price-card { grid-template-columns: 64px minmax(0, 1fr); }
+  .admin-price-item-image { width: 64px; height: 64px; }
+  .admin-item-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-player-card { gap: 8px; }
   .admin-avatar-large { flex-basis: 48px; width: 48px; height: 48px; }
   .admin-player-name h2 { font-size: 15px; }
@@ -1009,6 +1044,20 @@ html, body, #root {
   .admin-stat-card > span { font-size: 7px; }
   .admin-stat-card > strong { font-size: 10px; }
   .admin-action-grid { grid-template-columns: 1fr; }
+  .admin-price-card { grid-template-columns: 64px minmax(0, 1fr); }
+  .admin-price-item-image { width: 64px; height: 64px; }
+  .admin-price-card .admin-item-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-farm-item-editor { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 430px) {
+  .admin-lobby .admin-topbar { display: grid; grid-template-columns: minmax(88px, 1fr) auto; grid-template-areas: 'logo back' 'title tabs'; flex: 0 0 auto; min-height: 82px; row-gap: 5px; }
+  .admin-logo { grid-area: logo; }
+  .admin-topbar-title { grid-area: title; }
+  .admin-view-tabs { grid-area: tabs; justify-self: end; }
+  .admin-back-button { grid-area: back; justify-self: end; }
+  .admin-topbar-title strong { display: none; }
+  .admin-workspace { padding-top: 7px; }
 }
 
 .farmer-lobby { flex-direction: column; }

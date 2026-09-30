@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import Farm from '../models/Farm.js';
 import User from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
-import { getGameItem, listGameItems, updateGameItemPrices } from '../services/gameCatalog.js';
+import { getGameItem, listGameItems, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 
 const router = express.Router();
@@ -85,10 +85,95 @@ router.get('/catalog', (_req, res) => {
         price: item.price,
         sellPrice: item.sellPrice,
         plantingXp: item.plantingXp,
+        productionTimeMs: item.productionTimeMs,
+        yieldAmount: item.yieldAmount,
+        canFlip: item.canFlip,
+        spriteScale: item.spriteScale,
+        shopIcon: item.shopIcon,
+        growthImages: item.growthImages ?? [],
         footprint: item.footprint,
         largeFootprint: item.largeFootprint,
     }));
     return res.json({ items });
+});
+
+router.patch('/catalog/:itemId/config', async (req, res) => {
+    try {
+        const item = getGameItem(req.params.itemId);
+        if (!item) return res.status(404).json({ message: 'Предмет не знайдено в каталозі' });
+        const allowedFields = new Set([
+            'name', 'price', 'sellPrice', 'plantingXp', 'productionTimeMs', 'yieldItem', 'yieldName',
+            'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'canFlip', 'footprint',
+            'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages',
+        ]);
+        const updates = {};
+
+        for (const [field, value] of Object.entries(req.body ?? {})) {
+            if (!allowedFields.has(field)) return res.status(400).json({ message: `Поле ${field} не можна змінювати` });
+            if (['price', 'sellPrice', 'plantingXp', 'yieldAmount'].includes(field)) {
+                if (value === undefined) continue;
+                if (value === '' && field === 'sellPrice') continue;
+                const parsed = Number(value);
+                if (!Number.isSafeInteger(parsed) || parsed < 0) return res.status(400).json({ message: `${field} має бути невід’ємним цілим числом` });
+                updates[field] = parsed;
+                continue;
+            }
+            if (field === 'productionTimeMs') {
+                if (value === '' || value === null) { updates[field] = null; continue; }
+                const parsed = Number(value);
+                if (!Number.isSafeInteger(parsed) || parsed < 1000) return res.status(400).json({ message: 'Час росту має бути цілим числом не менше 1000 мс' });
+                updates[field] = parsed;
+                continue;
+            }
+            if (field === 'spriteScale') {
+                const parsed = Number(value);
+                if (!Number.isFinite(parsed) || parsed < 0.1 || parsed > 5) return res.status(400).json({ message: 'spriteScale має бути від 0.1 до 5' });
+                updates[field] = parsed;
+                continue;
+            }
+            if (field === 'canFlip') {
+                if (typeof value !== 'boolean') return res.status(400).json({ message: 'canFlip має бути true або false' });
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'footprint' || field === 'largeFootprint') {
+                if (value === null || value === '') { updates[field] = null; continue; }
+                if (!value || !Number.isInteger(value.width) || !Number.isInteger(value.height) || value.width < 1 || value.height < 1 || value.width > 2 || value.height > 2) {
+                    return res.status(400).json({ message: `${field} має містити width/height від 1 до 2` });
+                }
+                updates[field] = { width: value.width, height: value.height };
+                continue;
+            }
+            if (field === 'growthImages') {
+                if (!Array.isArray(value) || value.length > 12 || value.some((src) => typeof src !== 'string' || !/^\/assets\/[A-Za-z0-9_./-]+$/.test(src) || src.includes('..'))) {
+                    return res.status(400).json({ message: 'growthImages мають бути списком локальних шляхів /assets/...' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (['shopImage', 'yieldImage'].includes(field)) {
+                if (value === '' || value === null) { updates[field] = null; continue; }
+                if (typeof value !== 'string' || !/^\/assets\/[A-Za-z0-9_./-]+$/.test(value) || value.includes('..')) {
+                    return res.status(400).json({ message: `${field} має бути локальним шляхом /assets/...` });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'placementSurface') {
+                if (value !== 'grass' && value !== 'soil') return res.status(400).json({ message: 'Поверхня має бути grass або soil' });
+                updates[field] = value;
+                continue;
+            }
+            if (typeof value !== 'string' || value.trim().length > 120) return res.status(400).json({ message: `${field} має бути текстом до 120 символів` });
+            updates[field] = value.trim();
+        }
+
+        if (!Object.keys(updates).length) return res.status(400).json({ message: 'Не передано змін конфігурації' });
+        const updatedItem = await updateGameItemConfig(item.id, updates);
+        return res.json({ item: updatedItem });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося оновити предмет', error: error.message });
+    }
 });
 
 router.patch('/catalog/:itemId/prices', async (req, res) => {
@@ -278,6 +363,69 @@ router.delete('/users/:userId/farm-items/:x/:y/:quadrant', async (req, res) => {
         return res.json({ message: 'Предмет видалено з ферми' });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося видалити предмет', error: error.message });
+    }
+});
+
+router.patch('/users/:userId/farm-items/:x/:y/:quadrant', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const source = [req.params.x, req.params.y, req.params.quadrant].map(Number);
+        const { x = source[0], y = source[1], quadrant = source[2], flipX } = req.body;
+        if (!source.every(Number.isInteger) || !Number.isInteger(x) || !Number.isInteger(y) ||
+            !Number.isInteger(quadrant) || quadrant < 0 || quadrant > 3 ||
+            (flipX !== undefined && typeof flipX !== 'boolean')) {
+            return res.status(400).json({ message: 'Перевір координати, сектор і стан перевертання' });
+        }
+
+        const farm = await Farm.findOne({ userId: req.params.userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        const tile = farm.tiles.find((entry) => !entry.isDirt && entry.x === source[0] && entry.y === source[1] && entry.quadrant === source[2]);
+        if (!tile) return res.status(404).json({ message: 'Предмет не знайдено на фермі' });
+        const item = getGameItem(tile.itemId);
+        if (!item) return res.status(400).json({ message: 'Предмет відсутній у каталозі' });
+        if (flipX !== undefined && flipX !== (tile.flipX ?? false) && item.canFlip === false) {
+            return res.status(400).json({ message: 'Цей предмет не можна перевертати' });
+        }
+
+        const nextFlipX = flipX ?? tile.flipX ?? false;
+        const occupiedCells = getOccupiedCells(x, y, quadrant, item, nextFlipX);
+        if (!occupiedCells?.length || occupiedCells.some((cell) => cell.x < 0 || cell.x >= 15 || cell.y < 0 || cell.y >= 15)) {
+            return res.status(400).json({ message: 'Footprint не поміщається в межі ферми' });
+        }
+
+        const uniqueSurfaceCells = new Set(occupiedCells.map((cell) => `${cell.x},${cell.y}`));
+        const occupiedDirtCells = new Set(farm.tiles
+            .filter((entry) => entry.isDirt && occupiedCells.some((cell) => cell.x === entry.x && cell.y === entry.y))
+            .map((entry) => `${entry.x},${entry.y}`));
+        if (item.placementSurface === 'soil' && [...uniqueSurfaceCells].some((cell) => !occupiedDirtCells.has(cell))) {
+            return res.status(400).json({ message: 'Цю культуру можна розмістити лише на грядці' });
+        }
+        if (item.placementSurface === 'grass' && occupiedDirtCells.size > 0) {
+            return res.status(400).json({ message: 'Предмет можна розмістити лише на траві' });
+        }
+
+        const overlaps = farm.tiles.some((entry) => {
+            if (entry === tile || entry.isDirt) return false;
+            const otherItem = getGameItem(entry.itemId);
+            const otherCells = getOccupiedCells(entry.x, entry.y, entry.quadrant, otherItem, entry.flipX ?? false) ?? [
+                { x: entry.x, y: entry.y, quadrant: entry.quadrant },
+            ];
+            return otherCells.some((otherCell) => occupiedCells.some((cell) =>
+                cell.x === otherCell.x && cell.y === otherCell.y && cell.quadrant === otherCell.quadrant
+            ));
+        });
+        if (overlaps) return res.status(409).json({ message: 'У цьому місці вже є інший предмет' });
+
+        tile.x = x;
+        tile.y = y;
+        tile.quadrant = quadrant;
+        tile.flipX = nextFlipX;
+        tile.occupiedQuadrants = getOccupiedQuadrants(quadrant, item) ?? [quadrant];
+        tile.occupiedCells = occupiedCells;
+        await farm.save();
+        return res.json({ message: 'Предмет ферми оновлено', item: tile });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося змінити предмет ферми', error: error.message });
     }
 });
 
