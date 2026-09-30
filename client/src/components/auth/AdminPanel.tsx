@@ -29,14 +29,8 @@ interface AdminItemDraft {
   productionTimeMs: string;
   yieldItem: string;
   yieldName: string;
-  yieldIcon: string;
   yieldAmount: string;
-  shopIcon: string;
-  shopImage: string;
-  yieldImage: string;
-  growthImages: string;
   placementSurface: '' | 'grass' | 'soil';
-  spriteScale: string;
   flipX: boolean;
   canFlip: boolean;
   footprintWidth: string;
@@ -53,14 +47,8 @@ const getItemDraft = (item: AdminCatalogItem): AdminItemDraft => ({
   productionTimeMs: String(item.productionTimeMs ?? ''),
   yieldItem: item.yieldItem ?? '',
   yieldName: item.yieldName ?? '',
-  yieldIcon: item.yieldIcon ?? '',
   yieldAmount: String(item.yieldAmount ?? ''),
-  shopIcon: item.shopIcon ?? '',
-  shopImage: item.shopImage ?? '',
-  yieldImage: item.yieldImage ?? '',
-  growthImages: (item.growthImages ?? []).join('\n'),
   placementSurface: item.placementSurface ?? '',
-  spriteScale: String(item.spriteScale ?? ''),
   flipX: item.flipX ?? false,
   canFlip: item.canFlip ?? true,
   footprintWidth: String(item.footprint?.width ?? ''),
@@ -335,7 +323,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     const yieldAmount = draft.yieldAmount.trim() === '' ? 0 : Number(draft.yieldAmount);
     const sellPrice = draft.sellPrice.trim() === '' ? undefined : Number(draft.sellPrice);
     const productionTimeMs = draft.productionTimeMs.trim() === '' ? null : Number(draft.productionTimeMs);
-    const spriteScale = draft.spriteScale.trim() === '' ? undefined : Number(draft.spriteScale);
     const footprintWidth = Number(draft.footprintWidth);
     const footprintHeight = Number(draft.footprintHeight);
     const largeFootprintWidth = draft.largeFootprintWidth.trim() === '' ? null : Number(draft.largeFootprintWidth);
@@ -343,12 +330,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     if (!draft.name.trim() || !Number.isSafeInteger(price) || price < 0 || !Number.isSafeInteger(plantingXp) || plantingXp < 0 ||
         !Number.isSafeInteger(yieldAmount) || yieldAmount < 0 || (sellPrice !== undefined && (!Number.isSafeInteger(sellPrice) || sellPrice < 0)) ||
         (productionTimeMs !== null && (!Number.isSafeInteger(productionTimeMs) || productionTimeMs < 1000)) ||
-        (spriteScale !== undefined && (!Number.isFinite(spriteScale) || spriteScale < 0.1 || spriteScale > 5)) ||
         !Number.isInteger(footprintWidth) || footprintWidth < 1 || footprintWidth > 2 ||
         !Number.isInteger(footprintHeight) || footprintHeight < 1 || footprintHeight > 2 ||
         (largeFootprintWidth !== null && (!Number.isInteger(largeFootprintWidth) || largeFootprintWidth < 1 || largeFootprintWidth > 2)) ||
         (largeFootprintHeight !== null && (!Number.isInteger(largeFootprintHeight) || largeFootprintHeight < 1 || largeFootprintHeight > 2))) {
-      setError('Перевір назву, цілі значення, footprint і spriteScale предмета.');
+      setError('Перевір назву, ціни, час росту й розміри footprint предмета.');
       return;
     }
 
@@ -364,14 +350,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         productionTimeMs,
         yieldItem: draft.yieldItem.trim(),
         yieldName: draft.yieldName.trim(),
-        yieldIcon: draft.yieldIcon.trim(),
         yieldAmount,
-        shopIcon: draft.shopIcon.trim(),
-        shopImage: draft.shopImage.trim() || null,
-        yieldImage: draft.yieldImage.trim() || null,
-        growthImages: draft.growthImages.split('\n').map((path) => path.trim()).filter(Boolean),
         placementSurface: draft.placementSurface || 'grass',
-        ...(spriteScale === undefined ? {} : { spriteScale }),
         flipX: draft.flipX,
         canFlip: draft.canFlip,
         footprint: { width: footprintWidth, height: footprintHeight },
@@ -584,17 +564,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                         <label>Кількість врожаю<input type="number" min="0" step="1" value={draft.yieldAmount} onChange={(event) => updateItemDraft(item.id, { yieldAmount: event.target.value })} /></label>
                         <label>ID врожаю<input value={draft.yieldItem} onChange={(event) => updateItemDraft(item.id, { yieldItem: event.target.value })} /></label>
                         <label>Назва врожаю<input value={draft.yieldName} onChange={(event) => updateItemDraft(item.id, { yieldName: event.target.value })} /></label>
-                        <label>Іконка врожаю<input value={draft.yieldIcon} onChange={(event) => updateItemDraft(item.id, { yieldIcon: event.target.value })} /></label>
-                        <label>Іконка магазину<input value={draft.shopIcon} onChange={(event) => updateItemDraft(item.id, { shopIcon: event.target.value })} /></label>
                         <label>Поверхня<select value={draft.placementSurface} onChange={(event) => updateItemDraft(item.id, { placementSurface: event.target.value as '' | 'grass' | 'soil' })}><option value="grass">Трава</option><option value="soil">Грядка</option></select></label>
-                        <label>Масштаб спрайта<input type="number" min="0.1" max="5" step="0.05" value={draft.spriteScale} placeholder="1" onChange={(event) => updateItemDraft(item.id, { spriteScale: event.target.value })} /></label>
                         <label className="admin-toggle-field">Дзеркальний спрайт<input type="checkbox" checked={draft.flipX} onChange={(event) => updateItemDraft(item.id, { flipX: event.target.checked })} /></label>
                         <label className="admin-toggle-field">Можна перевертати<input type="checkbox" checked={draft.canFlip} onChange={(event) => updateItemDraft(item.id, { canFlip: event.target.checked })} /></label>
                         <label>Footprint W×H<div className="admin-dimensions"><input aria-label="Footprint ширина" type="number" min="1" max="2" value={draft.footprintWidth} onChange={(event) => updateItemDraft(item.id, { footprintWidth: event.target.value })} /><input aria-label="Footprint висота" type="number" min="1" max="2" value={draft.footprintHeight} onChange={(event) => updateItemDraft(item.id, { footprintHeight: event.target.value })} /></div></label>
                         <label>Large footprint W×H<div className="admin-dimensions"><input aria-label="Large footprint ширина" type="number" min="1" max="2" value={draft.largeFootprintWidth} placeholder="—" onChange={(event) => updateItemDraft(item.id, { largeFootprintWidth: event.target.value, largeFootprintHeight: draft.largeFootprintHeight || event.target.value })} /><input aria-label="Large footprint висота" type="number" min="1" max="2" value={draft.largeFootprintHeight} placeholder="—" onChange={(event) => updateItemDraft(item.id, { largeFootprintHeight: event.target.value, largeFootprintWidth: draft.largeFootprintWidth || event.target.value })} /></div></label>
-                        <label className="admin-wide-field">shopImage<input value={draft.shopImage} onChange={(event) => updateItemDraft(item.id, { shopImage: event.target.value })} placeholder="/assets/..." /></label>
-                        <label className="admin-wide-field">yieldImage<input value={draft.yieldImage} onChange={(event) => updateItemDraft(item.id, { yieldImage: event.target.value })} placeholder="/assets/..." /></label>
-                        <label className="admin-wide-field">Стадії росту · шлях на рядок<textarea rows={3} value={draft.growthImages} onChange={(event) => updateItemDraft(item.id, { growthImages: event.target.value })} placeholder="/assets/..." /></label>
                       </div>
                     </details>
                     <button className="admin-primary-button" type="button" onClick={() => void handleConfigSave(item)} disabled={priceBusyId === item.id}>{priceBusyId === item.id ? 'Зберігаємо…' : 'Зберегти параметри'}</button>

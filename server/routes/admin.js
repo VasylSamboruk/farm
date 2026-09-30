@@ -104,7 +104,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         const allowedFields = new Set([
             'name', 'price', 'sellPrice', 'plantingXp', 'productionTimeMs', 'yieldItem', 'yieldName',
             'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'canFlip', 'footprint',
-            'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages',
+            'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX',
         ]);
         const updates = {};
 
@@ -131,8 +131,8 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 updates[field] = parsed;
                 continue;
             }
-            if (field === 'canFlip') {
-                if (typeof value !== 'boolean') return res.status(400).json({ message: 'canFlip має бути true або false' });
+            if (field === 'canFlip' || field === 'flipX') {
+                if (typeof value !== 'boolean') return res.status(400).json({ message: `${field} має бути true або false` });
                 updates[field] = value;
                 continue;
             }

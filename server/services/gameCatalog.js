@@ -37,6 +37,7 @@ export const updateGameItemPrices = async (itemId, updates) => {
     ).lean();
 
     priceOverrides.set(itemId, {
+        ...(record.config && typeof record.config === 'object' ? record.config : {}),
         ...(Number.isSafeInteger(record.price) ? { price: record.price } : {}),
         ...(Number.isSafeInteger(record.sellPrice) ? { sellPrice: record.sellPrice } : {}),
     });

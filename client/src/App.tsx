@@ -52,6 +52,12 @@ export const App: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
+    if (!playRequested) return;
+    const intervalId = window.setInterval(() => { void loadGameItems(true); }, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, [loadGameItems, playRequested]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const startGame = async () => {
