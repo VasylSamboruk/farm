@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { ArrowLeft, Check, ChevronDown, ChevronUp, ClipboardCheck, Copy, House, MoreVertical, Search, UserRoundMinus, UserRoundPlus, X } from 'lucide-react';
 import { getLevelProgress } from '../../config/progression';
@@ -257,7 +258,7 @@ export const FriendsPanel: React.FC = () => {
 
       {openingFriend && <div className="friend-loading" role="status">Відкриваємо профіль і ферму...</div>}
 
-      {selectedFarm && (
+      {selectedFarm && createPortal(
         <div className="friend-farm-overlay">
           <FarmCanvas readOnly previewTiles={displayedTiles} />
           <div className="friend-farm-toolbar">
@@ -297,7 +298,8 @@ export const FriendsPanel: React.FC = () => {
               {showFarmContents ? <ChevronDown size={19} /> : <ChevronUp size={19} />}
             </button>
           </div>
-        </div>
+        </div>,
+        document.querySelector('.app-shell') ?? document.body
       )}
     </section>
   );

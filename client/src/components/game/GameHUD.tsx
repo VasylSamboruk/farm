@@ -80,7 +80,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
       
       {/* ВЕРХНІЙ ЛІВИЙ КУТОК */}
       <div style={styles.topLeftWrapper}>
-        <div style={styles.levelContainer} onClick={handleSunflowerClick} onMouseEnter={() => setShowXpBar(true)} onMouseLeave={() => setShowXpBar(false)}>
+        <div className="game-level-control" style={styles.levelContainer} onClick={handleSunflowerClick} onMouseEnter={() => setShowXpBar(true)} onMouseLeave={() => setShowXpBar(false)} onContextMenu={(event) => event.preventDefault()}>
           <img src="/assets/ui/lvl_ico.png" alt="Рівень" style={styles.sunflowerImg} draggable={false} />
           <span style={styles.levelNumberCenter}>{progression.level}</span>
         </div>
