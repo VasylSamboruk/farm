@@ -2,22 +2,22 @@ import { getGameItem } from './gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from './footprint.js';
 
 const starterBeds = [
-    { x: 4, y: 7, itemId: 'wheat', remainingByQuadrant: [9000, 10000, 11000, 12000] },
-    { x: 5, y: 7, itemId: 'wheat', remainingByQuadrant: [8000, 9000, 10000, 11000] },
-    { x: 4, y: 8, itemId: 'polunitsa', remainingByQuadrant: [1500, 2500, 3500, 4500] },
-    { x: 5, y: 8, itemId: 'polunitsa', remainingByQuadrant: [2000, 3000, 4000, 5000] },
-    { x: 4, y: 9, itemId: 'pump', remainingByQuadrant: [2000, 3000, 4000, 5000] },
-    { x: 5, y: 9, itemId: 'pump', remainingByQuadrant: [3000, 4000, 5000, 6000] },
-    { x: 6, y: 9, itemId: 'pump', remainingByQuadrant: [1000, 2500, 4000, 6500] },
+    { x: 4, y: 6, itemId: 'wheat', remainingByQuadrant: [9000, 10000, 11000, 12000] },
+    { x: 5, y: 6, itemId: 'wheat', remainingByQuadrant: [8000, 9000, 10000, 11000] },
+    { x: 4, y: 7, itemId: 'polunitsa', remainingByQuadrant: [1500, 2500, 3500, 4500] },
+    { x: 5, y: 7, itemId: 'polunitsa', remainingByQuadrant: [2000, 3000, 4000, 5000] },
+    { x: 4, y: 8, itemId: 'pump', remainingByQuadrant: [2000, 3000, 4000, 5000] },
+    { x: 5, y: 8, itemId: 'pump', remainingByQuadrant: [3000, 4000, 5000, 6000] },
+    { x: 6, y: 8, itemId: 'pump', remainingByQuadrant: [1000, 2500, 4000, 6500] },
 ];
 
 const starterPlants = [
     { x: 5, y: 3, quadrant: 0, itemId: 'apple_tree', remainingMs: 2000 },
-    { x: 8, y: 5, quadrant: 0, itemId: 'chicken', remainingMs: 85000 },
-    { x: 7, y: 2, quadrant: 0, itemId: 'malina', remainingMs: 1500 },
-    { x: 8, y: 2, quadrant: 0, itemId: 'malina', remainingMs: 2200 },
-    { x: 9, y: 2, quadrant: 0, itemId: 'malina', remainingMs: 2900 },
-    { x: 2, y: 5, quadrant: 0, itemId: 'kolodiaz' },
+    { x: 7, y: 6, quadrant: 0, itemId: 'chicken', remainingMs: 85000 },
+    { x: 7, y: 3, quadrant: 0, itemId: 'malina', remainingMs: 1500 },
+    { x: 8, y: 3, quadrant: 0, itemId: 'malina', remainingMs: 2200 },
+    { x: 9, y: 3, quadrant: 0, itemId: 'malina', remainingMs: 2900 },
+    { x: 3, y: 5, quadrant: 0, itemId: 'kolodiaz' },
 ];
 
 const getPlacedAt = (itemId, now, remainingMs) => {
