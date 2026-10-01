@@ -132,6 +132,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
       {/* НИЖНЯ ПАНЕЛЬ ІКОНОК */}
       <div style={{ ...styles.actionPanel, opacity: isSettingsOpen ? 1 : 0, transform: isSettingsOpen ? 'translate(-50%, 0)' : 'translate(-50%, 10px)', pointerEvents: isSettingsOpen ? 'auto' : 'none' }}>
         <button
+          className="hud-pressable"
           style={activeTool === 'move' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
           onClick={() => toggleTool('move')}
           aria-label="Переміщення"
@@ -141,6 +142,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
           {activeTool === 'move' && <span style={styles.toolCancelBadge}>×</span>}
         </button>
         <button
+          className="hud-pressable"
           style={activeTool === 'rotate' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
           onClick={() => toggleTool('rotate')}
           aria-label="Переворот"
@@ -153,6 +155,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
 
       <div style={styles.bottomPanelNoBg}>
         <button 
+          className="hud-pressable"
           style={activeTool === 'shovel' ? { ...styles.cleanIconBtn, ...styles.activeToolGlow } : styles.cleanIconBtn}
           onClick={() => toggleTool('shovel')}
         >
@@ -160,6 +163,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
         </button>
 
         <button 
+          className="hud-pressable"
           style={activeTool === 'trash' ? { ...styles.cleanIconBtn, ...styles.activeToolGlow } : styles.cleanIconBtn}
           onClick={() => toggleTool('trash')}
         >
@@ -167,6 +171,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
         </button>
 
         <button
+          className="hud-pressable"
           style={isSettingsOpen ? { ...styles.cleanIconBtn, ...styles.activeToolGlow } : styles.cleanIconBtn}
           onClick={toggleSettings}
           aria-label="Налаштування предмета"
@@ -176,7 +181,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
         </button>
 
         {/* КНОПКА МАГАЗИНУ (Або скасувати якщо вибрано дерево) */}
-        <button style={styles.cleanIconBtn} onClick={() => {
+        <button className="hud-pressable" style={styles.cleanIconBtn} onClick={() => {
             if (activeTool && activeTool.startsWith('place_')) {
                 setActiveTool(null); // Скасовуємо посадку
             } else {
@@ -190,7 +195,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
           )}
         </button>
 
-        <button style={styles.cleanIconBtn} onClick={() => setIsInventoryOpen(true)} aria-label="Відкрити інвентар">
+        <button className="hud-pressable" style={styles.cleanIconBtn} onClick={() => setIsInventoryOpen(true)} aria-label="Відкрити інвентар">
           <img src="/assets/ui/cklad.png" alt="Склад" style={styles.bottomIconImg} draggable={false} />
         </button>
       </div>

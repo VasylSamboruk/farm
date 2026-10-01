@@ -55,6 +55,31 @@ html, body, #root {
   user-select: none !important;
 }
 .game-level-control { touch-action: manipulation; }
+.hud-pressable {
+  position: relative;
+  transform-origin: center;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  transition: transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 150ms ease;
+}
+.hud-pressable::before {
+  position: absolute;
+  z-index: 0;
+  inset: 7%;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 16px;
+  background: radial-gradient(circle, rgba(255,255,255,0.24), rgba(255,255,255,0.02) 72%);
+  content: '';
+  opacity: 0;
+  transform: scale(0.78);
+  transition: opacity 150ms ease, transform 150ms ease;
+  pointer-events: none;
+}
+.hud-pressable:active { transform: scale(0.86) !important; filter: drop-shadow(0 0 11px rgba(255,255,255,0.58)) brightness(1.18) !important; }
+.hud-pressable:active::before { opacity: 1; transform: scale(1); }
+.app-shell[data-theme='dark'] .hud-pressable:active { filter: drop-shadow(0 0 12px rgba(190,155,245,0.82)) brightness(1.2) !important; }
+.app-shell[data-theme='light'] .hud-pressable:active { filter: drop-shadow(0 0 12px rgba(89,203,151,0.82)) brightness(1.12) !important; }
 
 .modal-scrollbar-hidden {
   scrollbar-width: none;
@@ -2011,6 +2036,11 @@ html, body, #root {
 .app-shell .friend-farm-inventory p,
 .app-shell .friend-farm-inventory li { color: #65788e; }
 .app-shell .friend-farm-inventory li strong { color: #348161; }
+.app-shell .friend-id-copy { padding: 2px 6px; border: 1px solid rgba(117,139,160,0.28); border-radius: 8px; color: #536a82; background: rgba(239,245,250,0.62); }
+.app-shell .friend-id-copy > svg { color: #547d6e; }
+.app-shell .friend-id-copy:hover { color: #286f53; background: rgba(224,242,232,0.9); }
+.app-shell .friend-total-xp { color: #50677f; }
+.app-shell .friend-level-medallion strong { color: #fff !important; text-shadow: 0 1px 2px #2c1e16, 1px 0 #2c1e16, -1px 0 #2c1e16, 0 0 4px rgba(0,0,0,0.75) !important; }
 .app-shell[data-theme='dark'] .friend-farm-player,
 .app-shell[data-theme='dark'] .friend-farm-inventory {
   border-color: rgba(165,151,190,0.42);
@@ -2039,6 +2069,11 @@ html, body, #root {
 .app-shell[data-theme='dark'] .friend-farm-inventory p,
 .app-shell[data-theme='dark'] .friend-farm-inventory li { color: #c6bdd5; }
 .app-shell[data-theme='dark'] .friend-farm-inventory li strong { color: #d2b8f1; }
+.app-shell[data-theme='dark'] .friend-id-copy { border-color: rgba(176,157,205,0.38); color: #d2c4e7; background: rgba(69,58,88,0.72); }
+.app-shell[data-theme='dark'] .friend-id-copy > svg { color: #cfb7ef; }
+.app-shell[data-theme='dark'] .friend-id-copy:hover { color: #f1e8fc; background: rgba(105,82,139,0.84); }
+.app-shell[data-theme='dark'] .friend-total-xp { color: #d0c4e0; }
+.app-shell[data-theme='dark'] .friend-level-medallion strong { color: #fff !important; text-shadow: 0 1px 2px #1b1110, 1px 0 #1b1110, -1px 0 #1b1110, 0 0 5px rgba(0,0,0,0.85) !important; }
 
 .auth-form-screen {
   display: grid;
