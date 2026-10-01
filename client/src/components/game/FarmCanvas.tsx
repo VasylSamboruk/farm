@@ -16,6 +16,7 @@ import {
   getTreeGrowthStage,
   getTreeHarvestReadyAt,
   isPointOnReadyTree,
+  formatGameDuration,
   TREE_RENDER_HEIGHT,
 } from '../../game/trees';
 import { getLoadedGameImage, preloadGameImages } from '../../game/sprites';
@@ -113,24 +114,32 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     const backgroundImage = getLoadedGameImage('/assets/fonik1.png');
     const grassImage = getLoadedGameImage('/assets/tiles/grass_tile.png');
     const dirtImage = getLoadedGameImage('/assets/tiles/dirt_tile.png');
+    let viewportWidth = 1;
+    let viewportHeight = 1;
 
     const resizeCanvas = () => {
       const bounds = canvas.getBoundingClientRect();
-      canvas.width = Math.max(1, Math.round(bounds.width));
-      canvas.height = Math.max(1, Math.round(bounds.height));
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
+      viewportWidth = Math.max(1, Math.round(bounds.width));
+      viewportHeight = Math.max(1, Math.round(bounds.height));
+      canvas.width = Math.max(1, Math.round(viewportWidth * pixelRatio));
+      canvas.height = Math.max(1, Math.round(viewportHeight * pixelRatio));
+      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
     };
 
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    cameraRef.current.x = canvas.width / 2;
-    cameraRef.current.y = readOnly ? canvas.height / 2 : canvas.height / 4.5;
+    cameraRef.current.x = viewportWidth / 2;
+    cameraRef.current.y = readOnly ? viewportHeight / 2 : viewportHeight / 4.5;
     if (readOnly) {
       const worldWidth = (GRID_CONFIG.cols + GRID_CONFIG.rows) * GRID_CONFIG.tileWidth / 2;
       const worldHeight = (GRID_CONFIG.cols + GRID_CONFIG.rows) * GRID_CONFIG.tileHeight / 2 + TREE_RENDER_HEIGHT;
       cameraRef.current.minZoom = 0.06;
       cameraRef.current.maxZoom = 1.4;
-      cameraRef.current.zoom = Math.min(canvas.width / worldWidth, canvas.height / worldHeight) * 0.92;
+      cameraRef.current.zoom = Math.min(viewportWidth / worldWidth, viewportHeight / worldHeight) * 0.92;
     }
 
     const drawIsometricDiamond = (isoX: number, isoY: number, halfW: number, halfH: number, scale = 1) => {
@@ -163,36 +172,35 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
 
     const drawItemTooltip = (name: string, status: string, centerX: number, topY: number) => {
       ctx.save();
-      ctx.font = '700 13px sans-serif';
+      const scale = 1 / cameraRef.current.zoom;
+      const titleFontSize = 13 * scale;
+      const statusFontSize = 11 * scale;
+      const horizontalPadding = 24 * scale;
       const title = name.length > 24 ? `${name.slice(0, 23)}…` : name;
       const titleOnly = status.length === 0;
-      const height = titleOnly ? 28 : 42;
-      const width = Math.max(ctx.measureText(title).width, titleOnly ? 0 : ctx.measureText(status).width) + 24;
+      const height = (titleOnly ? 28 : 42) * scale;
+      ctx.font = `700 ${titleFontSize}px sans-serif`;
+      const width = Math.max(ctx.measureText(title).width, titleOnly ? 0 : ctx.measureText(status).width) + horizontalPadding;
       const left = centerX - width / 2;
-      const top = topY - height - 4;
+      const top = topY - height - 4 * scale;
 
       ctx.fillStyle = 'rgba(18, 28, 24, 0.94)';
       ctx.strokeStyle = 'rgba(213, 236, 192, 0.8)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(left, top, width, height, 9);
+      ctx.roundRect(left, top, width, height, 9 * scale);
       ctx.fill();
       ctx.stroke();
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(title, centerX, titleOnly ? top + height / 2 : top + 13);
+      ctx.fillText(title, centerX, titleOnly ? top + height / 2 : top + 13 * scale);
       if (!titleOnly) {
-        ctx.font = '600 11px sans-serif';
+        ctx.font = `600 ${statusFontSize}px sans-serif`;
         ctx.fillStyle = '#c5e8a6';
-        ctx.fillText(status, centerX, top + 30);
+        ctx.fillText(status, centerX, top + 30 * scale);
       }
       ctx.restore();
-    };
-
-    const formatTimeLeft = (milliseconds: number) => {
-      const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
-      return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
     };
 
     // ФУНКЦІЯ: Додати вилітаючий текст
@@ -223,25 +231,25 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     };
 
     const render = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, viewportWidth, viewportHeight);
 
       if (backgroundImage) {
         const backgroundScale = Math.max(
-          canvas.width / backgroundImage.naturalWidth,
-          canvas.height / backgroundImage.naturalHeight
+          viewportWidth / backgroundImage.naturalWidth,
+          viewportHeight / backgroundImage.naturalHeight
         );
         const backgroundWidth = backgroundImage.naturalWidth * backgroundScale;
         const backgroundHeight = backgroundImage.naturalHeight * backgroundScale;
         ctx.drawImage(
           backgroundImage,
-          (canvas.width - backgroundWidth) / 2,
-          (canvas.height - backgroundHeight) / 2,
+          (viewportWidth - backgroundWidth) / 2,
+          (viewportHeight - backgroundHeight) / 2,
           backgroundWidth,
           backgroundHeight
         );
       } else {
         ctx.fillStyle = '#1b222d';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, viewportWidth, viewportHeight);
       }
 
       ctx.save();
@@ -415,7 +423,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
                       status = 'Очікує збору';
                     }
                   } else if (Date.now() < getTreeHarvestReadyAt(treeData, item)) {
-                    status = `До готовності: ${formatTimeLeft(getTreeHarvestReadyAt(treeData, item) - now)}`;
+                    status = `До готовності: ${formatGameDuration(getTreeHarvestReadyAt(treeData, item) - now)}`;
                   }
                   drawItemTooltip(
                     item.name,
@@ -641,7 +649,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           if (item.type !== 'BUILDING' && queueIndex >= 0) {
             status = queueIndex === 0 && activeHarvestStartedAtRef.current !== null ? 'Збираємо' : 'Очікує збору';
           } else if (item.type !== 'BUILDING' && !itemState.isReady && Number.isFinite(itemState.readyAt)) {
-            status = `До готовності: ${formatTimeLeft(itemState.readyAt - now)}`;
+            status = `До готовності: ${formatGameDuration(itemState.readyAt - now)}`;
           }
           drawItemTooltip(
             item.name,
@@ -678,8 +686,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
         const offsetY = progress * 60; // Піднімається на 60px вгору
         const alpha = 1 - Math.pow(progress, 3); // Плавне затухання в кінці
         const imageLine = ft.lines.find((line) => line.image);
-        const popupFontSize = 18 / cameraRef.current.zoom;
-        const popupOutlineWidth = 4 / cameraRef.current.zoom;
+        const popupFontSize = 15 / cameraRef.current.zoom;
+        const popupOutlineWidth = 2 / cameraRef.current.zoom;
 
         ctx.save();
         ctx.globalAlpha = alpha;
@@ -711,21 +719,47 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           }
         }
         ctx.font = `900 ${popupFontSize}px 'Inter', sans-serif`;
-        ctx.textAlign = "center";
-        
+        ctx.textBaseline = 'middle';
         ft.lines.forEach((line, index) => {
-           const textY = ft.y - 20 - offsetY - (index * 22);
-           const image = getLoadedGameImage(line.image);
-           if (image) {
-             ctx.drawImage(image, ft.x - 34, textY - 13, 26, 26);
-           }
-           ctx.lineWidth = popupOutlineWidth;
-           ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-           ctx.strokeText(line.msg, ft.x, textY);
-           // Сам текст
-           ctx.fillStyle = line.color;
-           ctx.fillText(line.msg, ft.x, textY);
+          const image = line.image ? getLoadedGameImage(line.image) : undefined;
+          const iconSize = image ? 17 / cameraRef.current.zoom : 0;
+          const gap = image ? 5 / cameraRef.current.zoom : 0;
+          const horizontalPadding = 8 / cameraRef.current.zoom;
+          const rowHeight = 25 / cameraRef.current.zoom;
+          const textWidth = ctx.measureText(line.msg).width;
+          const rowWidth = horizontalPadding * 2 + iconSize + gap + textWidth;
+          const rowCenterY = ft.y - (54 / cameraRef.current.zoom) - offsetY -
+            index * (rowHeight + 4 / cameraRef.current.zoom);
+          const rowLeft = ft.x - rowWidth / 2;
+          const rowTop = rowCenterY - rowHeight / 2;
+
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.38)';
+          ctx.shadowBlur = 8 / cameraRef.current.zoom;
+          ctx.fillStyle = 'rgba(20, 29, 24, 0.9)';
+          ctx.strokeStyle = 'rgba(255, 235, 190, 0.82)';
+          ctx.lineWidth = 1 / cameraRef.current.zoom;
+          ctx.beginPath();
+          ctx.roundRect(rowLeft, rowTop, rowWidth, rowHeight, rowHeight / 2);
+          ctx.fill();
+          ctx.stroke();
+
+          let textX = ft.x;
+          if (image) {
+            ctx.drawImage(image, rowLeft + horizontalPadding, rowCenterY - iconSize / 2, iconSize, iconSize);
+            textX = rowLeft + horizontalPadding + iconSize + gap;
+          }
+          ctx.font = `900 ${popupFontSize}px 'Inter', sans-serif`;
+          ctx.textAlign = image ? 'left' : 'center';
+          ctx.lineWidth = popupOutlineWidth;
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.82)';
+          ctx.strokeText(line.msg, textX, rowCenterY);
+          ctx.fillStyle = line.color;
+          ctx.fillText(line.msg, textX, rowCenterY);
+          ctx.restore();
         });
+          hoveredTile.current = null;
         
         ctx.restore();
         return true;
@@ -999,6 +1033,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
 
       const touch = e.touches[0];
       if (!touch) return;
+      const touchedItem = getReadyItemAtScreen(touch.clientX, touch.clientY, false);
+      hoveredTile.current = touchedItem ?? (activeToolRef.current ? getGridTileFromScreen(touch.clientX, touch.clientY) : null);
       pointerDownOnCanvas.current = true;
       isDragging.current = true;
       pointerDownPosition.current = { x: touch.clientX, y: touch.clientY };
@@ -1045,6 +1081,11 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
         return;
       }
       if (!isDragging.current) return;
+      const panDistance = Math.hypot(
+        touch.clientX - pointerDownPosition.current.x,
+        touch.clientY - pointerDownPosition.current.y
+      );
+      if (panDistance < 8) return;
       hoveredTile.current = null;
       cameraRef.current.x = touch.clientX - startPan.current.x;
       cameraRef.current.y = touch.clientY - startPan.current.y;

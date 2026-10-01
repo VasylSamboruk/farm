@@ -4,6 +4,7 @@ import { useGameConfigStore } from '../../store/useGameConfigStore';
 import { useToolStore } from '../../store/useToolStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import type { GameItemType } from '../../types/game';
+import { formatGameDuration } from '../../game/trees';
 
 interface ShopModalProps {
   isOpen: boolean;
@@ -16,18 +17,6 @@ const CATEGORIES: { type: GameItemType; label: string }[] = [
   { type: 'ANIMAL', label: '🐮 Тварини' },
   { type: 'BUILDING', label: '🏠 Декор' },
 ];
-
-const formatDuration = (durationMs: number) => {
-  const totalSeconds = Math.ceil(durationMs / 1000);
-  if (totalSeconds < 60) return `${totalSeconds} с`;
-
-  const totalMinutes = Math.ceil(totalSeconds / 60);
-  if (totalMinutes < 60) return `${totalMinutes} хв`;
-
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return minutes ? `${hours} год ${minutes} хв` : `${hours} год`;
-};
 
 export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<GameItemType>('TREE');
@@ -123,10 +112,10 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div style={styles.statsContainer}>
                 <div style={styles.statRow}><span>Доступно з:</span><span style={styles.levelRequirement}>{item.requiredLevel ?? 1} рівня</span></div>
-                {item.productionTimeMs !== undefined && (
+                {item.type !== 'BUILDING' && typeof item.productionTimeMs === 'number' && item.productionTimeMs > 0 && (
                   <div style={styles.statRow}>
                     <span>Готовність:</span>
-                    <span>{formatDuration(item.productionTimeMs)}</span>
+                    <span>{formatGameDuration(item.productionTimeMs)}</span>
                   </div>
                 )}
                 <div style={styles.statRow}><span>Досвід:</span><span style={{ color: '#8b5ac7', fontWeight: 'bold' }}>+{item.plantingXp} XP</span></div>

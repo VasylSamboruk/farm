@@ -910,8 +910,6 @@ html, body, #root {
 .admin-pagination button:disabled { opacity: 0.45; cursor: default; }
 .admin-details-panel { overflow: auto; padding: 17px; }
 .admin-workspace.is-mechanics-view .admin-price-panel { min-height: 0; }
-.admin-create-catalog-item { margin-bottom: 12px; }
-.admin-create-catalog-item .admin-primary-button { width: 100%; }
 .admin-catalog-category-tabs { display: flex; gap: 6px; margin: 0 0 11px; padding: 3px 2px 7px; overflow-x: auto; scrollbar-width: thin; }
 .admin-catalog-category-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 auto; min-height: 34px; padding: 0 11px; border: 1px solid #c8a66d; border-radius: 7px; color: #684a2b; background: rgba(255, 250, 231, 0.82); font: 800 10px 'Trebuchet MS', system-ui, sans-serif; cursor: pointer; }
 .admin-catalog-category-tabs button.is-active { border-color: #36732a; color: #fff9dd; background: linear-gradient(180deg, #76bd42, #438e28); box-shadow: inset 0 1px 0 rgba(235, 255, 187, 0.62), 0 2px 0 #2c6022; }

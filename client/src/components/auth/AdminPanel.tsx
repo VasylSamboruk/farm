@@ -114,7 +114,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [banDuration, setBanDuration] = useState('10');
   const [banReason, setBanReason] = useState('');
   const [itemDrafts, setItemDrafts] = useState<Record<string, AdminItemDraft>>({});
-  const [createDraft, setCreateDraft] = useState({ templateItemId: '', name: '', price: '100', access: 'all' as 'all' | 'admin' });
   const [priceBusyId, setPriceBusyId] = useState<string | null>(null);
   const [showFarmPreview, setShowFarmPreview] = useState(false);
   const [confirmFarmClear, setConfirmFarmClear] = useState(false);
@@ -164,7 +163,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
       if (!active) return;
       setItemDrafts(Object.fromEntries(loadedCatalog.map((item) => [item.id, getItemDraft(item)])));
       setCatalog(loadedCatalog);
-      setCreateDraft((current) => ({ ...current, templateItemId: loadedCatalog[0]?.id ?? '' }));
       setUsers(result.users);
       setTotal(result.total);
       setPages(Math.max(1, result.pages));
@@ -401,35 +399,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     }
   };
 
-  const handleCreateCatalogItem = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const price = Number(createDraft.price);
-    if (!createDraft.templateItemId || createDraft.name.trim().length < 2 || createDraft.name.trim().length > 120 || !Number.isSafeInteger(price) || price < 0) {
-      setError('Вкажи шаблон, назву від 2 символів і коректну ціну.');
-      return;
-    }
-    setPriceBusyId('new-item');
-    setError('');
-    setNotice('');
-    try {
-      const item = await adminApi.createCatalogItem({
-        templateItemId: createDraft.templateItemId,
-        name: createDraft.name.trim(),
-        price,
-        access: createDraft.access,
-      });
-      setCatalog((current) => [...current, item]);
-      setItemDrafts((current) => ({ ...current, [item.id]: getItemDraft(item) }));
-      setCreateDraft((current) => ({ ...current, name: '', price: '100' }));
-      await loadGameItems(true);
-      setNotice(`Товар «${item.name}» додано в механіку й магазин.`);
-    } catch (requestError) {
-      setError(getErrorMessage(requestError));
-    } finally {
-      setPriceBusyId(null);
-    }
-  };
-
   const openFarmPreview = async () => {
     if (!selectedUser) return;
     setBusy(true);
@@ -604,16 +573,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             <header className="admin-price-heading"><div><span className="admin-kicker">КАТАЛОГ І ДОСТУПИ</span><h1>Механіка магазину</h1></div><span>{catalog.length} позицій</span></header>
             {error && <p className="admin-message admin-error" role="alert">{error}</p>}
             {notice && <p className="admin-message admin-success" role="status">{notice}</p>}
-            <form className="admin-action-card admin-create-catalog-item" onSubmit={(event) => void handleCreateCatalogItem(event)}>
-              <div className="admin-action-title"><PackagePlus size={18} /><h3>Додати товар за шаблоном</h3></div>
-              <div className="admin-input-pair">
-                <label>Шаблон<select value={createDraft.templateItemId} onChange={(event) => setCreateDraft((current) => ({ ...current, templateItemId: event.target.value }))} required><option value="">Обери предмет</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.type}</option>)}</select></label>
-                <label>Назва<input value={createDraft.name} onChange={(event) => setCreateDraft((current) => ({ ...current, name: event.target.value }))} minLength={2} maxLength={120} required /></label>
-                <label>Ціна<input type="number" min="0" step="1" value={createDraft.price} onChange={(event) => setCreateDraft((current) => ({ ...current, price: event.target.value }))} required /></label>
-                <label>Доступ<select value={createDraft.access} onChange={(event) => setCreateDraft((current) => ({ ...current, access: event.target.value as 'all' | 'admin' }))}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option></select></label>
-              </div>
-              <button className="admin-primary-button" type="submit" disabled={priceBusyId === 'new-item'}>{priceBusyId === 'new-item' ? 'Додаємо…' : 'Додати товар'}</button>
-            </form>
             <div className="admin-catalog-category-tabs" role="tablist" aria-label="Категорії магазину">
               <button className={catalogCategory === 'ALL' ? 'is-active' : ''} type="button" role="tab" aria-selected={catalogCategory === 'ALL'} onClick={() => setCatalogCategory('ALL')}>Усі <span>{catalog.length}</span></button>
               {SHOP_CATEGORIES.map((category) => {

@@ -73,10 +73,6 @@ export const adminApi = {
     const response = await api.get<{ items: AdminCatalogItem[] }>('/admin/catalog');
     return response.data.items;
   },
-  createCatalogItem: async (item: { templateItemId: string; name: string; price: number; access: 'all' | 'admin' }) => {
-    const response = await api.post<{ item: AdminCatalogItem }>('/admin/catalog', item);
-    return response.data.item;
-  },
   updatePrices: async (itemId: string, price: number, sellPrice?: number) => {
     const response = await api.patch<{ item: AdminCatalogItem }>(`/admin/catalog/${itemId}/prices`, {
       price,

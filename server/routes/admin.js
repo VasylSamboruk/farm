@@ -1,11 +1,10 @@
 import express from 'express';
-import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import Farm from '../models/Farm.js';
 import User from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
-import { createGameItem, getGameItem, listGameItems, reorderGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
+import { getGameItem, listGameItems, reorderGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 
 const router = express.Router();
@@ -103,41 +102,6 @@ const serializeCatalogItem = (item) => ({
 router.get('/catalog', (_req, res) => {
     const items = listGameItems().map(serializeCatalogItem);
     return res.json({ items });
-});
-
-router.post('/catalog', async (req, res) => {
-    try {
-        const template = getGameItem(req.body?.templateItemId);
-        const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
-        const price = req.body?.price;
-        const access = req.body?.access;
-        if (!template) return res.status(400).json({ message: 'Обери шаблон товару' });
-        if (name.length < 2 || name.length > 120) return res.status(400).json({ message: 'Назва має містити від 2 до 120 символів' });
-        if (!Number.isSafeInteger(price) || price < 0) return res.status(400).json({ message: 'Ціна має бути невід’ємним цілим числом' });
-        if (access !== 'all' && access !== 'admin') return res.status(400).json({ message: 'Некоректний доступ до товару' });
-
-        const id = `custom_${randomUUID().replaceAll('-', '')}`;
-        const item = {
-            ...template,
-            id,
-            name,
-            price,
-            sortOrder: listGameItems()
-                .filter((entry) => entry.type === template.type)
-                .reduce((maximum, entry) => Math.max(maximum, entry.sortOrder ?? 0), 0) + 1,
-            access,
-            custom: true,
-            ...(template.yieldItem ? {
-                yieldItem: `${id}_yield`,
-                yieldName: `${name} · продукт`,
-            } : {}),
-        };
-        const createdItem = await createGameItem(item);
-        if (!createdItem) return res.status(409).json({ message: 'Не вдалося створити товар' });
-        return res.status(201).json({ item: serializeCatalogItem(createdItem) });
-    } catch (error) {
-        return res.status(500).json({ message: 'Не вдалося створити товар', error: error.message });
-    }
 });
 
 router.patch('/catalog/:itemId/config', async (req, res) => {

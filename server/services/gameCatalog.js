@@ -42,23 +42,6 @@ export const listGameItems = () => {
         });
 };
 
-export const createGameItem = async (item) => {
-    if (!item?.id || GAME_ITEMS[item.id] || priceOverrides.has(item.id)) return null;
-
-    const record = await GameItemPrice.create({
-        itemId: item.id,
-        config: item,
-        price: item.price,
-        ...(Number.isSafeInteger(item.sellPrice) ? { sellPrice: item.sellPrice } : {}),
-    });
-    priceOverrides.set(item.id, {
-        ...(record.config && typeof record.config === 'object' ? record.config : {}),
-        ...(Number.isSafeInteger(record.price) ? { price: record.price } : {}),
-        ...(Number.isSafeInteger(record.sellPrice) ? { sellPrice: record.sellPrice } : {}),
-    });
-    return getGameItem(item.id);
-};
-
 export const updateGameItemPrices = async (itemId, updates) => {
     const item = getGameItem(itemId);
     if (!item) return null;

@@ -9,7 +9,6 @@ export const buildings = [
 		canFlip: true,
 		price: 5000,
 		plantingXp: 100,
-		requiredLevel: 88,
 		shopIcon: '🏠',
 		shopImage: '/assets/buildings/barn/barn.png',
 		growthImages: ['/assets/buildings/barn/barn.png'],

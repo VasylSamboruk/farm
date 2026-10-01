@@ -10,6 +10,19 @@ export interface TreeTileTiming {
 export const TREE_RENDER_HEIGHT = 256;
 export const getTreeRenderHeight = (item: GameItemConfig) => TREE_RENDER_HEIGHT * (item.spriteScale ?? 1);
 
+export const formatGameDuration = (milliseconds: number) => {
+  if (!Number.isFinite(milliseconds)) return '—';
+  const duration = Math.max(0, milliseconds);
+  const totalSeconds = Math.ceil(duration / 1000);
+  if (totalSeconds < 60) return `${totalSeconds} с`;
+
+  const hours = Math.floor(duration / 3_600_000);
+  const remainingMilliseconds = duration - hours * 3_600_000;
+  const minutes = Math.min(59, Math.ceil(remainingMilliseconds / 60_000));
+  if (hours === 0) return `${Math.max(1, minutes)} хв`;
+  return minutes ? `${hours} год ${minutes} хв` : `${hours} год`;
+};
+
 const GROWTH_PHASE_RATIO = 0.8;
 const DEFAULT_TREE_GROWTH_ICONS = ['🌱', '🌿', '🌳'];
 
