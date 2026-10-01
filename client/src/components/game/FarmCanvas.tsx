@@ -114,19 +114,28 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     const backgroundImage = getLoadedGameImage('/assets/fonik1.png');
     const grassImage = getLoadedGameImage('/assets/tiles/grass_tile.png');
     const dirtImage = getLoadedGameImage('/assets/tiles/dirt_tile.png');
+    const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+    const hardwareConcurrency = navigator.hardwareConcurrency ?? 0;
+    const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const lowEndDevice = hardwareConcurrency > 0 && hardwareConcurrency <= 4 ||
+      deviceMemory !== undefined && deviceMemory <= 4 ||
+      isCoarsePointer && hardwareConcurrency === 0 && deviceMemory === undefined;
+    const pixelRatioLimit = lowEndDevice ? 1.5 : 2;
+    const targetFrameInterval = lowEndDevice ? 1000 / 30 : 1000 / 60;
     let viewportWidth = 1;
     let viewportHeight = 1;
+    let lastRenderedAt = 0;
 
     const resizeCanvas = () => {
       const bounds = canvas.getBoundingClientRect();
-      const pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, pixelRatioLimit);
       viewportWidth = Math.max(1, Math.round(bounds.width));
       viewportHeight = Math.max(1, Math.round(bounds.height));
       canvas.width = Math.max(1, Math.round(viewportWidth * pixelRatio));
       canvas.height = Math.max(1, Math.round(viewportHeight * pixelRatio));
       ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+      ctx.imageSmoothingQuality = lowEndDevice ? 'medium' : 'high';
     };
 
     window.addEventListener('resize', resizeCanvas);
@@ -230,7 +239,11 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       });
     };
 
-    const render = () => {
+    const render = (frameTime: number) => {
+      animationFrameId = requestAnimationFrame(render);
+      if (frameTime - lastRenderedAt < targetFrameInterval) return;
+      lastRenderedAt = frameTime;
+
       ctx.clearRect(0, 0, viewportWidth, viewportHeight);
 
       if (backgroundImage) {
@@ -766,10 +779,9 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       });
 
       ctx.restore();
-      animationFrameId = requestAnimationFrame(render);
     };
 
-    render();
+    animationFrameId = requestAnimationFrame(render);
 
     const getGridTileFromScreen = (screenX: number, screenY: number) => {
       const { tileWidth, tileHeight, cols, rows } = GRID_CONFIG;

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Farm from '../models/Farm.js';
 import { getLevelProgress } from '../config/progression.js';
+import { createStarterFarmTiles } from '../services/starterFarm.js';
 
 const router = express.Router();
 
@@ -30,10 +31,10 @@ router.post('/register', async (req, res) => {
 
         await newUser.save();
 
-        // 4. Створюємо порожню ферму
+        // 4. Створюємо стартову ферму з посадженими культурами та тваринами
         const newFarm = new Farm({
             userId: newUser._id,
-            tiles: []
+            tiles: createStarterFarmTiles()
         });
         await newFarm.save();
 
