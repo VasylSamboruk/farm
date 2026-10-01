@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { HARVEST_QUEUE_DURATION_MS, useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
 import { useAuthStore } from '../../store/authStore';
@@ -44,6 +44,15 @@ interface FarmCanvasProps {
 
 export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previewTiles }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [pendingSale, setPendingSale] = useState<{
+    row: number;
+    col: number;
+    quadrant: number;
+    name: string;
+    image?: string;
+    icon: string;
+    refund: number;
+  } | null>(null);
 
   const {
     tiles,
@@ -179,7 +188,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       }
     };
 
-    const drawItemTooltip = (name: string, status: string, centerX: number, topY: number) => {
+    const drawItemTooltip = (name: string, status: string, centerX: number, anchorY: number) => {
       ctx.save();
       const scale = 1 / cameraRef.current.zoom;
       const titleFontSize = 13 * scale;
@@ -188,26 +197,35 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       const title = name.length > 24 ? `${name.slice(0, 23)}…` : name;
       const titleOnly = status.length === 0;
       const height = (titleOnly ? 28 : 42) * scale;
-      ctx.font = `700 ${titleFontSize}px sans-serif`;
+      ctx.font = `700 ${titleFontSize}px 'FarmBody', sans-serif`;
       const width = Math.max(ctx.measureText(title).width, titleOnly ? 0 : ctx.measureText(status).width) + horizontalPadding;
-      const left = centerX - width / 2;
-      const top = topY - height - 4 * scale;
+      const viewportLeft = -cameraRef.current.x / cameraRef.current.zoom;
+      const viewportRight = (canvas.clientWidth - cameraRef.current.x) / cameraRef.current.zoom;
+      const left = Math.max(viewportLeft + 8 * scale, Math.min(centerX - width / 2, viewportRight - width - 8 * scale));
+      const tooltipCenterX = left + width / 2;
+      const desiredTop = anchorY + 8 * scale;
+      const viewportBottom = (canvas.clientHeight - cameraRef.current.y) / cameraRef.current.zoom;
+      const top = Math.min(desiredTop, viewportBottom - height - 8 * scale);
+      const isDarkTheme = document.querySelector('.app-shell')?.getAttribute('data-theme') === 'dark';
 
-      ctx.fillStyle = 'rgba(18, 28, 24, 0.94)';
-      ctx.strokeStyle = 'rgba(213, 236, 192, 0.8)';
-      ctx.lineWidth = 1;
+      ctx.shadowColor = isDarkTheme ? 'rgba(6, 5, 12, 0.48)' : 'rgba(30, 48, 68, 0.2)';
+      ctx.shadowBlur = 12 * scale;
+      ctx.fillStyle = isDarkTheme ? 'rgba(43, 40, 56, 0.97)' : 'rgba(250, 252, 255, 0.94)';
+      ctx.strokeStyle = isDarkTheme ? 'rgba(159, 139, 191, 0.8)' : 'rgba(255, 255, 255, 0.98)';
+      ctx.lineWidth = scale;
       ctx.beginPath();
       ctx.roundRect(left, top, width, height, 9 * scale);
       ctx.fill();
       ctx.stroke();
+      ctx.shadowBlur = 0;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(title, centerX, titleOnly ? top + height / 2 : top + 13 * scale);
+      ctx.fillStyle = isDarkTheme ? '#f0eafa' : '#253449';
+      ctx.fillText(title, tooltipCenterX, titleOnly ? top + height / 2 : top + 13 * scale);
       if (!titleOnly) {
-        ctx.font = `600 ${statusFontSize}px sans-serif`;
-        ctx.fillStyle = '#c5e8a6';
-        ctx.fillText(status, centerX, top + 30 * scale);
+        ctx.font = `600 ${statusFontSize}px 'FarmBody', sans-serif`;
+        ctx.fillStyle = isDarkTheme ? '#c9a8f3' : '#218a55';
+        ctx.fillText(status, tooltipCenterX, top + 30 * scale);
       }
       ctx.restore();
     };
@@ -273,6 +291,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       const halfW = tileWidth / 2;
       const halfH = tileHeight / 2;
       const now = Date.now();
+      let pendingTooltip: { name: string; status: string; centerX: number; anchorY: number } | null = null;
       const gridCellKeys = new Set<string>();
       const footprintCellKeys = new Set<string>();
       const hovered = hoveredTile.current;
@@ -438,12 +457,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
                   } else if (Date.now() < getTreeHarvestReadyAt(treeData, item)) {
                     status = `До готовності: ${formatGameDuration(getTreeHarvestReadyAt(treeData, item) - now)}`;
                   }
-                  drawItemTooltip(
-                    item.name,
-                    status,
-                    centerX,
-                    groundY - (item.type === 'TREE' ? getTreeRenderHeight(item) : 96) - 4
-                  );
+                  pendingTooltip = { name: item.name, status, centerX, anchorY: groundY };
                 }
               }
             }
@@ -664,12 +678,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           } else if (item.type !== 'BUILDING' && !itemState.isReady && Number.isFinite(itemState.readyAt)) {
             status = `До готовності: ${formatGameDuration(itemState.readyAt - now)}`;
           }
-          drawItemTooltip(
-            item.name,
-            status,
-            centerX,
-            groundY - (item.type === 'TREE' ? getTreeRenderHeight(item) : 96) - 4
-          );
+          pendingTooltip = { name: item.name, status, centerX, anchorY: groundY };
         }
       };
 
@@ -719,7 +728,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
             return true;
           }
           if (!imageLine?.image) {
-            ctx.font = `900 ${popupFontSize}px 'Inter', sans-serif`;
+            ctx.font = `900 ${popupFontSize}px 'FarmBody', sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.lineWidth = popupOutlineWidth;
@@ -731,7 +740,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
             return true;
           }
         }
-        ctx.font = `900 ${popupFontSize}px 'Inter', sans-serif`;
+        ctx.font = `900 ${popupFontSize}px 'FarmBody', sans-serif`;
         ctx.textBaseline = 'middle';
         ft.lines.forEach((line, index) => {
           const image = line.image ? getLoadedGameImage(line.image) : undefined;
@@ -763,7 +772,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
             ctx.drawImage(image, rowLeft + horizontalPadding, rowCenterY - iconSize / 2, iconSize, iconSize);
             textX = rowLeft + horizontalPadding + iconSize + gap;
           }
-          ctx.font = `900 ${popupFontSize}px 'Inter', sans-serif`;
+          ctx.font = `900 ${popupFontSize}px 'FarmBody', sans-serif`;
           ctx.textAlign = image ? 'left' : 'center';
           ctx.lineWidth = popupOutlineWidth;
           ctx.strokeStyle = 'rgba(0, 0, 0, 0.82)';
@@ -778,6 +787,14 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
         return true;
       });
 
+      if (pendingTooltip) {
+        drawItemTooltip(
+          pendingTooltip.name,
+          pendingTooltip.status,
+          pendingTooltip.centerX,
+          pendingTooltip.anchorY
+        );
+      }
       ctx.restore();
     };
 
@@ -965,7 +982,19 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           } else if (tool === 'trash') {
             const placedItem = findPlacedItemAtQuadrant(tilesRef.current, tile.row, tile.col, tile.quadrant);
             if (placedItem) {
-              await removeTile(tile.row, tile.col, placedItem.quadrant, userRef.current.id);
+              const [row, col] = placedItem.key.split(',').map(Number);
+              const item = placedItem.tile.itemId ? gameItemsRef.current[placedItem.tile.itemId] : undefined;
+              if (item) {
+                setPendingSale({
+                  row,
+                  col,
+                  quadrant: placedItem.quadrant,
+                  name: item.name,
+                  image: item.shopImage ?? item.growthImages?.at(-1),
+                  icon: item.shopIcon ?? item.yieldIcon ?? '📦',
+                  refund: Math.floor(item.price / 2),
+                });
+              }
             } else if (tilesRef.current[`${tile.row},${tile.col},-1`]) {
               await removeTile(tile.row, tile.col, -1, userRef.current.id);
             }
@@ -1170,5 +1199,62 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     />
   );
 
-  return readOnly ? <div className="friend-canvas-layer">{canvas}</div> : canvas;
+  if (readOnly) return <div className="friend-canvas-layer">{canvas}</div>;
+
+  const confirmSale = async () => {
+    if (!pendingSale || !user) return;
+    const success = await removeTile(pendingSale.row, pendingSale.col, pendingSale.quadrant, user.id);
+    if (success) setPendingSale(null);
+  };
+
+  return (
+    <>
+      {canvas}
+      {pendingSale && (
+        <div style={styles.saleOverlay} onClick={() => setPendingSale(null)}>
+          <section className="sale-confirm-dialog" style={styles.saleDialog} role="dialog" aria-modal="true" aria-labelledby="sale-dialog-title" onClick={(event) => event.stopPropagation()}>
+            <div className="sale-dialog-eyebrow" style={styles.saleEyebrow}>ПРОДАЖ</div>
+            <h2 id="sale-dialog-title" className="sale-dialog-title" style={styles.saleTitle}>Продати предмет?</h2>
+            <p className="sale-dialog-text" style={styles.saleText}>Ви точно хочете продати</p>
+            <strong className="sale-dialog-item-name" style={styles.saleItemName}>«{pendingSale.name}»?</strong>
+            <div className="sale-dialog-product" style={styles.saleProductFrame}>
+              {pendingSale.image ? (
+                <img src={pendingSale.image} alt={pendingSale.name} style={styles.saleProductImage} draggable={false} />
+              ) : (
+                <span style={styles.saleProductFallback}>{pendingSale.icon}</span>
+              )}
+            </div>
+            <div className="sale-dialog-price" style={styles.salePrice}>
+              <span className="sale-dialog-price-label" style={styles.salePriceLabel}>Ви отримаєте</span>
+              <strong className="sale-dialog-price-amount" style={styles.salePriceAmount}>{pendingSale.refund.toLocaleString('uk-UA')}</strong>
+              <img src="/assets/ui/coin.png" alt="монет" style={styles.saleCoin} draggable={false} />
+            </div>
+            <div style={styles.saleActions}>
+              <button type="button" className="sale-confirm-button" style={styles.saleConfirmButton} onClick={() => void confirmSale()}>Так</button>
+              <button type="button" style={styles.saleCancelButton} onClick={() => setPendingSale(null)}>Ні</button>
+            </div>
+          </section>
+        </div>
+      )}
+    </>
+  );
+};
+
+const styles: Record<string, React.CSSProperties> = {
+  saleOverlay: { position: 'fixed', inset: 0, zIndex: 50, display: 'grid', placeItems: 'center', padding: 14, background: 'rgba(21, 31, 45, 0.3)', backdropFilter: 'blur(12px)', pointerEvents: 'auto' },
+  saleDialog: { width: 'min(100%, 360px)', maxHeight: 'calc(100dvh - 28px)', overflowY: 'auto', padding: '18px 22px 20px', border: '1px solid rgba(255, 255, 255, 0.9)', borderRadius: 22, color: '#253449', background: 'linear-gradient(145deg, rgba(229, 238, 249, 0.96), rgba(208, 222, 239, 0.9))', backdropFilter: 'blur(24px) saturate(1.4)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.94), 0 18px 48px rgba(20, 33, 49, 0.34)', textAlign: 'center' },
+  saleEyebrow: { display: 'inline-block', marginBottom: 6, padding: '4px 11px', border: '1px solid rgba(255,255,255,0.95)', borderRadius: 20, color: '#617187', background: 'rgba(255,255,255,0.58)', boxShadow: 'inset 0 1px 0 #fff, 0 3px 10px rgba(50,70,94,0.08)', font: '900 10px FarmBody, sans-serif' },
+  saleTitle: { margin: '0 0 8px', color: '#1f2e42', textShadow: '0 1px rgba(255,255,255,0.9)', font: '900 22px FarmBody, sans-serif' },
+  saleText: { margin: '0 0 2px', color: '#526276', font: '700 14px/1.4 FarmBody, sans-serif' },
+  saleItemName: { display: 'block', minHeight: 22, color: '#26374d', font: '900 15px/1.4 FarmBody, sans-serif' },
+  saleProductFrame: { display: 'grid', placeItems: 'center', width: 148, height: 138, margin: '12px auto 14px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.9)', borderRadius: 18, background: 'linear-gradient(145deg, rgba(235,242,250,0.84), rgba(216,228,242,0.68))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.94), 0 8px 20px rgba(45,64,88,0.15)' },
+  saleProductImage: { width: '82%', height: '82%', objectFit: 'contain', filter: 'drop-shadow(0 4px 4px rgba(82, 52, 25, 0.28))' },
+  saleProductFallback: { fontSize: 72, lineHeight: 1, filter: 'drop-shadow(0 4px 4px rgba(82, 52, 25, 0.28))' },
+  salePrice: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: 'fit-content', minHeight: 39, margin: '0 auto 17px', padding: '5px 14px', border: '1px solid rgba(255,255,255,0.94)', borderRadius: 22, color: '#2d794d', background: 'linear-gradient(180deg, rgba(238,255,245,0.9), rgba(216,245,229,0.72))', boxShadow: 'inset 0 1px 0 #fff, 0 5px 14px rgba(45,142,88,0.12)', font: '700 12px FarmBody, sans-serif' },
+  salePriceLabel: { color: '#4f6c5b' },
+  salePriceAmount: { color: '#168247', font: '900 19px FarmBody, sans-serif' },
+  saleCoin: { width: 18, height: 18, objectFit: 'contain', filter: 'drop-shadow(0 1px 1px rgba(83, 53, 20, 0.35))' },
+  saleActions: { display: 'flex', justifyContent: 'center', gap: 10 },
+  saleConfirmButton: { minWidth: 104, minHeight: 42, border: '1px solid rgba(31,151,81,0.68)', borderRadius: 11, color: '#fff', background: 'linear-gradient(180deg, #43d17c, #20a85a)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.62), 0 6px 14px rgba(31,164,88,0.22)', textShadow: '0 1px 1px rgba(20,94,52,0.35)', font: '900 15px FarmBody, sans-serif', cursor: 'pointer' },
+  saleCancelButton: { minWidth: 104, minHeight: 42, border: '1px solid rgba(183,55,62,0.55)', borderRadius: 11, color: '#fff', background: 'linear-gradient(180deg, #ff716d, #dc4148)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.62), 0 6px 14px rgba(205,59,67,0.2)', textShadow: '0 1px 1px rgba(90,24,20,0.35)', font: '900 15px FarmBody, sans-serif', cursor: 'pointer' },
 };

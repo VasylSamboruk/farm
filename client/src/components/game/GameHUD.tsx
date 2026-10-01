@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Moon, Sun } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
@@ -10,10 +10,12 @@ import { getLevelProgress } from '../../config/progression';
 type ToolType = 'shovel' | 'trash' | 'move' | 'rotate' | null;
 
 interface GameHUDProps {
+  theme: 'light' | 'dark';
+  onToggleTheme: () => void;
   onReturnToProfile: () => void;
 }
 
-export const GameHUD: React.FC<GameHUDProps> = ({ onReturnToProfile }) => {
+export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturnToProfile }) => {
   const { user } = useAuthStore();
   const { activeTool, setActiveTool } = useToolStore();
   const gameMessage = useFarmStore((state) => state.gameMessage);
@@ -106,14 +108,25 @@ export const GameHUD: React.FC<GameHUDProps> = ({ onReturnToProfile }) => {
             <span style={styles.currencyValue}>25</span>
           </div>
         </div>
-        <button
-          style={styles.settingsBtn}
-          onClick={handleReturnToProfile}
-          aria-label="Повернутися до профілю"
-          title="Повернутися до профілю"
-        >
-          <ArrowLeft size={18} />
-        </button>
+        <div style={styles.topRightActions}>
+          <button
+            style={styles.settingsBtn}
+            onClick={handleReturnToProfile}
+            aria-label="Повернутися до профілю"
+            title="Повернутися до профілю"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <button
+            className="game-theme-toggle"
+            style={styles.themeToggleBtn}
+            onClick={onToggleTheme}
+            aria-label={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`}
+            title={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`}
+          >
+            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
+        </div>
       </div>
 
       {/* НИЖНЯ ПАНЕЛЬ ІКОНОК */}
@@ -201,10 +214,12 @@ const styles: Record<string, React.CSSProperties> = {
   xpValue: { fontSize: '11px', fontWeight: '800', color: '#4b311b' },
   progressBarTrack: { width: '100%', height: '8px', backgroundColor: '#e6c276', border: '1px solid #aa7132', borderRadius: '8px', overflow: 'hidden' },
   progressBarFill: { height: '100%', background: 'linear-gradient(180deg, #a4e644, #4eaa27)', borderRadius: '8px', transition: 'width 0.3s ease' },
-  topRightContainer: { position: 'absolute', top: '12px', right: '12px', display: 'flex', alignItems: 'center', gap: '8px', pointerEvents: 'auto', zIndex: 15 },
-  currencyBar: { display: 'flex', alignItems: 'center', gap: '8px' },
+  topRightContainer: { position: 'absolute', top: '12px', right: '12px', display: 'flex', alignItems: 'flex-start', gap: '8px', pointerEvents: 'auto', zIndex: 15 },
+  currencyBar: { display: 'flex', alignItems: 'flex-start', gap: '8px' },
   currencyValue: { color: '#fff4d4', fontWeight: '900', fontSize: '13px', textShadow: '0 1px 2px #342114' },
   settingsBtn: { display: 'grid', placeItems: 'center', background: 'linear-gradient(180deg, #a36a36, #60391f)', border: '2px solid #3f2819', borderRadius: '12px', width: '40px', height: '40px', color: '#fff0c9', cursor: 'pointer', outline: 'none', boxShadow: 'inset 0 1px 0 rgba(255, 222, 164, 0.45), 0 3px 0 rgba(31, 23, 15, 0.65)' },
+  topRightActions: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' },
+  themeToggleBtn: { display: 'grid', placeItems: 'center', background: 'linear-gradient(180deg, #976030, #57331d)', border: '2px solid #3f2819', borderRadius: '12px', width: '40px', height: '40px', color: '#fff0c9', cursor: 'pointer', outline: 'none', boxShadow: 'inset 0 1px 0 rgba(255, 222, 164, 0.45), 0 3px 0 rgba(31, 23, 15, 0.65)' },
   actionPanel: { position: 'absolute', bottom: 'calc(20px + clamp(48px, 15vw, 64px) + 8px)', left: '50%', display: 'flex', flexDirection: 'column', gap: '3px', pointerEvents: 'auto', transition: 'opacity 0.18s ease, transform 0.18s ease' },
   bottomPanelNoBg: { position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 'clamp(6px, 2vw, 18px)', pointerEvents: 'auto' },
   cleanIconBtn: { background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(48px, 15vw, 64px)', height: 'clamp(48px, 15vw, 64px)', outline: 'none', transition: 'transform 0.15s ease' },

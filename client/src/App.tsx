@@ -151,7 +151,7 @@ export const App: React.FC = () => {
   return (
     <div className="app-shell" data-theme={theme}>
       <main className="game-screen">
-        <GameHUD onReturnToProfile={returnToProfile} />
+        <GameHUD theme={theme} onToggleTheme={toggleTheme} onReturnToProfile={returnToProfile} />
         <FarmCanvas />
       </main>
     </div>

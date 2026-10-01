@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'FarmBody';
+  src: url('/assets/u2.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 html, body, #root {
   width: 100vw;
   height: 100vh;
@@ -10,6 +18,18 @@ html, body, #root {
 
 *, *:before, *:after {
   box-sizing: border-box;
+}
+
+.game-screen,
+.game-screen *,
+.game-screen *:before,
+.game-screen *:after {
+  font-family: 'FarmBody', sans-serif !important;
+}
+
+.game-screen :where(div, span, strong, small, p, h1, h2, h3, h4, h5, h6, a, label, li):not(:has(*)) {
+  font-size: calc(1em + 1px) !important;
+  -webkit-text-stroke: 0.1px currentColor;
 }
 
 .modal-scrollbar-hidden {
@@ -731,13 +751,117 @@ html, body, #root {
 .currency-inline > img { width: 15px; height: 15px; object-fit: contain; vertical-align: middle; }
 .currency-small-icon { display: block; flex: 0 0 18px; width: 18px; height: 18px; object-fit: contain; }
 .shop-price { font-weight: 800; }
-.modal-resource-chip { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 33px; padding: 4px 9px; border: 2px solid #412819; border-radius: 18px; color: #fff4d4; background: linear-gradient(180deg, #81502c, #4c2d1b); box-shadow: inset 0 1px 0 rgba(255, 222, 164, 0.42), 0 2px 0 rgba(44, 27, 16, 0.3); font: 900 11px system-ui, sans-serif; white-space: nowrap; }
+.modal-resource-chip { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 33px; padding: 4px 9px; border: 1px solid rgba(255, 255, 255, 0.86); border-radius: 18px; color: #263b58; background: linear-gradient(180deg, rgba(229, 239, 250, 0.88), rgba(202, 219, 239, 0.78)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), 0 4px 12px rgba(44, 62, 84, 0.13); font: 900 11px system-ui, sans-serif; white-space: nowrap; }
 .modal-resource-chip > img { flex: 0 0 18px; width: 18px; height: 18px; object-fit: contain; }
 .shared-modal-header { justify-content: flex-start !important; gap: 12px !important; }
 .modal-header-summary { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.modal-title-divider { flex: 0 0 2px; height: 30px; border-radius: 2px; background: rgba(130, 82, 39, 0.3); }
+.modal-title-divider { flex: 0 0 1px; height: 30px; border-radius: 2px; background: rgba(86, 107, 132, 0.24); }
 .modal-balance-group { display: flex; align-items: center; gap: 6px; }
 .shared-modal-header > button { margin-left: auto; flex: 0 0 auto; }
+
+.game-modal-window {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.88) !important;
+  border-radius: 22px !important;
+  background: linear-gradient(145deg, rgba(246, 248, 250, 0.98), rgba(226, 231, 236, 0.97) 58%, rgba(213, 220, 227, 0.96)) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(1.12);
+  backdrop-filter: blur(12px) saturate(1.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), inset 0 0 28px rgba(255, 255, 255, 0.32), 0 0 0 1px rgba(230, 234, 239, 0.82), 0 18px 48px rgba(24, 36, 52, 0.3) !important;
+  color: #263447 !important;
+}
+.game-modal-window::before {
+  position: absolute;
+  z-index: 1;
+  inset: 1px 1px auto;
+  height: 42%;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent);
+  content: '';
+  pointer-events: none;
+}
+.game-modal-header { border-bottom: 1px solid rgba(107, 129, 154, 0.2) !important; background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.08)); }
+.game-modal-close {
+  display: grid !important;
+  place-items: center !important;
+  flex: 0 0 36px !important;
+  width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  border: 1px solid rgba(130, 35, 45, 0.78) !important;
+  border-radius: 50% !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, #c9434d, #982633) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 3px 8px rgba(115, 32, 43, 0.22) !important;
+  font-size: 17px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  cursor: pointer;
+  transition: filter 140ms ease, transform 140ms ease;
+}
+.game-modal-close:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.game-theme-toggle { transition: filter 140ms ease, transform 140ms ease; }
+.game-theme-toggle:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.game-modal-card {
+  border: 1px solid rgba(225, 231, 237, 0.94) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(145deg, rgba(248, 249, 250, 0.98), rgba(226, 231, 236, 0.94)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76), 0 6px 16px rgba(38, 48, 61, 0.14) !important;
+}
+.shop-modal-tabs { align-items: center; }
+.shop-modal-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid rgba(215, 222, 230, 0.96);
+  border-radius: 999px;
+  color: #405168;
+  background: linear-gradient(180deg, rgba(245, 247, 249, 0.96), rgba(218, 225, 232, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 2px 6px rgba(51, 70, 94, 0.1);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform 140ms ease, filter 140ms ease, box-shadow 140ms ease;
+}
+.shop-modal-tab:hover { filter: brightness(1.04); transform: translateY(-1px); }
+.shop-modal-tab.is-active {
+  border-color: #347865;
+  color: #fff;
+  background: linear-gradient(180deg, #477a69, #315f52);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 3px 8px rgba(40, 82, 69, 0.18);
+}
+.shop-modal-buy-button, .inventory-sell-button, .inventory-sell-all-button { transition: filter 140ms ease, transform 140ms ease, box-shadow 140ms ease; }
+.shop-modal-buy-button:hover:not(:disabled), .inventory-sell-button:hover:not(:disabled), .inventory-sell-all-button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+.shop-modal-buy-button:focus-visible, .shop-modal-tab:focus-visible, .game-modal-close:focus-visible, .inventory-sell-button:focus-visible, .inventory-sell-all-button:focus-visible {
+  outline: 3px solid rgba(93, 145, 51, 0.55);
+  outline-offset: 2px;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .shop-modal-tab:focus-visible { outline: none; outline-offset: 0; }
+}
+
+@media (max-width: 520px) {
+  .shop-modal-tabs { padding: 8px !important; gap: 5px !important; }
+  .shop-modal-tab { min-height: 38px; padding: 7px 4px; font-size: 11px; }
+  .shop-modal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; padding: 10px !important; }
+  .shop-modal-card { padding: 8px !important; }
+  .shop-modal-icon-box { height: 70px !important; }
+  .game-modal-window { max-height: 92dvh !important; }
+}
+
+@media (max-width: 340px) {
+  .shop-modal-tab { padding-inline: 2px; font-size: 10px; }
+  .shop-modal-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
 
 @media (max-width: 520px) {
   .shared-modal-header { gap: 8px !important; padding: 10px !important; }
@@ -1133,3 +1257,123 @@ html, body, #root {
 @media (pointer: coarse) {
   .game-touch-hint { position: fixed; z-index: 12; bottom: calc(20px + clamp(48px, 15vw, 64px) + 14px); left: 50%; display: block; width: max-content; max-width: calc(100vw - 32px); transform: translateX(-50%); padding: 8px 12px; border: 1px solid rgba(255, 226, 164, 0.65); border-radius: 7px; color: #fff4d8; background: rgba(38, 29, 20, 0.9); box-shadow: 0 3px 12px rgba(0, 0, 0, 0.36); text-align: center; font: 700 12px/1.25 system-ui, sans-serif; pointer-events: none; }
 }
+
+.app-shell[data-theme='dark'] .inventory-sell-button:not(:disabled),
+.app-shell[data-theme='dark'] .sale-confirm-button {
+  border-color: #65458f !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, #7655a4, #56397f) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 3px 9px rgba(67, 43, 100, 0.22) !important;
+  text-shadow: 0 1px 1px rgba(36, 22, 56, 0.5);
+}
+.app-shell[data-theme='dark'] .inventory-sell-all-button:not(:disabled) {
+  border-color: #d0a94f !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, #b78a32, #896321) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 3px 9px rgba(97, 67, 20, 0.32) !important;
+}
+.app-shell[data-theme='dark'] .sale-confirm-button {
+  border: 1px solid #65458f;
+}
+
+.app-shell[data-theme='dark'] .game-modal-window {
+  border-color: rgba(154, 143, 177, 0.55) !important;
+  background: linear-gradient(145deg, rgba(53, 50, 65, 0.98), rgba(37, 36, 47, 0.98) 58%, rgba(30, 31, 41, 0.98)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 24px rgba(182, 164, 221, 0.08), 0 0 0 1px rgba(26, 23, 35, 0.6), 0 18px 48px rgba(8, 8, 15, 0.48) !important;
+  color: #f0edf6 !important;
+}
+.app-shell[data-theme='dark'] .game-modal-window::before { background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent); }
+.app-shell[data-theme='dark'] .game-modal-header {
+  border-bottom-color: rgba(201, 191, 218, 0.14) !important;
+  background: linear-gradient(180deg, rgba(215, 201, 237, 0.08), rgba(215, 201, 237, 0.015));
+}
+.app-shell[data-theme='dark'] .modal-resource-chip {
+  border-color: rgba(188, 172, 214, 0.34);
+  color: #f1ebfa;
+  background: linear-gradient(180deg, rgba(82, 72, 101, 0.96), rgba(59, 53, 75, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 3px 9px rgba(8, 8, 16, 0.22);
+}
+.app-shell[data-theme='dark'] .modal-title-divider { background: rgba(203, 192, 220, 0.25); }
+.app-shell[data-theme='dark'] .game-modal-card {
+  border-color: rgba(149, 137, 171, 0.48) !important;
+  background: linear-gradient(145deg, rgba(65, 61, 78, 0.98), rgba(47, 46, 60, 0.98)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11), 0 7px 18px rgba(8, 8, 16, 0.26) !important;
+}
+.app-shell[data-theme='dark'] .shop-modal-title,
+.app-shell[data-theme='dark'] .inventory-modal-title,
+.app-shell[data-theme='dark'] .shop-modal-card-title,
+.app-shell[data-theme='dark'] .shop-modal-stats,
+.app-shell[data-theme='dark'] .shop-modal-card .statRow,
+.app-shell[data-theme='dark'] .shop-modal-level,
+.app-shell[data-theme='dark'] .shop-modal-balance,
+.app-shell[data-theme='dark'] .inventory-card-title,
+.app-shell[data-theme='dark'] .inventory-stock-line,
+.app-shell[data-theme='dark'] .inventory-step-value,
+.app-shell[data-theme='dark'] .inventory-modal-empty {
+  color: #e5e0ed !important;
+}
+.app-shell[data-theme='dark'] .shop-modal-icon-box,
+.app-shell[data-theme='dark'] .inventory-image-box {
+  border-color: rgba(184, 171, 205, 0.32) !important;
+  background: linear-gradient(145deg, rgba(49, 47, 61, 0.98), rgba(39, 40, 53, 0.98)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
+}
+.app-shell[data-theme='dark'] .shop-modal-tabs { background: rgba(22, 22, 31, 0.32) !important; }
+.app-shell[data-theme='dark'] .shop-modal-tab:not(.is-active) {
+  border-color: rgba(177, 165, 197, 0.3);
+  color: #e4deef;
+  background: linear-gradient(180deg, rgba(72, 68, 87, 0.96), rgba(52, 51, 67, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 6px rgba(7, 7, 14, 0.2);
+}
+.app-shell[data-theme='dark'] .shop-modal-tab.is-active {
+  border-color: #6b568c;
+  background: linear-gradient(180deg, #665284, #4e3e68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 3px 8px rgba(29, 22, 43, 0.25);
+}
+.app-shell[data-theme='dark'] .shop-yield-pill {
+  border-color: rgba(174, 153, 205, 0.72) !important;
+  color: #eadcfb !important;
+  background: linear-gradient(180deg, rgba(93, 74, 119, 0.98), rgba(67, 54, 89, 0.98)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 4px 10px rgba(8, 6, 14, 0.34) !important;
+}
+.app-shell[data-theme='dark'] .shop-yield-icon {
+  border-color: rgba(203, 184, 227, 0.68) !important;
+  background: linear-gradient(145deg, #8977a1, #67557f) !important;
+  box-shadow: 0 2px 5px rgba(8, 6, 14, 0.24) !important;
+}
+.app-shell[data-theme='dark'] .shop-yield-price {
+  color: #f0e5ff !important;
+  text-shadow: 0 1px rgba(25, 16, 37, 0.55) !important;
+}
+.app-shell[data-theme='dark'] .inventory-stock-line strong,
+.app-shell[data-theme='dark'] .inventory-unit-price { color: #eee9f6 !important; }
+.app-shell[data-theme='dark'] .inventory-step-button {
+  border-color: rgba(176, 163, 199, 0.36) !important;
+  color: #eee9f6 !important;
+  background: linear-gradient(145deg, #514c60, #393747) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 3px 8px rgba(7, 7, 14, 0.2) !important;
+}
+.app-shell[data-theme='dark'] .sale-confirm-dialog {
+  border-color: rgba(157, 143, 185, 0.58) !important;
+  color: #f0edf6 !important;
+  background: linear-gradient(145deg, rgba(60, 55, 74, 0.99), rgba(39, 38, 52, 0.99)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.13), 0 18px 48px rgba(8,8,15,0.5) !important;
+}
+.app-shell[data-theme='dark'] .sale-dialog-title,
+.app-shell[data-theme='dark'] .sale-dialog-item-name { color: #f1edf7 !important; text-shadow: none !important; }
+.app-shell[data-theme='dark'] .sale-dialog-eyebrow { border-color: rgba(184, 168, 211, 0.34) !important; color: #e3d7f1 !important; background: rgba(89, 74, 112, 0.82) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1) !important; }
+.app-shell[data-theme='dark'] .sale-dialog-text,
+.app-shell[data-theme='dark'] .sale-dialog-price-label { color: #d1c9df !important; }
+.app-shell[data-theme='dark'] .sale-dialog-product {
+  border-color: rgba(185, 171, 209, 0.36) !important;
+  background: linear-gradient(145deg, rgba(46, 44, 60, 0.98), rgba(36, 37, 51, 0.98)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 8px 20px rgba(7,7,14,0.22) !important;
+}
+.app-shell[data-theme='dark'] .sale-dialog-price {
+  border-color: rgba(154, 131, 188, 0.42) !important;
+  color: #e5d8f4 !important;
+  background: linear-gradient(180deg, rgba(91, 70, 119, 0.82), rgba(65, 54, 88, 0.82)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 12px rgba(9,8,16,0.2) !important;
+}
+.app-shell[data-theme='dark'] .sale-dialog-price-amount { color: #f0e5ff !important; }
+.app-shell[data-theme='dark'] .inventory-modal-window .empty { color: #ddd7e8 !important; }

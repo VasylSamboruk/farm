@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ArrowRight, Camera, Check, Copy, LogOut, Package, Settings, ShieldCheck, Sparkles, Sprout } from 'lucide-react';
+import { ArrowRight, Camera, Check, Copy, LogOut, Moon, Package, ShieldCheck, Sparkles, Sprout, Sun } from 'lucide-react';
 import { getLevelProgress } from '../../config/progression';
 import type { User } from '../../types/auth';
 import { useAuthStore } from '../../store/authStore';
@@ -85,7 +85,7 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
           <div className="farmer-wallet">
             <div className="wallet-chip coin-chip"><img src="/assets/ui/coin.png" alt="" draggable={false} /><strong>{(user.coins ?? 0).toLocaleString('uk-UA')}</strong></div>
             <div className="wallet-chip gem-chip"><img src="/assets/ui/rubin.png" alt="" draggable={false} /><strong>25</strong></div>
-            <button className="top-icon-button" type="button" onClick={onToggleTheme} aria-label={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`} title={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`}><Settings size={18} /></button>
+            <button className="top-icon-button" type="button" onClick={onToggleTheme} aria-label={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`} title={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
             {user.role === 'admin' && <button className="top-icon-button admin-entry-button" type="button" onClick={onOpenAdmin} aria-label="Відкрити адмін-панель" title="Адмін-панель"><ShieldCheck size={18} /></button>}
             <button className="top-icon-button" type="button" onClick={logout} aria-label="Вийти з акаунта" title="Вийти"><LogOut size={18} /></button>
           </div>

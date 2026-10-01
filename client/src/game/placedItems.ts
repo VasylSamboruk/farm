@@ -37,8 +37,16 @@ export const drawPlacedItem = (
   const isWide = (item.footprint?.width ?? 1) > 1;
   const icon = item.shopIcon ?? item.yieldIcon ?? '📦';
   const image = getPlacedItemImage(item, tile, now);
+  const breathing = item.type === 'ANIMAL'
+    ? Math.sin(now / 650 + centerX * 0.029 + groundY * 0.017)
+    : 0;
 
   ctx.save();
+  if (item.type === 'ANIMAL') {
+    ctx.translate(centerX, groundY);
+    ctx.scale(1 + breathing * 0.004, 1 + breathing * 0.02);
+    ctx.translate(-centerX, -groundY);
+  }
   if (isHovered) {
     ctx.shadowColor = isReady ? 'rgba(255, 211, 92, 0.95)' : 'rgba(179, 232, 153, 0.9)';
     ctx.shadowBlur = 16;

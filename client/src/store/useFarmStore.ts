@@ -53,7 +53,7 @@ interface FarmState {
   dismissGameMessage: () => void;
   loadFarm: (userId: string) => Promise<void>;
   digTile: (row: number, col: number, userId: string) => void;
-  removeTile: (row: number, col: number, quadrant: number, userId: string) => Promise<void>;
+  removeTile: (row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
   placeItem: (row: number, col: number, quadrant: number, itemId: string, userId: string) => Promise<boolean>;
   rotateTile: (row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
   moveTile: (fromRow: number, fromCol: number, fromQuadrant: number, row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
@@ -172,22 +172,31 @@ export const useFarmStore = create<FarmState>((set, get) => {
   },
 
   removeTile: async (row, col, quadrant, userId) => {
-    const key = `${row},${col},${quadrant}`;
-    const state = get();
-    if (!state.tiles[key]) return;
-
-    const newTiles = { ...state.tiles };
-    delete newTiles[key];
-    set({ tiles: newTiles });
-    
     try {
-      await fetch(`${API_BASE_URL}/farm/remove`, {
+      const response = await fetch(`${API_BASE_URL}/farm/remove`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, x: col, y: row, quadrant })
       });
+      const data = await response.json();
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося видалити предмет' });
+        return false;
+      }
+
+      set((state) => {
+        const newTiles = { ...state.tiles };
+        for (const removedTile of data.removedTiles ?? [{ x: col, y: row, quadrant }]) {
+          delete newTiles[`${removedTile.y},${removedTile.x},${removedTile.quadrant}`];
+        }
+        return { tiles: newTiles };
+      });
+      if (data.user) useAuthStore.getState().updateUser({ coins: data.user.coins });
+      return true;
     } catch (err) {
       console.error('Помилка видалення', err);
+      set({ gameMessage: 'Не вдалося видалити предмет. Перевір з’єднання із сервером.' });
+      return false;
     }
   },
 

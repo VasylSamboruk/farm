@@ -49,34 +49,34 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.glassWindow} onClick={(e) => e.stopPropagation()}>
+      <div className="game-modal-window shop-modal-window" style={styles.glassWindow} onClick={(e) => e.stopPropagation()}>
         
-        <div className="shared-modal-header" style={styles.header}>
+        <div className="shared-modal-header game-modal-header" style={styles.header}>
           <div className="modal-header-summary">
             <div style={styles.titleWrapper}>
               <span style={{ fontSize: '22px' }}>🏪</span>
-              <h2 style={styles.headerTitle}>МАГАЗИН</h2>
+              <h2 className="shop-modal-title" style={styles.headerTitle}>МАГАЗИН</h2>
             </div>
             <span className="modal-title-divider" aria-hidden="true" />
             <div style={styles.resourcesContainer}>
               <div className="modal-resource-chip" style={styles.resourceItem}>
                 <img src="/assets/ui/coin.png" alt="" style={styles.resourceIcon} draggable={false} />
-                <span style={styles.resourceValue}>{(user?.coins ?? 0).toLocaleString('uk-UA')}</span>
+                <span className="shop-modal-balance" style={styles.resourceValue}>{(user?.coins ?? 0).toLocaleString('uk-UA')}</span>
               </div>
               <div className="modal-resource-chip" style={styles.resourceItem}>
                 <img src="/assets/ui/rubin.png" alt="" style={styles.resourceIcon} draggable={false} />
-                <span style={styles.resourceValue}>25</span>
+                <span className="shop-modal-balance" style={styles.resourceValue}>25</span>
               </div>
             </div>
           </div>
-          <button style={styles.closeBtn} onClick={onClose}>✕</button>
+          <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити магазин">✕</button>
         </div>
 
-        <div style={styles.tabContainer}>
+        <div className="shop-modal-tabs" style={styles.tabContainer}>
           {CATEGORIES.map((category) => (
             <button
               key={category.type}
-              style={activeCategory === category.type ? { ...styles.tabBtn, ...styles.activeTabBtn } : styles.tabBtn}
+              className={`shop-modal-tab${activeCategory === category.type ? ' is-active' : ''}`}
               onClick={() => setActiveCategory(category.type)}
             >
               {category.label}
@@ -84,11 +84,11 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
           ))}
         </div>
 
-        <div className="modal-scrollbar-hidden" style={styles.gridContainer}>
+        <div className="shop-modal-grid modal-scrollbar-hidden" style={styles.gridContainer}>
           {filteredItems.map((item) => (
-            <div key={item.id} style={styles.itemCard}>
-              <div style={styles.cardTitle}>{item.name}</div>
-              <div style={styles.iconBox}>
+            <div key={item.id} className="game-modal-card shop-modal-card" style={styles.itemCard}>
+              <div className="shop-modal-card-title" style={styles.cardTitle}>{item.name}</div>
+              <div className="shop-modal-icon-box" style={styles.iconBox}>
                 {item.shopImage || item.growthImages?.at(-1) ? (
                   <img
                     src={item.shopImage ?? item.growthImages?.at(-1)}
@@ -100,18 +100,18 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                   <span style={styles.cardEmoji}>{item.shopIcon ?? item.yieldIcon ?? '🌳'}</span>
                 )}
                 {item.yieldItem && (
-                  <div style={styles.yieldBadge} title={`${item.yieldName ?? item.name}${item.sellPrice !== undefined ? ` · +${item.sellPrice} монет за продаж` : ''}`}>
-                    <span style={styles.yieldCircle}>
+                  <div className="shop-yield-pill" style={styles.yieldBadge} title={`${item.yieldName ?? item.name}${item.sellPrice !== undefined ? ` · +${item.sellPrice} монет за продаж` : ''}`}>
+                    <span className="shop-yield-icon" style={styles.yieldCircle}>
                       {item.yieldImage ? <img src={item.yieldImage} alt="" style={styles.yieldImage} draggable={false} /> : <span>{item.yieldIcon ?? '📦'}</span>}
                     </span>
                     {item.sellPrice !== undefined && (
-                      <span style={styles.yieldPrice}>+{item.sellPrice}<img src="/assets/ui/coin.png" alt="" style={styles.yieldCoin} draggable={false} /></span>
+                      <span className="shop-yield-price" style={styles.yieldPrice}>+{item.sellPrice}<img src="/assets/ui/coin.png" alt="" style={styles.yieldCoin} draggable={false} /></span>
                     )}
                   </div>
                 )}
               </div>
-              <div style={styles.statsContainer}>
-                <div style={styles.statRow}><span>Доступно з:</span><span style={styles.levelRequirement}>{item.requiredLevel ?? 1} рівня</span></div>
+              <div className="shop-modal-stats" style={styles.statsContainer}>
+                <div style={styles.statRow}><span>Доступно з:</span><span className="shop-modal-level" style={styles.levelRequirement}>{item.requiredLevel ?? 1} рівня</span></div>
                 {item.type !== 'BUILDING' && typeof item.productionTimeMs === 'number' && item.productionTimeMs > 0 && (
                   <div style={styles.statRow}>
                     <span>Готовність:</span>
@@ -121,6 +121,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                 <div style={styles.statRow}><span>Досвід:</span><span style={{ color: '#8b5ac7', fontWeight: 'bold' }}>+{item.plantingXp} XP</span></div>
               </div>
               <button
+                className="shop-modal-buy-button"
                 style={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? { ...styles.buyBtn, ...styles.lockedBuyBtn } : styles.buyBtn}
                 onClick={() => handleBuy(item)}
                 disabled={(user?.level ?? 1) < (item.requiredLevel ?? 1)}
@@ -142,34 +143,31 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
 };
 
 const styles: Record<string, React.CSSProperties> = {
-  overlay: { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(19, 35, 24, 0.66)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', boxSizing: 'border-box', pointerEvents: 'auto' },
-  glassWindow: { width: '100%', maxWidth: '760px', maxHeight: '88vh', background: 'linear-gradient(145deg, #fff6dc, #ecd3a1)', color: '#402b1a', border: '7px solid #81512a', borderRadius: '18px 14px 18px 14px', boxShadow: 'inset 0 0 0 2px #d7a95f, inset 0 0 0 5px rgba(255, 250, 224, 0.72), 0 10px 0 #4f301d, 0 24px 50px rgba(0, 0, 0, 0.45)', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '2px solid rgba(132, 83, 39, 0.22)', gap: '10px' },
+  overlay: { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(25, 34, 45, 0.4)', backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', boxSizing: 'border-box', pointerEvents: 'auto' },
+  glassWindow: { width: '100%', maxWidth: '760px', maxHeight: '88vh', color: '#263447', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid rgba(132, 83, 39, 0.22)', gap: '10px' },
   titleWrapper: { display: 'flex', alignItems: 'center', gap: '8px' },
-  headerTitle: { margin: 0, color: '#4b2f1c', fontFamily: 'Georgia, serif', fontSize: '19px', fontWeight: '900' },
+  headerTitle: { margin: 0, color: '#1f2e42', fontFamily: 'Georgia, serif', fontSize: '19px', fontWeight: '900' },
   resourcesContainer: { display: 'flex', alignItems: 'center', gap: '7px' },
   resourceItem: { display: 'flex', alignItems: 'center', gap: '5px' },
   resourceIcon: { width: '18px', height: '18px', objectFit: 'contain' },
-  resourceValue: { color: '#fff4d4', fontWeight: '900', fontSize: '13px' },
-  closeBtn: { background: 'linear-gradient(145deg, #fff1c8, #dba85e)', border: '2px solid #80502a', borderRadius: '50%', width: '36px', height: '36px', color: '#55351e', fontSize: '15px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.15s ease', boxShadow: 'inset 0 0 0 1px rgba(255, 255, 218, 0.8), 0 2px 0 #57351f' },
-  tabContainer: { display: 'flex', padding: '10px 16px', gap: '8px', background: 'rgba(143, 94, 43, 0.1)', borderBottom: '2px solid rgba(132, 83, 39, 0.18)' },
-  tabBtn: { flex: 1, padding: '10px', borderRadius: '9px', border: '2px solid rgba(142, 95, 48, 0.28)', background: 'linear-gradient(145deg, rgba(255, 250, 231, 0.85), rgba(231, 204, 153, 0.6))', color: '#745432', fontFamily: 'Trebuchet MS, sans-serif', fontWeight: '800', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s ease' },
-  activeTabBtn: { background: 'linear-gradient(180deg, #86d64b, #438e28)', borderColor: '#36732a', color: '#fff9dd', boxShadow: 'inset 0 1px 0 rgba(235, 255, 187, 0.72), 0 2px 0 #2c6022' },
-  gridContainer: { padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px', overflowY: 'auto' },
-  itemCard: { background: 'linear-gradient(145deg, #fff9e6, #ecd6aa)', border: '2px solid #d8b77e', borderRadius: '12px', padding: '11px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 3px 0 rgba(129, 81, 42, 0.16)' },
-  cardTitle: { color: '#49301d', fontFamily: 'Trebuchet MS, sans-serif', fontWeight: '900', fontSize: '13px', marginBottom: '8px', textAlign: 'center' },
-  iconBox: { position: 'relative', width: '100%', height: '82px', background: 'linear-gradient(145deg, #f7e7be, #e4c58b)', border: '1px solid rgba(140, 92, 45, 0.25)', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' },
-  shopImage: { width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 3px 5px rgba(0,0,0,0.35))' },
-  yieldBadge: { position: 'absolute', top: -8, right: -7, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, padding: '3px 4px', border: '1px solid rgba(85, 60, 34, 0.32)', borderRadius: 24, background: 'rgba(255, 248, 225, 0.96)', boxShadow: '0 2px 5px rgba(60, 38, 18, 0.22)' },
-  yieldCircle: { display: 'grid', placeItems: 'center', flex: '0 0 28px', width: 28, height: 28, overflow: 'hidden', border: '1px solid #b88c50', borderRadius: '50%', background: 'linear-gradient(145deg, #fff8de, #e8cc91)', fontSize: 17 },
+  resourceValue: { color: '#263b58', fontWeight: '900', fontSize: '13px', textShadow: '0 1px rgba(255,255,255,0.55)' },
+  tabContainer: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', padding: '10px 16px', gap: '8px', background: 'linear-gradient(180deg, rgba(143, 94, 43, 0.09), rgba(143, 94, 43, 0.025))', borderBottom: '1px solid rgba(132, 83, 39, 0.18)' },
+  gridContainer: { padding: '14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px', overflowY: 'auto' },
+  itemCard: { background: 'linear-gradient(145deg, #fffdf1, #f1dfb9)', border: '1px solid #d8b77e', borderRadius: '12px', padding: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 3px 0 rgba(129, 81, 42, 0.16), 0 7px 14px rgba(112, 77, 34, 0.08)' },
+  cardTitle: { color: '#2b394d', fontWeight: '900', fontSize: '13px', marginBottom: '8px', textAlign: 'center' },
+  iconBox: { position: 'relative', width: '100%', height: '82px', background: 'linear-gradient(145deg, rgba(249,250,251,0.96), rgba(220,225,231,0.88))', border: '1px solid rgba(255,255,255,0.94)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.98)' },
+  shopImage: { width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 7px rgba(35,51,72,0.18))' },
+  yieldBadge: { position: 'absolute', zIndex: 2, left: -7, bottom: -8, display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 29, margin: 0, padding: '2px 8px 2px 2px', border: '1px solid rgba(255,255,255,0.98)', borderRadius: 18, color: '#17653c', background: 'linear-gradient(180deg, rgba(235,250,241,0.98), rgba(193,230,207,0.96))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.98), 0 4px 10px rgba(35,86,57,0.2)' },
+  yieldCircle: { display: 'grid', placeItems: 'center', flex: '0 0 24px', width: 24, height: 24, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.98)', borderRadius: '50%', background: 'rgba(255,255,255,0.92)', boxShadow: '0 2px 5px rgba(45,70,58,0.12)', fontSize: 15 },
   yieldImage: { width: '76%', height: '76%', objectFit: 'contain' },
-  yieldPrice: { display: 'inline-flex', alignItems: 'center', gap: 1, color: '#357c2b', font: '900 11px/1.1 "Trebuchet MS", sans-serif', textShadow: '0 0 0.4px currentColor', whiteSpace: 'nowrap' },
-  yieldCoin: { width: 12, height: 12, objectFit: 'contain' },
+  yieldPrice: { display: 'inline-flex', alignItems: 'center', gap: 3, color: '#176c40', font: '900 11px/1.1 "Trebuchet MS", sans-serif', textShadow: '0 1px rgba(255,255,255,0.65)', whiteSpace: 'nowrap' },
+  yieldCoin: { width: 14, height: 14, objectFit: 'contain' },
   cardEmoji: { fontSize: '38px' },
   priceBadge: { background: 'rgba(255, 193, 7, 0.2)', border: '1px solid rgba(255, 193, 7, 0.5)', borderRadius: '10px', padding: '3px 8px', color: '#ffd54f', fontWeight: '800', fontSize: '12px', marginBottom: '10px' },
-  statsContainer: { width: '100%', fontFamily: 'Trebuchet MS, sans-serif', fontSize: '10px', color: '#755a38', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' },
+  statsContainer: { width: '100%', fontFamily: 'Trebuchet MS, sans-serif', fontSize: '10px', color: '#65748a', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' },
   statRow: { display: 'flex', justifyContent: 'space-between', width: '100%' },
-  levelRequirement: { color: '#76502c', fontWeight: '800' },
-  buyBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', minHeight: '36px', padding: '7px 8px', background: 'linear-gradient(180deg, #84d84b, #398d27)', borderRadius: '8px', color: '#fff9dd', fontFamily: 'Trebuchet MS, sans-serif', fontWeight: '900', fontSize: '12px', cursor: 'pointer', border: '2px solid #327327', boxShadow: 'inset 0 1px 0 rgba(235, 255, 187, 0.65), 0 2px 0 #2b5f21' },
+  levelRequirement: { color: '#445c78', fontWeight: '800' },
+  buyBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', minHeight: '36px', padding: '7px 8px', background: 'linear-gradient(180deg, #43d17c, #20a85a)', borderRadius: '11px', color: '#fff', fontFamily: 'Trebuchet MS, sans-serif', fontWeight: '900', fontSize: '12px', cursor: 'pointer', border: '1px solid rgba(31,151,81,0.7)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.58), 0 5px 12px rgba(31,164,88,0.2)' },
   lockedBuyBtn: { borderColor: '#8e7757', color: '#f5e8ce', background: 'linear-gradient(180deg, #a79a81, #756b5b)', boxShadow: 'inset 0 1px 0 rgba(255, 248, 224, 0.35), 0 2px 0 #5e5448', cursor: 'not-allowed' },
 };

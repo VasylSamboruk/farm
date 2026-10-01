@@ -117,11 +117,47 @@ router.post('/remove', async (req, res) => {
         const { userId, x, y, quadrant } = req.body;
         const farm = await Farm.findOne({ userId });
         if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        let targetTile = farm.tiles.find(t => !t.isDirt && t.x === x && t.y === y && t.quadrant === quadrant);
+        if (!targetTile && quadrant === -1) {
+            targetTile = farm.tiles.find(t => !t.isDirt && t.x === x && t.y === y && getGameItem(t.itemId)?.type === 'CROP');
+        }
+        const dirtTile = farm.tiles.find(t => t.isDirt && t.x === x && t.y === y);
+        if (!targetTile && quadrant !== -1) {
+            return res.status(404).json({ message: 'Предмет не знайдено' });
+        }
+        if (!targetTile && !dirtTile) return res.status(404).json({ message: 'Предмет не знайдено' });
 
-        farm.tiles = farm.tiles.filter(t => !(t.x === x && t.y === y && t.quadrant === quadrant));
+        const item = targetTile ? getGameItem(targetTile.itemId) : null;
+        const coinsEarned = item ? Math.floor(item.price / 2) : 0;
+        let user = null;
+        if (item) {
+            user = await User.findById(userId);
+            if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+            user.coins += coinsEarned;
+        }
+
+        const removedTiles = [];
+        if (targetTile) {
+            removedTiles.push({ x: targetTile.x, y: targetTile.y, quadrant: targetTile.quadrant });
+            farm.tiles = farm.tiles.filter(t => t !== targetTile);
+            if (item?.type === 'CROP' && dirtTile) {
+                removedTiles.push({ x: dirtTile.x, y: dirtTile.y, quadrant: -1 });
+                farm.tiles = farm.tiles.filter(t => t !== dirtTile);
+            }
+        } else {
+            removedTiles.push({ x: dirtTile.x, y: dirtTile.y, quadrant: -1 });
+            farm.tiles = farm.tiles.filter(t => t !== dirtTile);
+        }
         await farm.save();
+        if (user) await user.save();
 
-        res.json({ success: true });
+        res.json({
+            success: true,
+            removedTiles,
+            itemName: item?.name,
+            coinsEarned,
+            ...(user ? { user: { coins: user.coins } } : {})
+        });
     } catch (error) {
         res.status(500).json({ message: 'Помилка видалення', error: error.message });
     }

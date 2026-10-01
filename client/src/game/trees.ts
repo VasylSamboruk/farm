@@ -204,7 +204,7 @@ export const drawTreeTimer = (
   ctx.roundRect(left, topY, width, height, 9);
   ctx.fill();
   ctx.stroke();
-  ctx.font = '800 12px sans-serif';
+  ctx.font = "800 12px 'FarmBody', sans-serif";
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ffffff';
