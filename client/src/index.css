@@ -864,6 +864,9 @@ html, body, #root {
 }
 
 @media (max-width: 520px) {
+  .game-xp-tooltip { width: min(224px, calc(100vw - 24px)) !important; }
+  .game-xp-text-row { flex-direction: column; align-items: flex-start !important; justify-content: flex-start !important; gap: 1px !important; }
+  .game-xp-value { align-self: flex-start; text-align: left !important; white-space: nowrap !important; }
   .shared-modal-header { gap: 8px !important; padding: 10px !important; }
   .modal-header-summary { gap: 7px; }
   .modal-title-divider { height: 26px; }

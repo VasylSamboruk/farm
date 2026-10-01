@@ -85,10 +85,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
           <span style={styles.levelNumberCenter}>{progression.level}</span>
         </div>
 
-        <div style={{ ...styles.xpTooltip, opacity: showXpBar ? 1 : 0, transform: showXpBar ? 'translateY(0) scale(1)' : 'translateY(-10px) scale(0.9)' }}>
-          <div style={styles.xpTextRow}>
+        <div className="game-xp-tooltip" style={{ ...styles.xpTooltip, opacity: showXpBar ? 1 : 0, transform: showXpBar ? 'translateY(0) scale(1)' : 'translateY(-10px) scale(0.9)' }}>
+          <div className="game-xp-text-row" style={styles.xpTextRow}>
             <span style={styles.xpLabel}>ДОСВІД</span>
-            <span style={styles.xpValue}>{progression.xpInLevel}/{progression.xpToNextLevel}</span>
+            <span className="game-xp-value" style={styles.xpValue}>{progression.xpInLevel}/{progression.xpToNextLevel}</span>
           </div>
           <div style={styles.progressBarTrack}>
             <div style={{ ...styles.progressBarFill, width: `${xpPercent}%` }} />
@@ -211,7 +211,7 @@ const styles: Record<string, React.CSSProperties> = {
   xpTooltip: { background: 'linear-gradient(145deg, rgba(255, 248, 224, 0.98), rgba(237, 210, 160, 0.97))', backdropFilter: 'blur(10px)', border: '3px solid #81512a', borderRadius: '10px', padding: '8px 12px', width: 'min(200px, calc(100vw - 24px))', color: '#402b1a', boxShadow: 'inset 0 0 0 1px #d7a95f, 0 4px 0 #5d391f, 0 8px 16px rgba(24, 34, 22, 0.34)', transition: 'all 0.25s' },
   xpTextRow: { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '4px 8px', marginBottom: '4px' },
   xpLabel: { flex: '0 0 auto', fontSize: '10px', fontWeight: '800', color: '#805329' },
-  xpValue: { flex: '1 1 72px', minWidth: 0, overflowWrap: 'anywhere', textAlign: 'right', fontSize: '11px', fontWeight: '800', color: '#4b311b' },
+  xpValue: { flex: '0 0 auto', minWidth: 0, whiteSpace: 'nowrap', overflowWrap: 'normal', textAlign: 'right', fontSize: '11px', fontWeight: '800', color: '#4b311b' },
   progressBarTrack: { width: '100%', height: '8px', backgroundColor: '#e6c276', border: '1px solid #aa7132', borderRadius: '8px', overflow: 'hidden' },
   progressBarFill: { height: '100%', background: 'linear-gradient(180deg, #a4e644, #4eaa27)', borderRadius: '8px', transition: 'width 0.3s ease' },
   topRightContainer: { position: 'absolute', top: '12px', right: '12px', display: 'flex', alignItems: 'flex-start', gap: '8px', pointerEvents: 'auto', zIndex: 15 },
