@@ -1,16 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { ArrowLeft, BadgeDollarSign, Ban, Coins, Eye, PackagePlus, Pencil, Search, ShieldCheck, ShieldOff, Sparkles, Sprout, Trash2, UserRound, Users, X } from 'lucide-react';
+import { Ban, Coins, Eye, PackagePlus, Pencil, Search, ShieldOff, Sparkles, Sprout, Trash2, UserRound, Users, X } from 'lucide-react';
 import { adminApi, type AdminCatalogItem, type AdminFarmItem, type AdminUser } from '../../api/admin.api';
 import { getLevelProgress } from '../../config/progression';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
 import type { TileData } from '../../store/useFarmStore';
 import { loadGameImage, preloadGameImages } from '../../game/sprites';
 import { FarmCanvas } from '../game/FarmCanvas';
-
-interface AdminPanelProps {
-  onBack: () => void;
-}
+import { useAdminToast } from './adminToast';
 
 const getErrorMessage = (error: unknown) => {
   if (axios.isAxiosError<{ message?: string }>(error)) {
@@ -20,55 +17,6 @@ const getErrorMessage = (error: unknown) => {
 };
 
 const formatNumber = (value: number) => value.toLocaleString('uk-UA');
-
-const SHOP_CATEGORIES: { type: AdminCatalogItem['type']; label: string }[] = [
-  { type: 'TREE', label: 'Дерева' },
-  { type: 'CROP', label: 'Рослини' },
-  { type: 'ANIMAL', label: 'Тварини' },
-  { type: 'BUILDING', label: 'Декор' },
-];
-
-interface AdminItemDraft {
-  name: string;
-  price: string;
-  sellPrice: string;
-  plantingXp: string;
-  requiredLevel: string;
-  sortOrder: string;
-  productionTimeMs: string;
-  yieldItem: string;
-  yieldName: string;
-  yieldAmount: string;
-  placementSurface: '' | 'grass' | 'soil';
-  flipX: boolean;
-  canFlip: boolean;
-  footprintWidth: string;
-  footprintHeight: string;
-  largeFootprintWidth: string;
-  largeFootprintHeight: string;
-  access: 'all' | 'admin';
-}
-
-const getItemDraft = (item: AdminCatalogItem): AdminItemDraft => ({
-  name: item.name,
-  price: String(item.price),
-  sellPrice: String(item.sellPrice ?? ''),
-  plantingXp: String(item.plantingXp ?? 0),
-  requiredLevel: String(item.requiredLevel ?? 1),
-  sortOrder: String(item.sortOrder ?? 1),
-  productionTimeMs: String(item.productionTimeMs ?? ''),
-  yieldItem: item.yieldItem ?? '',
-  yieldName: item.yieldName ?? '',
-  yieldAmount: String(item.yieldAmount ?? ''),
-  placementSurface: item.placementSurface ?? '',
-  flipX: item.flipX ?? false,
-  canFlip: item.canFlip ?? true,
-  footprintWidth: String(item.footprint?.width ?? ''),
-  footprintHeight: String(item.footprint?.height ?? ''),
-  largeFootprintWidth: String(item.largeFootprint?.width ?? ''),
-  largeFootprintHeight: String(item.largeFootprint?.height ?? ''),
-  access: item.access ?? 'all',
-});
 
 const toFarmPreviewTiles = (farmItems: AdminFarmItem[]): Record<string, TileData> => {
   const tiles: Record<string, TileData> = {};
@@ -92,12 +40,11 @@ const toFarmPreviewTiles = (farmItems: AdminFarmItem[]): Record<string, TileData
   return tiles;
 };
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
+export const AdminUsers: React.FC = () => {
+  const showToast = useAdminToast();
   const loadGameItems = useGameConfigStore((state) => state.loadItems);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [catalog, setCatalog] = useState<AdminCatalogItem[]>([]);
-  const [view, setView] = useState<'users' | 'mechanics'>('users');
-  const [catalogCategory, setCatalogCategory] = useState<'ALL' | AdminCatalogItem['type']>('ALL');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -113,8 +60,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [roleDraft, setRoleDraft] = useState<'user' | 'admin'>('user');
   const [banDuration, setBanDuration] = useState('10');
   const [banReason, setBanReason] = useState('');
-  const [itemDrafts, setItemDrafts] = useState<Record<string, AdminItemDraft>>({});
-  const [priceBusyId, setPriceBusyId] = useState<string | null>(null);
   const [showFarmPreview, setShowFarmPreview] = useState(false);
   const [confirmFarmClear, setConfirmFarmClear] = useState(false);
   const [confirmAccountDelete, setConfirmAccountDelete] = useState(false);
@@ -125,6 +70,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  const reportError = useCallback((message: string) => {
+    setError(message);
+    showToast('error', message);
+  }, [showToast]);
 
   const refreshUsers = async (query = search, requestedPage = page, preferredUserId = selectedUserId) => {
     setLoading(true);
@@ -138,7 +88,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         ? preferredUserId
         : result.users[0]?.id ?? '');
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      reportError(getErrorMessage(requestError));
     } finally {
       setLoading(false);
     }
@@ -161,7 +111,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         preloadGameImages(Object.values(gameConfig.items)),
       ]);
       if (!active) return;
-      setItemDrafts(Object.fromEntries(loadedCatalog.map((item) => [item.id, getItemDraft(item)])));
       setCatalog(loadedCatalog);
       setUsers(result.users);
       setTotal(result.total);
@@ -177,23 +126,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
       }
     };
     void initialize()
-      .catch((requestError: unknown) => { if (active) setError(getErrorMessage(requestError)); })
+      .catch((requestError: unknown) => { if (active) reportError(getErrorMessage(requestError)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [loadGameItems]);
+  }, [loadGameItems, reportError]);
 
   const selectedUser = users.find((entry) => entry.id === selectedUserId) ?? null;
-  const visibleCatalog = catalog
-    .filter((item) => catalogCategory === 'ALL' || item.type === catalogCategory)
-    .sort((left, right) => left.sortOrder - right.sortOrder);
   const productCatalog = catalog.filter((item) => item.yieldItem);
-  const farmCatalog = catalog.filter((item) => ['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type));
-  const updateItemDraft = (itemId: string, changes: Partial<AdminItemDraft>) => {
-    setItemDrafts((current) => ({
-      ...current,
-      [itemId]: { ...current[itemId], ...changes } as AdminItemDraft,
-    }));
-  };
+  const farmCatalog = catalog.filter((item) => !item.disabled && ['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type));
 
   const handleSearch = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -213,8 +153,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
       await action();
       await refreshUsers(search, page, selectedUser.id);
       setNotice(successMessage);
+      showToast('success', successMessage);
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      reportError(getErrorMessage(requestError));
     } finally {
       setBusy(false);
     }
@@ -226,7 +167,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     const coins = Number(coinsDelta || 0);
     const xp = Number(xpDelta || 0);
     if (!Number.isSafeInteger(coins) || !Number.isSafeInteger(xp) || (coins === 0 && xp === 0)) {
-      setError('Введи цілу ненульову зміну монет або XP.');
+      reportError('Введи цілу ненульову зміну монет або XP.');
       return;
     }
     await runAction(() => adminApi.updateStats(selectedUser.id, coins, xp), 'Баланс та досвід оновлено.');
@@ -237,12 +178,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const handleInventory = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedUser || !inventoryItemId) {
-      setError('Обери продукт для інвентарю.');
+      reportError('Обери продукт для інвентарю.');
       return;
     }
     const amount = Number(inventoryDelta);
     if (!Number.isSafeInteger(amount) || amount === 0) {
-      setError('Кількість має бути ненульовим цілим числом.');
+      reportError('Кількість має бути ненульовим цілим числом.');
       return;
     }
     await runAction(() => adminApi.updateInventory(selectedUser.id, inventoryItemId, amount), 'Інвентар гравця оновлено.');
@@ -251,7 +192,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const handleFarmItem = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedUser || !farmItemId) {
-      setError('Обери предмет для ферми.');
+      reportError('Обери предмет для ферми.');
       return;
     }
     await runAction(() => adminApi.addFarmItem(selectedUser.id, farmItemId), 'Предмет безкоштовно додано на ферму.');
@@ -309,7 +250,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     };
     if (![changes.x, changes.y, changes.quadrant].every(Number.isInteger) ||
         changes.x < 0 || changes.x > 14 || changes.y < 0 || changes.y > 14 || changes.quadrant < 0 || changes.quadrant > 3) {
-      setError('Координати мають бути в межах поля, сектор — від 0 до 3.');
+      reportError('Координати мають бути в межах поля, сектор — від 0 до 3.');
       return;
     }
     await runAction(() => adminApi.updateFarmItem(selectedUser.id, item, changes), 'Позицію предмета оновлено.');
@@ -325,77 +266,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
       setConfirmAccountDelete(false);
       await refreshUsers(search, Math.min(page, Math.max(1, pages)), '');
       setNotice('Акаунт і ферму видалено.');
+      showToast('success', 'Акаунт і ферму видалено.');
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      reportError(getErrorMessage(requestError));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const handleConfigSave = async (item: AdminCatalogItem) => {
-    const draft = itemDrafts[item.id];
-    if (!draft) return;
-    const price = Number(draft.price);
-    const plantingXp = Number(draft.plantingXp);
-    const requiredLevel = Number(draft.requiredLevel);
-    const sortOrder = Number(draft.sortOrder);
-    const yieldAmount = draft.yieldAmount.trim() === '' ? 0 : Number(draft.yieldAmount);
-    const sellPrice = draft.sellPrice.trim() === '' ? undefined : Number(draft.sellPrice);
-    const productionTimeMs = draft.productionTimeMs.trim() === '' ? null : Number(draft.productionTimeMs);
-    const footprintWidth = Number(draft.footprintWidth);
-    const footprintHeight = Number(draft.footprintHeight);
-    const largeFootprintWidth = draft.largeFootprintWidth.trim() === '' ? null : Number(draft.largeFootprintWidth);
-    const largeFootprintHeight = draft.largeFootprintHeight.trim() === '' ? null : Number(draft.largeFootprintHeight);
-    if (!draft.name.trim() || !Number.isSafeInteger(price) || price < 0 || !Number.isSafeInteger(plantingXp) || plantingXp < 0 ||
-      !Number.isSafeInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 999 ||
-      !Number.isSafeInteger(sortOrder) || sortOrder < 1 || sortOrder > 9999 ||
-        !Number.isSafeInteger(yieldAmount) || yieldAmount < 0 || (sellPrice !== undefined && (!Number.isSafeInteger(sellPrice) || sellPrice < 0)) ||
-        (productionTimeMs !== null && (!Number.isSafeInteger(productionTimeMs) || productionTimeMs < 1000)) ||
-        !Number.isInteger(footprintWidth) || footprintWidth < 1 || footprintWidth > 2 ||
-        !Number.isInteger(footprintHeight) || footprintHeight < 1 || footprintHeight > 2 ||
-        (largeFootprintWidth !== null && (!Number.isInteger(largeFootprintWidth) || largeFootprintWidth < 1 || largeFootprintWidth > 2)) ||
-        (largeFootprintHeight !== null && (!Number.isInteger(largeFootprintHeight) || largeFootprintHeight < 1 || largeFootprintHeight > 2))) {
-      setError('Перевір назву, ціни, рівень доступу, позицію, час росту й розміри footprint предмета.');
-      return;
-    }
-
-    setPriceBusyId(item.id);
-    setError('');
-    setNotice('');
-    try {
-      const updatedItem = await adminApi.updateConfig(item.id, {
-        name: draft.name.trim(),
-        price,
-        ...(sellPrice === undefined ? {} : { sellPrice }),
-        plantingXp,
-        requiredLevel,
-        sortOrder,
-        productionTimeMs,
-        yieldItem: draft.yieldItem.trim(),
-        yieldName: draft.yieldName.trim(),
-        yieldAmount,
-        placementSurface: draft.placementSurface || 'grass',
-        flipX: draft.flipX,
-        canFlip: draft.canFlip,
-        footprint: { width: footprintWidth, height: footprintHeight },
-        largeFootprint: largeFootprintWidth === null || largeFootprintHeight === null
-          ? null
-          : { width: largeFootprintWidth, height: largeFootprintHeight },
-        access: draft.access,
-      });
-      const refreshedCatalog = await adminApi.getCatalog();
-      setCatalog(refreshedCatalog);
-      setItemDrafts((current) => Object.fromEntries(refreshedCatalog.map((entry) => {
-        const existingDraft = current[entry.id] ?? getItemDraft(entry);
-        return [entry.id, entry.id === item.id
-          ? getItemDraft(entry)
-          : { ...existingDraft, sortOrder: String(entry.sortOrder) }];
-      })));
-      setNotice(`Налаштування «${updatedItem.name}» збережено.`);
-    } catch (requestError) {
-      setError(getErrorMessage(requestError));
-    } finally {
-      setPriceBusyId(null);
     }
   };
 
@@ -415,26 +290,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
       ]);
       setShowFarmPreview(true);
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      reportError(getErrorMessage(requestError));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <main className="profile-screen scenic-screen farmer-lobby admin-lobby">
-      <div className="farmer-main">
-        <header className="farmer-topbar admin-topbar">
-          <div className="wood-logo admin-logo"><Sprout size={20} /><span>FARM<span>CANVAS</span></span><Sprout size={20} /></div>
-          <div className="admin-topbar-title"><ShieldCheck size={19} /><span>Адмін-панель</span><strong>{formatNumber(total)} гравців</strong></div>
-          <div className="admin-view-tabs" role="tablist" aria-label="Розділи адмін-панелі">
-            <button className={view === 'users' ? 'is-active' : ''} type="button" role="tab" aria-selected={view === 'users'} onClick={() => setView('users')}><Users size={15} />Гравці</button>
-            <button className={view === 'mechanics' ? 'is-active' : ''} type="button" role="tab" aria-selected={view === 'mechanics'} onClick={() => setView('mechanics')}><BadgeDollarSign size={15} />Механіка</button>
-          </div>
-          <button className="admin-back-button" type="button" onClick={onBack}><ArrowLeft size={17} /><span>До профілю</span></button>
-        </header>
-
-        <div className={view === 'mechanics' ? 'admin-workspace is-mechanics-view' : 'admin-workspace'}>
+    <>
+    <div className="admin-workspace">
           <aside className="admin-users-panel">
             <div className="admin-section-heading"><div><span className="admin-kicker">ОБЛІКОВІ ЗАПИСИ</span><h1>Гравці</h1></div><span className="admin-count"><Users size={15} />{total}</span></div>
             <form className="admin-search" onSubmit={handleSearch}>
@@ -569,58 +433,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             )}
           </section>
 
-          <section className="admin-price-panel" aria-label="Механіка магазину">
-            <header className="admin-price-heading"><div><span className="admin-kicker">КАТАЛОГ І ДОСТУПИ</span><h1>Механіка магазину</h1></div><span>{catalog.length} позицій</span></header>
-            {error && <p className="admin-message admin-error" role="alert">{error}</p>}
-            {notice && <p className="admin-message admin-success" role="status">{notice}</p>}
-            <div className="admin-catalog-category-tabs" role="tablist" aria-label="Категорії магазину">
-              <button className={catalogCategory === 'ALL' ? 'is-active' : ''} type="button" role="tab" aria-selected={catalogCategory === 'ALL'} onClick={() => setCatalogCategory('ALL')}>Усі <span>{catalog.length}</span></button>
-              {SHOP_CATEGORIES.map((category) => {
-                const count = catalog.filter((item) => item.type === category.type).length;
-                return <button key={category.type} className={catalogCategory === category.type ? 'is-active' : ''} type="button" role="tab" aria-selected={catalogCategory === category.type} onClick={() => setCatalogCategory(category.type)}>{category.label} <span>{count}</span></button>;
-              })}
-            </div>
-            <div className="admin-price-grid">
-              {visibleCatalog.map((item) => {
-                const draft = itemDrafts[item.id] ?? getItemDraft(item);
-                return (
-                  <article className="admin-price-card" key={item.id}>
-                    <div className="admin-price-item-image" title={item.name}>
-                      {item.shopImage ? <img src={item.shopImage} alt="" /> : <span>{item.yieldIcon ?? '🌱'}</span>}
-                    </div>
-                    <div className="admin-price-item-name"><strong>{item.name}</strong><small>{item.type} · {item.id}</small></div>
-                    <label>Купівля<input type="number" min="0" step="1" value={draft.price} onChange={(event) => updateItemDraft(item.id, { price: event.target.value })} /></label>
-                    {item.yieldItem && <label>Продаж<input type="number" min="0" step="1" value={draft.sellPrice} onChange={(event) => updateItemDraft(item.id, { sellPrice: event.target.value })} /></label>}
-                    <label>Позиція в магазині<input type="number" min="1" max="9999" step="1" value={draft.sortOrder} onChange={(event) => updateItemDraft(item.id, { sortOrder: event.target.value })} /></label>
-                    <details className="admin-item-advanced">
-                      <summary>Повні параметри</summary>
-                      <div className="admin-item-field-grid">
-                        <label>Назва<input value={draft.name} onChange={(event) => updateItemDraft(item.id, { name: event.target.value })} maxLength={120} /></label>
-                        <label>Доступ у магазині<select value={draft.access} onChange={(event) => updateItemDraft(item.id, { access: event.target.value as 'all' | 'admin' })}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option></select></label>
-                        <label>Мін. рівень покупки<input type="number" min="1" max="999" step="1" value={draft.requiredLevel} onChange={(event) => updateItemDraft(item.id, { requiredLevel: event.target.value })} /></label>
-                        <label>Досвід за посадку<input type="number" min="0" step="1" value={draft.plantingXp} onChange={(event) => updateItemDraft(item.id, { plantingXp: event.target.value })} /></label>
-                        {!item.yieldItem && <label>Ціна продажу<input type="number" min="0" step="1" value={draft.sellPrice} onChange={(event) => updateItemDraft(item.id, { sellPrice: event.target.value })} placeholder="—" /></label>}
-                        <label>Час росту (мс)<input type="number" min="1000" step="1000" value={draft.productionTimeMs} placeholder="Без циклу" onChange={(event) => updateItemDraft(item.id, { productionTimeMs: event.target.value })} /></label>
-                        <label>Кількість врожаю<input type="number" min="0" step="1" value={draft.yieldAmount} onChange={(event) => updateItemDraft(item.id, { yieldAmount: event.target.value })} /></label>
-                        <label>ID врожаю<input value={draft.yieldItem} onChange={(event) => updateItemDraft(item.id, { yieldItem: event.target.value })} /></label>
-                        <label>Назва врожаю<input value={draft.yieldName} onChange={(event) => updateItemDraft(item.id, { yieldName: event.target.value })} /></label>
-                        <label>Поверхня<select value={draft.placementSurface} onChange={(event) => updateItemDraft(item.id, { placementSurface: event.target.value as '' | 'grass' | 'soil' })}><option value="grass">Трава</option><option value="soil">Грядка</option></select></label>
-                        <label className="admin-toggle-field">Дзеркальний спрайт<input type="checkbox" checked={draft.flipX} onChange={(event) => updateItemDraft(item.id, { flipX: event.target.checked })} /></label>
-                        <label className="admin-toggle-field">Можна перевертати<input type="checkbox" checked={draft.canFlip} onChange={(event) => updateItemDraft(item.id, { canFlip: event.target.checked })} /></label>
-                        <label>Footprint W×H<div className="admin-dimensions"><input aria-label="Footprint ширина" type="number" min="1" max="2" value={draft.footprintWidth} onChange={(event) => updateItemDraft(item.id, { footprintWidth: event.target.value })} /><input aria-label="Footprint висота" type="number" min="1" max="2" value={draft.footprintHeight} onChange={(event) => updateItemDraft(item.id, { footprintHeight: event.target.value })} /></div></label>
-                        <label>Large footprint W×H<div className="admin-dimensions"><input aria-label="Large footprint ширина" type="number" min="1" max="2" value={draft.largeFootprintWidth} placeholder="—" onChange={(event) => updateItemDraft(item.id, { largeFootprintWidth: event.target.value, largeFootprintHeight: draft.largeFootprintHeight || event.target.value })} /><input aria-label="Large footprint висота" type="number" min="1" max="2" value={draft.largeFootprintHeight} placeholder="—" onChange={(event) => updateItemDraft(item.id, { largeFootprintHeight: event.target.value, largeFootprintWidth: draft.largeFootprintWidth || event.target.value })} /></div></label>
-                      </div>
-                    </details>
-                    <button className="admin-primary-button" type="button" onClick={() => void handleConfigSave(item)} disabled={priceBusyId === item.id}>{priceBusyId === item.id ? 'Зберігаємо…' : 'Зберегти параметри'}</button>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-
         </div>
         {showFarmPreview && selectedUser && <div className="admin-farm-overlay"><FarmCanvas readOnly previewTiles={toFarmPreviewTiles(selectedUser.farmItems)} /><header className="admin-farm-overlay-header"><div><strong>{selectedUser.username}</strong><small>ID: {selectedUser.id}</small></div><button type="button" onClick={() => setShowFarmPreview(false)} aria-label="Закрити перегляд ферми"><X size={18} /></button></header></div>}
-      </div>
-    </main>
+    </>
   );
 };

@@ -22,8 +22,9 @@ export interface GameItemConfig {
   yieldIcon?: string;
   yieldImage?: string;
   yieldAmount?: number;
-  sellPrice?: number;
+  sellPrice?: number | null;
   placementSurface?: 'grass' | 'soil';
   access?: 'all' | 'admin';
   custom?: boolean;
+  disabled?: boolean;
 }

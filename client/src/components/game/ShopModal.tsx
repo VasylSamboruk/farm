@@ -28,7 +28,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const filteredItems = Object.values(items).filter((item) =>
-    item.type === activeCategory && (item.access !== 'admin' || user?.role === 'admin')
+    item.type === activeCategory && !item.disabled && (item.access !== 'admin' || user?.role === 'admin')
   ).sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0));
 
   const handleBuy = (item: (typeof filteredItems)[number]) => {
@@ -100,11 +100,11 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                   <span style={styles.cardEmoji}>{item.shopIcon ?? item.yieldIcon ?? '🌳'}</span>
                 )}
                 {item.yieldItem && (
-                  <div className="shop-yield-pill" style={styles.yieldBadge} title={`${item.yieldName ?? item.name}${item.sellPrice !== undefined ? ` · +${item.sellPrice} монет за продаж` : ''}`}>
+                  <div className="shop-yield-pill" style={styles.yieldBadge} title={`${item.yieldName ?? item.name}${typeof item.sellPrice === 'number' ? ` · +${item.sellPrice} монет за продаж` : ''}`}>
                     <span className="shop-yield-icon" style={styles.yieldCircle}>
                       {item.yieldImage ? <img src={item.yieldImage} alt="" style={styles.yieldImage} draggable={false} /> : <span>{item.yieldIcon ?? '📦'}</span>}
                     </span>
-                    {item.sellPrice !== undefined && (
+                    {typeof item.sellPrice === 'number' && (
                       <span className="shop-yield-price" style={styles.yieldPrice}>+{item.sellPrice}<img src="/assets/ui/coin.png" alt="" style={styles.yieldCoin} draggable={false} /></span>
                     )}
                   </div>

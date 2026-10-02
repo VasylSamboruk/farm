@@ -46,7 +46,7 @@ export interface AdminCatalogItem {
   shopIcon?: string;
   placementSurface?: 'grass' | 'soil';
   price: number;
-  sellPrice?: number;
+  sellPrice?: number | null;
   plantingXp: number;
   requiredLevel: number;
   sortOrder: number;
@@ -59,6 +59,7 @@ export interface AdminCatalogItem {
   largeFootprint?: { width: number; height: number } | null;
   access: 'all' | 'admin';
   custom?: boolean;
+  disabled?: boolean;
 }
 
 export const adminApi = {
@@ -72,6 +73,17 @@ export const adminApi = {
   getCatalog: async () => {
     const response = await api.get<{ items: AdminCatalogItem[] }>('/admin/catalog');
     return response.data.items;
+  },
+  createItem: async (item: Omit<AdminCatalogItem, 'sortOrder' | 'custom'>) => {
+    const response = await api.post<{ item: AdminCatalogItem }>('/admin/catalog', item);
+    return response.data.item;
+  },
+  archiveItem: async (itemId: string) => {
+    const response = await api.delete<{ item: AdminCatalogItem }>(`/admin/catalog/${itemId}`);
+    return response.data.item;
+  },
+  permanentlyDeleteItem: async (itemId: string) => {
+    await api.delete(`/admin/catalog/${itemId}/permanent`);
   },
   updatePrices: async (itemId: string, price: number, sellPrice?: number) => {
     const response = await api.patch<{ item: AdminCatalogItem }>(`/admin/catalog/${itemId}/prices`, {

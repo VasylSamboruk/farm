@@ -781,8 +781,6 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           ctx.fillText(line.msg, textX, rowCenterY);
           ctx.restore();
         });
-          hoveredTile.current = null;
-        
         ctx.restore();
         return true;
       });

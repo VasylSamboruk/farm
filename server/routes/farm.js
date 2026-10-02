@@ -60,6 +60,7 @@ router.post('/place', async (req, res) => {
         if (!item) {
             return res.status(400).json({ message: 'Товар не знайдено' });
         }
+        if (item.disabled) return res.status(400).json({ message: 'Цей товар більше недоступний у магазині' });
         const occupiedQuadrants = getOccupiedQuadrants(quadrant, item);
         const occupiedCells = getOccupiedCells(x, y, quadrant, item, false);
         if (!occupiedCells || occupiedCells.some(cell => cell.x < 0 || cell.x >= 15 || cell.y < 0 || cell.y >= 15)) {
@@ -376,6 +377,7 @@ router.post('/save', async (req, res) => {
         if (!Array.isArray(tiles)) return res.status(400).json({ message: 'Некоректні дані ферми' });
         const playerLevel = getLevelProgress(user.xp ?? 0).level;
         const isLockedItem = (item) => item && (
+            item.disabled ||
             (item.access === 'admin' && user.role !== 'admin') ||
             playerLevel < (item.requiredLevel ?? 1)
         );
@@ -394,6 +396,7 @@ router.post('/save', async (req, res) => {
             const count = (submittedLockedCounts.get(tile.itemId) ?? 0) + 1;
             submittedLockedCounts.set(tile.itemId, count);
             if (count > (existingLockedCounts.get(tile.itemId) ?? 0)) {
+                if (item.disabled) return res.status(403).json({ message: 'Архівований товар більше не можна додати на ферму' });
                 if (item.access === 'admin' && user.role !== 'admin') {
                     return res.status(403).json({ message: 'Цей товар може додавати лише адміністратор' });
                 }

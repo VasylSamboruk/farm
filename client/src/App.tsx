@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { useFarmStore } from './store/useFarmStore';
 import { useGameConfigStore } from './store/useGameConfigStore';
 import { AuthForm } from './components/auth/AuthForm';
 import { PlayerProfile } from './components/auth/PlayerProfile';
-import { AdminPanel } from './components/auth/AdminPanel';
+import { AdminUsers } from './components/admin/AdminUsers';
+import { AdminShop } from './components/admin/AdminShop';
+import { AdminCreateItem } from './components/admin/AdminCreateItem.tsx';
+import { AdminShell } from './components/admin/AdminShell';
 import { GameHUD } from './components/game/GameHUD';
 import { FarmCanvas } from './components/game/FarmCanvas';
 import { loadGameImage, preloadGameImages } from './game/sprites';
@@ -19,6 +23,8 @@ const startupLabels: Record<StartupStage, string> = {
 };
 
 export const App: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const loadFarm = useFarmStore((state) => state.loadFarm);
@@ -29,7 +35,10 @@ export const App: React.FC = () => {
   const [startupError, setStartupError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [playSessionKey, setPlaySessionKey] = useState<string | null>(null);
-  const [showAdmin, setShowAdmin] = useState(false);
+  const isAdminRoute = location.pathname.startsWith('/admin');
+  const adminSection = location.pathname === '/admin/shop'
+    ? 'shop'
+    : location.pathname === '/admin/items/new' ? 'create' : 'users';
   const playRequested = Boolean(sessionKey && sessionKey === playSessionKey);
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('farmcanvas:theme') === 'light' ? 'light' : 'dark'
@@ -50,6 +59,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('farmcanvas:theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (isAdminRoute && location.pathname === '/admin') navigate('/admin/users', { replace: true });
+  }, [isAdminRoute, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (user && user.role !== 'admin' && isAdminRoute) navigate('/', { replace: true });
+  }, [user, isAdminRoute, navigate]);
 
   useEffect(() => {
     if (!playRequested) return;
@@ -105,14 +122,29 @@ export const App: React.FC = () => {
     return <div className="app-shell" data-theme={theme}><AuthForm /></div>;
   }
 
-  if (user.role === 'admin' && showAdmin) {
-    return <div className="app-shell" data-theme={theme}><AdminPanel onBack={() => setShowAdmin(false)} /></div>;
+  if (isAdminRoute && user.role === 'admin') {
+    return (
+      <div className="app-shell">
+        <AdminShell
+          section={adminSection}
+          username={user.username}
+          onSectionChange={(section) => navigate(section === 'create' ? '/admin/items/new' : `/admin/${section}`)}
+          onBack={() => { returnToProfile(); navigate('/'); }}
+        >
+          {adminSection === 'shop'
+            ? <AdminShop onAddItem={() => navigate('/admin/items/new')} />
+            : adminSection === 'create'
+              ? <AdminCreateItem onCancel={() => navigate('/admin/shop')} onCreated={() => navigate('/admin/shop')} />
+              : <AdminUsers />}
+        </AdminShell>
+      </div>
+    );
   }
 
   if (!playRequested) {
     return (
       <div className="app-shell" data-theme={theme}>
-        <PlayerProfile key={user.id} user={user} theme={theme} onToggleTheme={toggleTheme} onPlay={startPlaying} onOpenAdmin={() => setShowAdmin(true)} />
+        <PlayerProfile key={user.id} user={user} theme={theme} onToggleTheme={toggleTheme} onPlay={startPlaying} onOpenAdmin={() => navigate('/admin/users')} />
       </div>
     );
   }

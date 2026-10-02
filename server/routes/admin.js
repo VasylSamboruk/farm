@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import Farm from '../models/Farm.js';
 import User from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
-import { getGameItem, listGameItems, reorderGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
+import { createCustomGameItem, getGameItem, listGameItems, permanentlyDeleteGameItem, reorderGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 
 const router = express.Router();
@@ -97,11 +97,93 @@ const serializeCatalogItem = (item) => ({
     largeFootprint: item.largeFootprint,
     access: item.access ?? 'all',
     custom: Boolean(item.custom),
+    disabled: Boolean(item.disabled),
 });
+
+const isImageSource = (source) => {
+    if (typeof source !== 'string' || source.length > 2048) return false;
+    if (/^\/assets\/[A-Za-z0-9_./-]+$/.test(source) && !source.includes('..')) return true;
+    try {
+        return new URL(source).protocol === 'https:';
+    } catch {
+        return false;
+    }
+};
+
+const isFootprint = (footprint, maxSize = 2) => footprint &&
+    Number.isInteger(footprint.width) && Number.isInteger(footprint.height) &&
+    footprint.width >= 1 && footprint.height >= 1 &&
+    footprint.width <= maxSize && footprint.height <= maxSize;
 
 router.get('/catalog', (_req, res) => {
     const items = listGameItems().map(serializeCatalogItem);
     return res.json({ items });
+});
+
+router.post('/catalog', async (req, res) => {
+    const body = req.body ?? {};
+    const { id, name, type, price, plantingXp, requiredLevel, productionTimeMs, yieldItem, yieldName,
+        yieldIcon, yieldAmount, sellPrice, placementSurface, spriteScale, shopImage, shopIcon,
+        yieldImage, growthImages, footprint, largeFootprint, canFlip, access } = body;
+    const allowedTypes = ['TREE', 'CROP', 'ANIMAL', 'BUILDING'];
+    const producesItems = ['TREE', 'CROP', 'ANIMAL'].includes(type);
+    const validId = typeof id === 'string' && /^[a-z][a-z0-9_]{1,47}$/.test(id);
+    const validImageList = Array.isArray(growthImages) && growthImages.length <= 12 && growthImages.every(isImageSource);
+
+    if (!validId || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 120 ||
+        !allowedTypes.includes(type) || !Number.isSafeInteger(price) || price < 0 ||
+        !Number.isSafeInteger(plantingXp) || plantingXp < 0 ||
+        !Number.isSafeInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 999 ||
+        (producesItems && (!Number.isSafeInteger(productionTimeMs) || productionTimeMs < 1000)) ||
+        (producesItems && (typeof yieldItem !== 'string' || !/^[a-z0-9_-]{1,64}$/.test(yieldItem))) ||
+        (producesItems && (typeof yieldName !== 'string' || !yieldName.trim() || yieldName.trim().length > 120)) ||
+        (yieldIcon !== undefined && (typeof yieldIcon !== 'string' || yieldIcon.length > 16)) ||
+        (producesItems && (!Number.isSafeInteger(yieldAmount) || yieldAmount < 1)) ||
+        (sellPrice !== undefined && (!Number.isSafeInteger(sellPrice) || sellPrice < 0)) ||
+        !['grass', 'soil'].includes(placementSurface) ||
+        !Number.isFinite(spriteScale) || spriteScale < 0.1 || spriteScale > 8 ||
+        !isFootprint(footprint) ||
+        (largeFootprint !== null && largeFootprint !== undefined && !isFootprint(largeFootprint, 8)) ||
+        (shopImage !== null && shopImage !== undefined && shopImage !== '' && !isImageSource(shopImage)) ||
+        (yieldImage !== null && yieldImage !== undefined && yieldImage !== '' && !isImageSource(yieldImage)) ||
+        !validImageList ||
+        (shopIcon !== undefined && (typeof shopIcon !== 'string' || shopIcon.length > 16)) ||
+        typeof canFlip !== 'boolean' || !['all', 'admin'].includes(access) ||
+        (!shopImage && !growthImages.length && !shopIcon)) {
+        return res.status(400).json({ message: 'Перевір обов’язкові поля, розміри та посилання на зображення.' });
+    }
+
+    try {
+        const sortOrder = listGameItems().filter((item) => item.type === type)
+            .reduce((highest, item) => Math.max(highest, item.sortOrder ?? 0), 0) + 1;
+        const item = await createCustomGameItem({
+            id,
+            name: name.trim(),
+            type,
+            price,
+            plantingXp,
+            requiredLevel,
+            sortOrder,
+            ...(producesItems ? { productionTimeMs, yieldItem, yieldName: yieldName.trim(), yieldAmount } : {}),
+            ...(yieldIcon ? { yieldIcon } : {}),
+            ...(sellPrice === undefined ? {} : { sellPrice }),
+            placementSurface,
+            spriteScale,
+            shopImage: shopImage || undefined,
+            shopIcon: shopIcon || undefined,
+            yieldImage: yieldImage || undefined,
+            growthImages,
+            footprint,
+            largeFootprint: largeFootprint || undefined,
+            canFlip,
+            access,
+        });
+        if (!item) return res.status(409).json({ message: 'Товар з таким ID уже існує.' });
+        return res.status(201).json({ item: serializeCatalogItem(item) });
+    } catch (error) {
+        if (error?.code === 11000) return res.status(409).json({ message: 'Товар з таким ID уже існує.' });
+        return res.status(500).json({ message: 'Не вдалося створити товар', error: error.message });
+    }
 });
 
 router.patch('/catalog/:itemId/config', async (req, res) => {
@@ -111,7 +193,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         const allowedFields = new Set([
             'name', 'price', 'sellPrice', 'plantingXp', 'productionTimeMs', 'yieldItem', 'yieldName',
             'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'canFlip', 'footprint',
-            'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX', 'access', 'requiredLevel', 'sortOrder',
+            'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX', 'access', 'requiredLevel', 'sortOrder', 'disabled',
         ]);
         const updates = {};
 
@@ -119,7 +201,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             if (!allowedFields.has(field)) return res.status(400).json({ message: `Поле ${field} не можна змінювати` });
             if (['price', 'sellPrice', 'plantingXp', 'yieldAmount'].includes(field)) {
                 if (value === undefined) continue;
-                if (value === '' && field === 'sellPrice') continue;
+                if ((value === '' || value === null) && field === 'sellPrice') { updates[field] = null; continue; }
                 const parsed = Number(value);
                 if (!Number.isSafeInteger(parsed) || parsed < 0) return res.status(400).json({ message: `${field} має бути невід’ємним цілим числом` });
                 updates[field] = parsed;
@@ -152,7 +234,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 updates[field] = parsed;
                 continue;
             }
-            if (field === 'canFlip' || field === 'flipX') {
+            if (field === 'canFlip' || field === 'flipX' || field === 'disabled') {
                 if (typeof value !== 'boolean') return res.status(400).json({ message: `${field} має бути true або false` });
                 updates[field] = value;
                 continue;
@@ -164,23 +246,24 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             }
             if (field === 'footprint' || field === 'largeFootprint') {
                 if (value === null || value === '') { updates[field] = null; continue; }
-                if (!value || !Number.isInteger(value.width) || !Number.isInteger(value.height) || value.width < 1 || value.height < 1 || value.width > 2 || value.height > 2) {
-                    return res.status(400).json({ message: `${field} має містити width/height від 1 до 2` });
+                const maxSize = field === 'largeFootprint' ? 8 : 2;
+                if (!value || !Number.isInteger(value.width) || !Number.isInteger(value.height) || value.width < 1 || value.height < 1 || value.width > maxSize || value.height > maxSize) {
+                    return res.status(400).json({ message: `${field} має містити width/height від 1 до ${maxSize}` });
                 }
                 updates[field] = { width: value.width, height: value.height };
                 continue;
             }
             if (field === 'growthImages') {
-                if (!Array.isArray(value) || value.length > 12 || value.some((src) => typeof src !== 'string' || !/^\/assets\/[A-Za-z0-9_./-]+$/.test(src) || src.includes('..'))) {
-                    return res.status(400).json({ message: 'growthImages мають бути списком локальних шляхів /assets/...' });
+                if (!Array.isArray(value) || value.length > 12 || value.some((src) => !isImageSource(src))) {
+                    return res.status(400).json({ message: 'growthImages мають містити HTTPS URL або локальні шляхи /assets/...' });
                 }
                 updates[field] = value;
                 continue;
             }
             if (['shopImage', 'yieldImage'].includes(field)) {
                 if (value === '' || value === null) { updates[field] = null; continue; }
-                if (typeof value !== 'string' || !/^\/assets\/[A-Za-z0-9_./-]+$/.test(value) || value.includes('..')) {
-                    return res.status(400).json({ message: `${field} має бути локальним шляхом /assets/...` });
+                if (!isImageSource(value)) {
+                    return res.status(400).json({ message: `${field} має бути HTTPS URL або локальним шляхом /assets/...` });
                 }
                 updates[field] = value;
                 continue;
@@ -203,6 +286,38 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         return res.json({ item: updatedItem });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося оновити предмет', error: error.message });
+    }
+});
+
+router.delete('/catalog/:itemId', async (req, res) => {
+    try {
+        const item = getGameItem(req.params.itemId);
+        if (!item) return res.status(404).json({ message: 'Товар не знайдено.' });
+        const archived = await updateGameItemConfig(item.id, { disabled: true });
+        return res.json({ item: serializeCatalogItem(archived) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося видалити товар', error: error.message });
+    }
+});
+
+router.delete('/catalog/:itemId/permanent', async (req, res) => {
+    try {
+        const item = getGameItem(req.params.itemId);
+        if (!item) return res.status(404).json({ message: 'Товар не знайдено.' });
+
+        await updateGameItemConfig(item.id, { disabled: true });
+        const farmResult = await Farm.updateMany({}, { $pull: { tiles: { itemId: item.id } } });
+        const stillProducesYield = item.yieldItem && listGameItems().some((entry) =>
+            entry.id !== item.id && entry.yieldItem === item.yieldItem
+        );
+        if (item.yieldItem && !stillProducesYield) {
+            await User.updateMany({}, { $unset: { [`inventory.${item.yieldItem}`]: 1 } });
+        }
+
+        await permanentlyDeleteGameItem(item.id);
+        return res.json({ message: 'Товар видалено назавжди', removedFarmDocuments: farmResult.modifiedCount });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося видалити товар назавжди', error: error.message });
     }
 });
 
@@ -521,6 +636,7 @@ router.post('/users/:userId/farm-items', async (req, res) => {
         if (!item || !['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type)) {
             return res.status(400).json({ message: 'Предмет не знайдено в каталозі' });
         }
+        if (item.disabled) return res.status(400).json({ message: 'Архівований товар не можна додати на ферму' });
         const farm = await Farm.findOne({ userId: req.params.userId });
         if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
 

@@ -20,7 +20,14 @@ const getVisibleSpriteBounds = (image: HTMLImageElement) => {
   }
 
   sourceContext.drawImage(image, 0, 0);
-  const pixels = sourceContext.getImageData(0, 0, image.naturalWidth, image.naturalHeight).data;
+  let pixels: Uint8ClampedArray;
+  try {
+    pixels = sourceContext.getImageData(0, 0, image.naturalWidth, image.naturalHeight).data;
+  } catch {
+    const bounds = { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight };
+    spriteBoundsCache.set(image, bounds);
+    return bounds;
+  }
   const alphaPixels = new Uint8Array(image.naturalWidth * image.naturalHeight);
   let minX = image.naturalWidth;
   let minY = image.naturalHeight;

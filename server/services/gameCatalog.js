@@ -16,17 +16,18 @@ export const loadGameItemPriceOverrides = async () => {
 };
 
 export const getGameItem = (itemId) => {
-    const item = GAME_ITEMS[itemId];
     const override = priceOverrides.get(itemId);
+    if (override?.deleted) return null;
+    const item = GAME_ITEMS[itemId];
     if (!item) return override?.custom ? { ...override } : null;
     return override ? { ...item, ...override } : item;
 };
 
 export const listGameItems = () => {
     const items = [
-        ...listBaseGameItems().map((item) => getGameItem(item.id)),
+        ...listBaseGameItems().map((item) => getGameItem(item.id)).filter(Boolean),
         ...Array.from(priceOverrides.entries())
-            .filter(([itemId, config]) => !GAME_ITEMS[itemId] && config.custom)
+            .filter(([itemId, config]) => !GAME_ITEMS[itemId] && config.custom && !config.deleted)
             .map(([, config]) => ({ ...config })),
     ];
     const nextDefaultPositionByType = new Map();
@@ -72,9 +73,10 @@ export const updateGameItemConfig = async (itemId, updates) => {
         ...(Number.isSafeInteger(next.price) ? { price: next.price } : {}),
         ...(Number.isSafeInteger(next.sellPrice) ? { sellPrice: next.sellPrice } : {}),
     };
+    const unsetFields = next.sellPrice === null ? { sellPrice: 1 } : undefined;
     const record = await GameItemPrice.findOneAndUpdate(
         { itemId },
-        { $set: { itemId, config: next, ...indexedPrices } },
+        { $set: { itemId, config: next, ...indexedPrices }, ...(unsetFields ? { $unset: unsetFields } : {}) },
         { new: true, upsert: true, runValidators: true }
     ).lean();
 
@@ -84,6 +86,44 @@ export const updateGameItemConfig = async (itemId, updates) => {
         ...(Number.isSafeInteger(record.sellPrice) ? { sellPrice: record.sellPrice } : {}),
     });
     return getGameItem(itemId);
+};
+
+export const createCustomGameItem = async (item) => {
+    if (GAME_ITEMS[item.id] || priceOverrides.has(item.id)) return null;
+
+    const config = { ...item, custom: true };
+    const record = await GameItemPrice.create({
+        itemId: item.id,
+        config,
+        price: item.price,
+        ...(item.sellPrice === undefined ? {} : { sellPrice: item.sellPrice }),
+    });
+
+    priceOverrides.set(item.id, {
+        ...(record.config && typeof record.config === 'object' ? record.config : {}),
+        ...(Number.isSafeInteger(record.price) ? { price: record.price } : {}),
+        ...(Number.isSafeInteger(record.sellPrice) ? { sellPrice: record.sellPrice } : {}),
+    });
+    return getGameItem(item.id);
+};
+
+export const permanentlyDeleteGameItem = async (itemId) => {
+    const item = getGameItem(itemId);
+    if (!item) return null;
+
+    if (GAME_ITEMS[itemId]) {
+        const record = await GameItemPrice.findOneAndUpdate(
+            { itemId },
+            { $set: { itemId, config: { deleted: true } }, $unset: { price: 1, sellPrice: 1 } },
+            { new: true, upsert: true, runValidators: true }
+        ).lean();
+        priceOverrides.set(itemId, record.config);
+    } else {
+        await GameItemPrice.deleteOne({ itemId });
+        priceOverrides.delete(itemId);
+    }
+
+    return item;
 };
 
 export const reorderGameItem = async (itemId, requestedPosition) => {
