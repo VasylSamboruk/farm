@@ -107,6 +107,7 @@
 .admin-console .admin-stat-card > span { overflow: hidden; color: var(--admin-muted); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .admin-console .admin-stat-card > strong { overflow: hidden; color: var(--admin-ink); text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 900; }
 .admin-console .admin-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 9px; }
+.admin-console .admin-progress-reset { grid-column: 1 / -1; }
 .admin-console .admin-action-card { display: grid; align-content: start; gap: 9px; min-width: 0; padding: 13px; border: 1px solid #dce4dc; border-radius: 6px; background: #fff; }
 .admin-console .admin-action-title { display: flex; align-items: center; gap: 8px; color: var(--admin-green); }
 .admin-console .admin-action-title h3 { margin: 0; color: var(--admin-ink); font-size: 13px; font-weight: 800; }

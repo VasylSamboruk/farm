@@ -2,8 +2,9 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import Farm from '../models/Farm.js';
-import User from '../models/User.js';
+import User, { USER_STARTING_COINS } from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
+import { createStarterFarmTiles } from '../services/starterFarm.js';
 import { createCustomGameItem, getGameItem, listGameItems, permanentlyDeleteGameItem, reorderGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 import { getMediaSettings, normalizeAssetSource, resolveAssetSource, resolveGameItemImages, restorePreviousAssetBaseUrl, setAssetBaseUrl } from '../services/mediaStorage.js';
@@ -531,6 +532,33 @@ router.delete('/users/:userId/farm', async (req, res) => {
         return res.json({ message: 'Ферму повністю очищено' });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося очистити ферму', error: error.message });
+    }
+});
+
+router.post('/users/:userId/reset-progress', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const user = await User.findById(req.params.userId);
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+
+        const starterTiles = createStarterFarmTiles();
+        user.coins = USER_STARTING_COINS;
+        user.xp = 0;
+        user.level = 1;
+        user.inventory = new Map();
+
+        await Promise.all([
+            user.save(),
+            Farm.findOneAndUpdate(
+                { userId: user._id },
+                { $set: { tiles: starterTiles } },
+                { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+            ),
+        ]);
+
+        return res.json({ message: 'Ігровий прогрес скинуто до стартового стану' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося скинути прогрес гравця', error: error.message });
     }
 });
 

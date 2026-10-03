@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Ban, Coins, Eye, PackagePlus, Pencil, Search, ShieldOff, Sparkles, Sprout, Trash2, UserRound, Users, X } from 'lucide-react';
+import { Ban, Coins, Eye, PackagePlus, Pencil, RotateCcw, Search, ShieldOff, Sparkles, Sprout, Trash2, UserRound, Users, X } from 'lucide-react';
 import { adminApi, type AdminCatalogItem, type AdminFarmItem, type AdminUser } from '../../api/admin.api';
 import { getLevelProgress } from '../../config/progression';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
@@ -62,6 +62,7 @@ export const AdminUsers: React.FC = () => {
   const [banReason, setBanReason] = useState('');
   const [showFarmPreview, setShowFarmPreview] = useState(false);
   const [confirmFarmClear, setConfirmFarmClear] = useState(false);
+  const [confirmProgressReset, setConfirmProgressReset] = useState(false);
   const [confirmAccountDelete, setConfirmAccountDelete] = useState(false);
   const [confirmFarmItemId, setConfirmFarmItemId] = useState<string | null>(null);
   const [editingFarmItemId, setEditingFarmItemId] = useState<string | null>(null);
@@ -145,7 +146,7 @@ export const AdminUsers: React.FC = () => {
   };
 
   const runAction = async (action: () => Promise<unknown>, successMessage: string) => {
-    if (!selectedUser) return;
+    if (!selectedUser) return false;
     setBusy(true);
     setError('');
     setNotice('');
@@ -154,8 +155,10 @@ export const AdminUsers: React.FC = () => {
       await refreshUsers(search, page, selectedUser.id);
       setNotice(successMessage);
       showToast('success', successMessage);
+      return true;
     } catch (requestError) {
       reportError(getErrorMessage(requestError));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -224,6 +227,17 @@ export const AdminUsers: React.FC = () => {
     if (!selectedUser) return;
     await runAction(() => adminApi.clearFarm(selectedUser.id), 'Ферму повністю очищено.');
     setConfirmFarmClear(false);
+    setShowFarmPreview(false);
+  };
+
+  const handleProgressReset = async () => {
+    if (!selectedUser) return;
+    const wasReset = await runAction(
+      () => adminApi.resetProgress(selectedUser.id),
+      'Ігровий прогрес скинуто до стартового стану.'
+    );
+    if (!wasReset) return;
+    setConfirmProgressReset(false);
     setShowFarmPreview(false);
   };
 
@@ -419,6 +433,22 @@ export const AdminUsers: React.FC = () => {
                     <div className="admin-action-title"><PackagePlus size={18} /><h3>Інвентар гравця</h3></div>
                     {Object.entries(selectedUser.inventory).filter(([, amount]) => amount > 0).length === 0 ? <p>Інвентар порожній.</p> : (
                       <ul>{Object.entries(selectedUser.inventory).filter(([, amount]) => amount > 0).map(([itemId, amount]) => <li key={itemId}><span>{productCatalog.find((item) => item.yieldItem === itemId)?.yieldName ?? itemId}</span><strong>{formatNumber(amount)}</strong></li>)}</ul>
+                    )}
+                  </section>
+
+                  <section className="admin-action-card admin-progress-reset">
+                    <div className="admin-action-title"><RotateCcw size={18} /><h3>Скинути ігровий прогрес</h3></div>
+                    <p>Поверне гравцеві 1000 монет, рівень 1, 0 XP, порожній інвентар і стартову ферму. Логін, пароль, роль та соціальні зв’язки залишаться.</p>
+                    {confirmProgressReset ? (
+                      <div className="admin-inline-confirm">
+                        <span>Скинути прогрес гравця {selectedUser.username}? Його ферма та інвентар будуть замінені стартовими.</span>
+                        <button type="button" onClick={() => void handleProgressReset()} disabled={busy}>Скинути</button>
+                        <button type="button" onClick={() => setConfirmProgressReset(false)} disabled={busy}>Скасувати</button>
+                      </div>
+                    ) : (
+                      <button className="admin-danger-button" type="button" onClick={() => setConfirmProgressReset(true)} disabled={busy}>
+                        <RotateCcw size={15} />Скинути прогрес
+                      </button>
                     )}
                   </section>
 

@@ -135,6 +135,9 @@ export const adminApi = {
   clearFarm: async (userId: string) => {
     await api.delete(`/admin/users/${userId}/farm`);
   },
+  resetProgress: async (userId: string) => {
+    await api.post(`/admin/users/${userId}/reset-progress`);
+  },
   deleteFarmItem: async (userId: string, item: Pick<AdminFarmItem, 'x' | 'y' | 'quadrant'>) => {
     await api.delete(`/admin/users/${userId}/farm-items/${item.x}/${item.y}/${item.quadrant}`);
   },
