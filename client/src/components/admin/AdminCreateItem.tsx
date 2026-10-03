@@ -2,11 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, ImagePlus, PawPrint, RotateCcw, Sprout, TreePine, Warehouse, X } from 'lucide-react';
 import { adminApi, type AdminCatalogItem } from '../../api/admin.api';
 import { AdminImageUrlInput } from './AdminImageUrlInput';
+import { AdminDurationInput } from './AdminDurationInput';
 import { useAdminToast } from './adminToast';
 import { drawPlacedItem } from '../../game/placedItems';
 import { loadGameImage } from '../../game/sprites';
 import { drawTree } from '../../game/trees';
 import { resolveImageUrl } from '../../game/assetUrls';
+import { durationPartsToMilliseconds, EMPTY_DURATION, type DurationParts } from '../../game/durationInput';
 import type { GameItemConfig } from '../../types/game';
 
 type FootprintMode = 'mini' | 'large';
@@ -107,7 +109,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [sellPrice, setSellPrice] = useState('');
   const [plantingXp, setPlantingXp] = useState('10');
   const [requiredLevel, setRequiredLevel] = useState('1');
-  const [productionTimeMs, setProductionTimeMs] = useState('60000');
+  const [productionTimeParts, setProductionTimeParts] = useState<DurationParts>({ hours: '00', minutes: '01', seconds: '00' });
   const [yieldItem, setYieldItem] = useState('');
   const [yieldName, setYieldName] = useState('');
   const [yieldIcon, setYieldIcon] = useState('');
@@ -137,6 +139,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   }, []);
 
   const growthImages = growthImageSources.map((source) => source.trim()).filter(Boolean);
+  const productionTimeMs = durationPartsToMilliseconds(productionTimeParts);
   const miniRectangle = getRectangle(miniCells.map((quadrant) => ({ x: quadrant % 2, y: Math.floor(quadrant / 2) })));
   const largeCoordinates = largeCells.map((cell) => {
     const [x, y] = cell.split(',').map(Number);
@@ -146,7 +149,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const isBuilding = type === 'BUILDING';
   const previewImage = shopImage.trim() || growthImages[0] || '';
   const selectedIcon = shopIcon.trim() || itemTypes.find((item) => item.type === type)?.iconText || '🌱';
-  const previewDuration = Math.max(1000, Number(productionTimeMs) || 60_000);
+  const previewDuration = Math.max(1000, productionTimeMs ?? 60_000);
   const previewProgress = Math.min(1, previewElapsedMs / previewDuration);
   const previewStageIndex = growthImages.length <= 1 || type === 'ANIMAL' || isBuilding
     ? 0
@@ -170,10 +173,10 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
       setYieldIcon('');
       setYieldAmount('');
       setSellPrice('');
-      setProductionTimeMs('');
+      setProductionTimeParts({ ...EMPTY_DURATION });
     } else if (isBuilding) {
       setYieldAmount('1');
-      setProductionTimeMs('60000');
+      setProductionTimeParts({ hours: '00', minutes: '01', seconds: '00' });
     }
   };
 
@@ -273,7 +276,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
     const parsedScale = Number(spriteScale);
     const selectedRectangle = footprintMode === 'mini' ? miniRectangle : largeRectangle;
     const parsedSellPrice = sellPrice.trim() ? Number(sellPrice) : undefined;
-    const parsedProductionTime = productionTimeMs.trim() ? Number(productionTimeMs) : undefined;
+    const parsedProductionTime = productionTimeMs ?? undefined;
     const hasIncompleteStage = growthImageSources.some((source) => !source.trim());
 
     if (!/^[a-z][a-z0-9_]{1,47}$/.test(normalizedId)) {
@@ -434,7 +437,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
           {!isBuilding && <section className="admin-create-section">
             <div className="admin-create-section-heading"><span>03</span><div><h2>Виробництво</h2><p>Урожай і винагороди</p></div></div>
             <div className="admin-create-fields admin-create-fields-three">
-              <label>Час до врожаю, мс<input type="number" min="1000" step="1000" value={productionTimeMs} onChange={(event) => { setProductionTimeMs(event.target.value); restartPreviewCycle(); }} required /></label>
+              <div className="admin-duration-form-field"><span>Час до врожаю</span><AdminDurationInput label="Час до врожаю" value={productionTimeParts} onChange={(value) => { setProductionTimeParts(value); restartPreviewCycle(); }} /></div>
               <label>Кількість за збір<input type="number" min="1" step="1" value={yieldAmount} onChange={(event) => setYieldAmount(event.target.value)} required /></label>
               <label>Ціна продажу<input type="number" min="0" step="1" value={sellPrice} onChange={(event) => setSellPrice(event.target.value)} placeholder="Не продається" /></label>
               <label>ID врожаю<input value={yieldItem} maxLength={64} onChange={(event) => setYieldItem(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))} placeholder="peach" required /></label>

@@ -3,8 +3,10 @@ import axios from 'axios';
 import { ArrowDown, ArrowUp, PackagePlus, PackageSearch, RotateCcw, Save, ShoppingBasket, Trash2 } from 'lucide-react';
 import { adminApi, type AdminCatalogItem } from '../../api/admin.api';
 import { AdminImageUrlInput } from './AdminImageUrlInput';
+import { AdminDurationInput } from './AdminDurationInput';
 import { useAdminToast } from './adminToast';
 import { resolveImageUrl } from '../../game/assetUrls';
+import { durationPartsToMilliseconds, millisecondsToDurationParts, type DurationParts } from '../../game/durationInput';
 
 const categories: { type: 'ALL' | AdminCatalogItem['type']; label: string }[] = [
   { type: 'ALL', label: 'Усі товари' },
@@ -21,7 +23,7 @@ interface ItemDraft {
   plantingXp: string;
   requiredLevel: string;
   sortOrder: string;
-  productionTimeMs: string;
+  productionTime: DurationParts;
   yieldItem: string;
   yieldName: string;
   yieldIcon: string;
@@ -41,14 +43,16 @@ interface ItemDraft {
   growthImages: string[];
 }
 
-const createDraft = (item: AdminCatalogItem): ItemDraft => ({
+const createDraft = (item: AdminCatalogItem): ItemDraft => {
+  const durationParts = millisecondsToDurationParts(item.productionTimeMs);
+  return {
   name: item.name,
   price: String(item.price),
   sellPrice: String(item.sellPrice ?? ''),
   plantingXp: String(item.plantingXp ?? 0),
   requiredLevel: String(item.requiredLevel ?? 1),
   sortOrder: String(item.sortOrder ?? 1),
-  productionTimeMs: String(item.productionTimeMs ?? ''),
+  productionTime: durationParts,
   yieldItem: item.yieldItem ?? '',
   yieldName: item.yieldName ?? '',
   yieldIcon: item.yieldIcon ?? '',
@@ -66,7 +70,8 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => ({
   yieldImage: item.yieldImage ?? '',
   spriteScale: String(item.spriteScale ?? 1),
   growthImages: [...(item.growthImages ?? [])],
-});
+  };
+};
 
 const isImageSource = (source: string) => {
   if (!source) return true;
@@ -154,7 +159,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     const sortOrder = Number(draft.sortOrder);
     const plantingXp = Number(draft.plantingXp);
     const yieldAmount = draft.yieldAmount.trim() ? Number(draft.yieldAmount) : 0;
-    const productionTimeMs = draft.productionTimeMs.trim() ? Number(draft.productionTimeMs) : null;
+    const productionTimeMs = durationPartsToMilliseconds(draft.productionTime);
     const footprintWidth = Number(draft.footprintWidth);
     const footprintHeight = Number(draft.footprintHeight);
     const largeWidth = draft.largeFootprintWidth.trim() ? Number(draft.largeFootprintWidth) : null;
@@ -304,7 +309,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                   <summary>Додаткові параметри</summary>
                   <div className="admin-product-fields">
                     <label>Досвід за посадку<input type="number" min="0" value={draft.plantingXp} onChange={(event) => updateDraft(item.id, { plantingXp: event.target.value })} /></label>
-                    <label>Час росту, мс<input type="number" min="1000" step="1000" value={draft.productionTimeMs} placeholder="Без циклу" onChange={(event) => updateDraft(item.id, { productionTimeMs: event.target.value })} /></label>
+                    <div className="admin-duration-form-field"><span>Час до врожаю</span><AdminDurationInput label={`Час до врожаю для ${item.name}`} value={draft.productionTime} onChange={(productionTime) => updateDraft(item.id, { productionTime })} /></div>
                     <label>Кількість урожаю<input type="number" min="0" value={draft.yieldAmount} onChange={(event) => updateDraft(item.id, { yieldAmount: event.target.value })} /></label>
                     <label>ID урожаю<input value={draft.yieldItem} onChange={(event) => updateDraft(item.id, { yieldItem: event.target.value })} /></label>
                     <label>Назва урожаю<input value={draft.yieldName} onChange={(event) => updateDraft(item.id, { yieldName: event.target.value })} /></label>

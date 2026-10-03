@@ -9,6 +9,7 @@ import { AdminUsers } from './components/admin/AdminUsers';
 import { AdminShop } from './components/admin/AdminShop';
 import { AdminCreateItem } from './components/admin/AdminCreateItem.tsx';
 import { AdminMedia } from './components/admin/AdminMedia';
+import { AdminPricing } from './components/admin/AdminPricing';
 import { AdminShell } from './components/admin/AdminShell';
 import { GameHUD } from './components/game/GameHUD';
 import { FarmCanvas } from './components/game/FarmCanvas';
@@ -40,7 +41,8 @@ export const App: React.FC = () => {
   const adminSection = location.pathname === '/admin/shop'
     ? 'shop'
     : location.pathname === '/admin/items/new' ? 'create'
-      : location.pathname === '/admin/media' ? 'media' : 'users';
+      : location.pathname === '/admin/media' ? 'media'
+        : location.pathname === '/admin/pricing' ? 'pricing' : 'users';
   const playRequested = Boolean(sessionKey && sessionKey === playSessionKey);
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('farmcanvas:theme') === 'light' ? 'light' : 'dark'
@@ -139,7 +141,9 @@ export const App: React.FC = () => {
               ? <AdminCreateItem onCancel={() => navigate('/admin/shop')} onCreated={() => navigate('/admin/shop')} />
               : adminSection === 'media'
                 ? <AdminMedia />
-                : <AdminUsers />}
+                : adminSection === 'pricing'
+                  ? <AdminPricing />
+                  : <AdminUsers />}
         </AdminShell>
       </div>
     );

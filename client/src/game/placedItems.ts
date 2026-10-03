@@ -59,13 +59,13 @@ export const drawPlacedItem = (
   }
   ctx.restore();
 
-  if (isReady && item.yieldIcon && (item.type === 'ANIMAL' || !image)) {
+  if (isReady && (item.yieldIcon || item.yieldImage) && (item.type === 'ANIMAL' || !image)) {
     const badge = getYieldBadgePosition(item, tile, centerX, groundY, now);
     drawYieldBadge(
       ctx,
       badge.centerX,
       badge.centerY,
-      item.yieldIcon,
+      item.yieldIcon ?? '📦',
       now,
       badge.scale,
       getLoadedGameImage(item.yieldImage)
@@ -131,7 +131,7 @@ export const isPointOnReadyPlacedItem = (
     }
   }
 
-  if (!item.yieldIcon) return false;
+  if (!item.yieldIcon && !item.yieldImage) return false;
 
   const badge = getYieldBadgePosition(item, tile, centerX, groundY, now);
   const yieldImage = getLoadedGameImage(item.yieldImage);
