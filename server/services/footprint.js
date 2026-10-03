@@ -10,6 +10,8 @@ export const getOccupiedQuadrants = (anchorQuadrant, item) => {
         footprint.height > 2
     ) return null;
 
+    if (footprint.width === 2 && footprint.height === 2) return [0, 1, 2, 3];
+
     const anchorColumn = anchorQuadrant % 2;
     const anchorRow = Math.floor(anchorQuadrant / 2);
     if (anchorColumn + footprint.width > 2 || anchorRow + footprint.height > 2) return null;

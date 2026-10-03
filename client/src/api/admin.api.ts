@@ -62,6 +62,11 @@ export interface AdminCatalogItem {
   disabled?: boolean;
 }
 
+export interface AdminMediaSettings {
+  assetBaseUrl: string;
+  previousAssetBaseUrl: string;
+}
+
 export const adminApi = {
   getUsers: async (search = '', page = 1) => {
     const response = await api.get<{ users: AdminUser[]; page: number; limit: number; total: number; pages: number }>(
@@ -73,6 +78,18 @@ export const adminApi = {
   getCatalog: async () => {
     const response = await api.get<{ items: AdminCatalogItem[] }>('/admin/catalog');
     return response.data.items;
+  },
+  getMediaSettings: async () => {
+    const response = await api.get<AdminMediaSettings>('/admin/media/settings');
+    return response.data;
+  },
+  updateMediaBaseUrl: async (assetBaseUrl: string) => {
+    const response = await api.put<AdminMediaSettings>('/admin/media/settings', { assetBaseUrl });
+    return response.data;
+  },
+  restoreMediaBaseUrl: async () => {
+    const response = await api.post<AdminMediaSettings>('/admin/media/settings/restore');
+    return response.data;
   },
   createItem: async (item: Omit<AdminCatalogItem, 'sortOrder' | 'custom'>) => {
     const response = await api.post<{ item: AdminCatalogItem }>('/admin/catalog', item);

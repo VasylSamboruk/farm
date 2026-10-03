@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { gameApi } from '../api/game.api';
 import type { GameItemConfig } from '../types/game';
+import { preloadGameImages } from '../game/sprites';
 
 interface GameConfigState {
   items: Record<string, GameItemConfig>;
@@ -22,6 +23,9 @@ export const useGameConfigStore = create<GameConfigState>((set, get) => ({
       set({
         items: Object.fromEntries(items.map((item) => [item.id, item])),
         loading: false,
+      });
+      void preloadGameImages(items).catch((error: unknown) => {
+        console.error('Не вдалося завантажити зображення каталогу:', error);
       });
     } catch (error) {
       console.error('Не вдалося завантажити каталог гри:', error);

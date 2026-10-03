@@ -6,6 +6,7 @@ import User from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
 import { createCustomGameItem, getGameItem, listGameItems, permanentlyDeleteGameItem, reorderGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
+import { getMediaSettings, normalizeAssetSource, resolveAssetSource, resolveGameItemImages, restorePreviousAssetBaseUrl, setAssetBaseUrl } from '../services/mediaStorage.js';
 
 const router = express.Router();
 const MAX_PAGE_SIZE = 100;
@@ -36,7 +37,7 @@ const serializeInventory = (inventory) => {
     return Object.fromEntries(Object.entries(inventory));
 };
 
-const serializeAdminUser = (user, farm) => ({
+const serializeAdminUser = (user, farm, mediaSettings = {}) => ({
     id: String(user._id),
     username: user.username,
     role: user.role,
@@ -56,7 +57,7 @@ const serializeAdminUser = (user, farm) => ({
                 itemId: tile.itemId,
                 name: tile.isDirt ? 'Грядка' : item?.name ?? tile.itemId,
                 type: tile.isDirt ? 'DIRT' : item?.type ?? 'UNKNOWN',
-                image: item?.shopImage ?? item?.growthImages?.at(-1) ?? item?.yieldImage ?? '',
+                image: resolveAssetSource(item?.shopImage ?? item?.growthImages?.at(-1) ?? item?.yieldImage ?? '', mediaSettings),
                 x: tile.x,
                 y: tile.y,
                 quadrant: tile.quadrant,
@@ -102,7 +103,7 @@ const serializeCatalogItem = (item) => ({
 
 const isImageSource = (source) => {
     if (typeof source !== 'string' || source.length > 2048) return false;
-    if (/^\/assets\/[A-Za-z0-9_./-]+$/.test(source) && !source.includes('..')) return true;
+    if (/^\/?(?:assets\/)?[A-Za-z0-9_./-]+$/.test(source) && !source.includes('..')) return true;
     try {
         return new URL(source).protocol === 'https:';
     } catch {
@@ -115,9 +116,41 @@ const isFootprint = (footprint, maxSize = 2) => footprint &&
     footprint.width >= 1 && footprint.height >= 1 &&
     footprint.width <= maxSize && footprint.height <= maxSize;
 
-router.get('/catalog', (_req, res) => {
-    const items = listGameItems().map(serializeCatalogItem);
-    return res.json({ items });
+router.get('/media/settings', async (_req, res, next) => {
+    try {
+        res.set('Cache-Control', 'no-store');
+        return res.json(await getMediaSettings());
+    } catch (error) {
+        return next(error);
+    }
+});
+
+router.put('/media/settings', async (req, res, next) => {
+    try {
+        return res.json(await setAssetBaseUrl(req.body?.assetBaseUrl));
+    } catch (error) {
+        return res.status(400).json({ message: error.message || 'Некоректна базова адреса зображень' });
+    }
+});
+
+router.post('/media/settings/restore', async (_req, res, next) => {
+    try {
+        const settings = await restorePreviousAssetBaseUrl();
+        if (!settings) return res.status(409).json({ message: 'Немає попередньої адреси для відновлення' });
+        return res.json(settings);
+    } catch (error) {
+        return next(error);
+    }
+});
+
+router.get('/catalog', async (_req, res, next) => {
+    try {
+        const settings = await getMediaSettings();
+        const items = listGameItems().map((item) => serializeCatalogItem(resolveGameItemImages(item, settings)));
+        return res.json({ items });
+    } catch (error) {
+        return next(error);
+    }
 });
 
 router.post('/catalog', async (req, res) => {
@@ -154,6 +187,8 @@ router.post('/catalog', async (req, res) => {
     }
 
     try {
+        const mediaSettings = await getMediaSettings();
+        const normalizeImage = (source) => source ? normalizeAssetSource(source, mediaSettings) : source;
         const sortOrder = listGameItems().filter((item) => item.type === type)
             .reduce((highest, item) => Math.max(highest, item.sortOrder ?? 0), 0) + 1;
         const item = await createCustomGameItem({
@@ -169,10 +204,10 @@ router.post('/catalog', async (req, res) => {
             ...(sellPrice === undefined ? {} : { sellPrice }),
             placementSurface,
             spriteScale,
-            shopImage: shopImage || undefined,
+            shopImage: normalizeImage(shopImage) || undefined,
             shopIcon: shopIcon || undefined,
-            yieldImage: yieldImage || undefined,
-            growthImages,
+            yieldImage: normalizeImage(yieldImage) || undefined,
+            growthImages: growthImages.map((source) => normalizeImage(source)),
             footprint,
             largeFootprint: largeFootprint || undefined,
             canFlip,
@@ -278,12 +313,17 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         }
 
         if (!Object.keys(updates).length) return res.status(400).json({ message: 'Не передано змін конфігурації' });
+        const mediaSettings = await getMediaSettings();
+        if (updates.growthImages) updates.growthImages = updates.growthImages.map((source) => normalizeAssetSource(source, mediaSettings));
+        for (const field of ['shopImage', 'yieldImage']) {
+            if (updates[field]) updates[field] = normalizeAssetSource(updates[field], mediaSettings);
+        }
         const { sortOrder, ...configUpdates } = updates;
         let updatedItem = Object.keys(configUpdates).length
             ? await updateGameItemConfig(item.id, configUpdates)
             : item;
         if (sortOrder !== undefined) updatedItem = await reorderGameItem(item.id, sortOrder);
-        return res.json({ item: updatedItem });
+        return res.json({ item: resolveGameItemImages(updatedItem, mediaSettings) });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося оновити предмет', error: error.message });
     }
@@ -351,6 +391,7 @@ router.patch('/catalog/:itemId/prices', async (req, res) => {
 
 router.get('/users', async (req, res) => {
     try {
+    const mediaSettings = await getMediaSettings();
         const search = String(req.query.search ?? '').trim();
         const page = Math.max(1, Number.parseInt(String(req.query.page ?? '1'), 10) || 1);
         const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(String(req.query.limit ?? '50'), 10) || 50));
@@ -374,7 +415,7 @@ router.get('/users', async (req, res) => {
         const farmsByUserId = new Map(farms.map((farm) => [String(farm.userId), farm]));
 
         return res.json({
-            users: users.map((user) => serializeAdminUser(user, farmsByUserId.get(String(user._id)))),
+            users: users.map((user) => serializeAdminUser(user, farmsByUserId.get(String(user._id)), mediaSettings)),
             page,
             limit,
             total,

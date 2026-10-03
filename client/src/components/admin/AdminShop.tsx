@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ArrowDown, ArrowUp, PackagePlus, PackageSearch, RotateCcw, Save, ShoppingBasket, Trash2 } from 'lucide-react';
 import { adminApi, type AdminCatalogItem } from '../../api/admin.api';
+import { AdminImageUrlInput } from './AdminImageUrlInput';
 import { useAdminToast } from './adminToast';
+import { resolveImageUrl } from '../../game/assetUrls';
 
 const categories: { type: 'ALL' | AdminCatalogItem['type']; label: string }[] = [
   { type: 'ALL', label: 'Усі товари' },
@@ -68,7 +70,7 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => ({
 
 const isImageSource = (source: string) => {
   if (!source) return true;
-  if (/^\/assets\/[A-Za-z0-9_./-]+$/.test(source) && !source.includes('..')) return true;
+  if (/^\/?(?:assets\/)?[A-Za-z0-9_./-]+$/.test(source) && !source.includes('..')) return true;
   try {
     return new URL(source).protocol === 'https:';
   } catch {
@@ -87,6 +89,7 @@ interface AdminShopProps {
 export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
   const showToast = useAdminToast();
   const [catalog, setCatalog] = useState<AdminCatalogItem[]>([]);
+  const [assetBaseUrl, setAssetBaseUrl] = useState('');
   const [drafts, setDrafts] = useState<Record<string, ItemDraft>>({});
   const [category, setCategory] = useState<(typeof categories)[number]['type']>('ALL');
   const [loading, setLoading] = useState(true);
@@ -107,9 +110,10 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
 
   useEffect(() => {
     let active = true;
-    void adminApi.getCatalog()
-      .then((items) => {
+    void Promise.all([adminApi.getCatalog(), adminApi.getMediaSettings()])
+      .then(([items, mediaSettings]) => {
         if (!active) return;
+        setAssetBaseUrl(mediaSettings.assetBaseUrl);
         setCatalog(items);
         setDrafts(Object.fromEntries(items.map((item) => [item.id, createDraft(item)])));
       })
@@ -312,17 +316,17 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                     <label>Великий footprint, ширина<input type="number" min="1" max="8" value={draft.largeFootprintWidth} placeholder="—" onChange={(event) => updateDraft(item.id, { largeFootprintWidth: event.target.value })} /></label>
                     <label>Великий footprint, висота<input type="number" min="1" max="8" value={draft.largeFootprintHeight} placeholder="—" onChange={(event) => updateDraft(item.id, { largeFootprintHeight: event.target.value })} /></label>
                     <label>Масштаб зображення<input type="number" min="0.1" max="5" step="0.1" value={draft.spriteScale} onChange={(event) => updateDraft(item.id, { spriteScale: event.target.value })} /></label>
-                    <label>URL зображення магазину<input value={draft.shopImage} onChange={(event) => updateDraft(item.id, { shopImage: event.target.value })} placeholder="https://… або /assets/…" /></label>
+                    <AdminImageUrlInput key={`${item.id}-shop-${assetBaseUrl}`} label="Зображення магазину" value={draft.shopImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { shopImage: value })} />
                     <label>Іконка магазину<input value={draft.shopIcon} maxLength={16} onChange={(event) => updateDraft(item.id, { shopIcon: event.target.value })} placeholder="🌱" /></label>
-                    <label>URL зображення врожаю<input value={draft.yieldImage} onChange={(event) => updateDraft(item.id, { yieldImage: event.target.value })} placeholder="https://… або /assets/…" /></label>
+                    <AdminImageUrlInput key={`${item.id}-yield-${assetBaseUrl}`} label="Зображення врожаю" value={draft.yieldImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { yieldImage: value })} />
                     <label className="admin-check-field"><input type="checkbox" checked={draft.flipX} onChange={(event) => updateDraft(item.id, { flipX: event.target.checked })} /> Дзеркальний спрайт</label>
                     <label className="admin-check-field"><input type="checkbox" checked={draft.canFlip} onChange={(event) => updateDraft(item.id, { canFlip: event.target.checked })} /> Дозволити перевертання</label>
                     <div className="admin-stage-editor">
                       <div className="admin-stage-heading"><strong>Стадії зображення на полі</strong><button type="button" onClick={() => updateDraft(item.id, { growthImages: [...draft.growthImages, ''] })} disabled={draft.growthImages.length >= 12}>Додати стадію</button></div>
                       {draft.growthImages.map((source, index) => <div className="admin-stage-row" key={`${item.id}-stage-${index}`}>
                         <span className="admin-stage-number">{index + 1}</span>
-                        <div className="admin-stage-thumb">{source ? <img src={source} alt={`Стадія ${index + 1}`} /> : <span>URL</span>}</div>
-                        <input aria-label={`URL стадії ${index + 1} для ${item.name}`} value={source} onChange={(event) => updateStage(item.id, index, event.target.value)} placeholder="https://… або /assets/…" />
+                        <div className="admin-stage-thumb">{source ? <img src={resolveImageUrl(source, assetBaseUrl)} alt={`Стадія ${index + 1}`} /> : <span>URL</span>}</div>
+                        <AdminImageUrlInput key={`${item.id}-stage-${index}-${assetBaseUrl}`} label={`Стадія ${index + 1} для ${item.name}`} value={source} assetBaseUrl={assetBaseUrl} onChange={(value) => updateStage(item.id, index, value)} />
                         <button type="button" onClick={() => moveStage(item.id, index, -1)} disabled={index === 0} aria-label={`Перемістити стадію ${index + 1} вгору`}><ArrowUp size={15} /></button>
                         <button type="button" onClick={() => moveStage(item.id, index, 1)} disabled={index === draft.growthImages.length - 1} aria-label={`Перемістити стадію ${index + 1} вниз`}><ArrowDown size={15} /></button>
                         <button type="button" onClick={() => updateDraft(item.id, { growthImages: draft.growthImages.filter((_, stageIndex) => stageIndex !== index) })} aria-label={`Видалити стадію ${index + 1}`}><Trash2 size={15} /></button>

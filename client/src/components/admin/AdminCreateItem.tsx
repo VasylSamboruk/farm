@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, ImagePlus, PawPrint, RotateCcw, Sprout, TreePine, Warehouse, X } from 'lucide-react';
 import { adminApi, type AdminCatalogItem } from '../../api/admin.api';
+import { AdminImageUrlInput } from './AdminImageUrlInput';
 import { useAdminToast } from './adminToast';
 import { drawPlacedItem } from '../../game/placedItems';
 import { loadGameImage } from '../../game/sprites';
 import { drawTree } from '../../game/trees';
+import { resolveImageUrl } from '../../game/assetUrls';
 import type { GameItemConfig } from '../../types/game';
 
 type FootprintMode = 'mini' | 'large';
@@ -97,6 +99,7 @@ const AdminPreviewSprite: React.FC<AdminPreviewSpriteProps> = ({ type, image, ic
 
 export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCreated }) => {
   const showToast = useAdminToast();
+  const [assetBaseUrl, setAssetBaseUrl] = useState('');
   const [type, setType] = useState<ItemType>('TREE');
   const [name, setName] = useState('');
   const [id, setId] = useState('');
@@ -116,7 +119,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [access, setAccess] = useState<'all' | 'admin'>('all');
   const [shopImage, setShopImage] = useState('');
   const [shopIcon, setShopIcon] = useState('');
-  const [growthImagesText, setGrowthImagesText] = useState('');
+  const [growthImageSources, setGrowthImageSources] = useState<string[]>([]);
   const [footprintMode, setFootprintMode] = useState<FootprintMode>('mini');
   const [miniCells, setMiniCells] = useState([0]);
   const [largeCells, setLargeCells] = useState(['0,0']);
@@ -125,7 +128,15 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [previewElapsedMs, setPreviewElapsedMs] = useState(0);
   const [previewSelection, setPreviewSelection] = useState<PreviewSelection | null>(null);
 
-  const growthImages = growthImagesText.split(/\r?\n/).map((source) => source.trim()).filter(Boolean);
+  useEffect(() => {
+    let active = true;
+    void adminApi.getMediaSettings()
+      .then((settings) => { if (active) setAssetBaseUrl(settings.assetBaseUrl); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  const growthImages = growthImageSources.map((source) => source.trim()).filter(Boolean);
   const miniRectangle = getRectangle(miniCells.map((quadrant) => ({ x: quadrant % 2, y: Math.floor(quadrant / 2) })));
   const largeCoordinates = largeCells.map((cell) => {
     const [x, y] = cell.split(',').map(Number);
@@ -231,7 +242,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
           width: `${previewWidth}px`,
           height: `${previewWidth * 1.5}px`,
         }}>
-          <AdminPreviewSprite type={type} image={image} icon={icon} spriteScale={Number(spriteScale) || 1} footprint={previewFootprint} />
+          <AdminPreviewSprite type={type} image={resolveImageUrl(image, assetBaseUrl)} icon={icon} spriteScale={Number(spriteScale) || 1} footprint={previewFootprint} />
         </div>
         <span className="admin-preview-surface-label">{placementSurface === 'grass' ? 'ТРАВА' : 'ГРЯДКА'}</span>
         {!isBuilding && type !== 'ANIMAL' && growthImages.length > 1 && <button className="admin-preview-replay" type="button" onClick={restartPreviewCycle}><RotateCcw size={13} /><span>Повторити ріст</span></button>}
@@ -263,7 +274,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
     const selectedRectangle = footprintMode === 'mini' ? miniRectangle : largeRectangle;
     const parsedSellPrice = sellPrice.trim() ? Number(sellPrice) : undefined;
     const parsedProductionTime = productionTimeMs.trim() ? Number(productionTimeMs) : undefined;
-    const hasIncompleteStage = Boolean(growthImagesText.trim()) && growthImagesText.split(/\r?\n/).some((source) => !source.trim());
+    const hasIncompleteStage = growthImageSources.some((source) => !source.trim());
 
     if (!/^[a-z][a-z0-9_]{1,47}$/.test(normalizedId)) {
       setError('ID має починатися з латинської літери та містити лише латинські літери, цифри й _.');
@@ -429,23 +440,22 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
               <label>ID врожаю<input value={yieldItem} maxLength={64} onChange={(event) => setYieldItem(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))} placeholder="peach" required /></label>
               <label>Назва врожаю<input value={yieldName} maxLength={120} onChange={(event) => setYieldName(event.target.value)} placeholder="Персик" required /></label>
               <label>Іконка врожаю<input value={yieldIcon} maxLength={16} onChange={(event) => setYieldIcon(event.target.value)} placeholder="🍑" /></label>
-              <label className="admin-create-field-wide">URL зображення врожаю<input type="text" value={yieldImage} onChange={(event) => setYieldImage(event.target.value)} placeholder="https://… або /assets/…" /></label>
+              <AdminImageUrlInput key={`yield-${assetBaseUrl}`} className="admin-create-field-wide" label="Зображення врожаю" value={yieldImage} assetBaseUrl={assetBaseUrl} onChange={setYieldImage} />
             </div>
           </section>}
 
           <section className="admin-create-section">
             <div className="admin-create-section-heading"><span>{isBuilding ? '03' : '04'}</span><div><h2>Зображення</h2><p>Картинки товару та стадій росту</p></div></div>
             <div className="admin-create-fields admin-create-fields-two">
-              <label>URL зображення магазину<input type="text" value={shopImage} onChange={(event) => setShopImage(event.target.value)} placeholder="https://… або /assets/…" /></label>
+              <AdminImageUrlInput key={`shop-${assetBaseUrl}`} label="Зображення магазину" value={shopImage} assetBaseUrl={assetBaseUrl} onChange={setShopImage} />
               <label>Іконка-запасний варіант<input value={shopIcon} maxLength={16} onChange={(event) => setShopIcon(event.target.value)} placeholder={selectedIcon} /></label>
               <div className="admin-create-field-wide admin-new-stage-editor">
-                <div className="admin-new-stage-heading"><div><strong>Стадії зображення на полі</strong><small>Порядок відповідає циклу росту</small></div><button type="button" onClick={() => { setGrowthImagesText((current) => current.length ? `${current}\n ` : ' '); restartPreviewCycle(); }}>Додати стадію</button></div>
-                {(growthImagesText ? growthImagesText.split(/\r?\n/) : []).map((source, index) => (
+                <div className="admin-new-stage-heading"><div><strong>Стадії зображення на полі</strong><small>Вибери тип джерела й укажи шлях або URL</small></div><button type="button" onClick={() => { setGrowthImageSources((current) => [...current, '']); restartPreviewCycle(); }}>Додати стадію</button></div>
+                {growthImageSources.map((source, index) => (
                   <div className="admin-new-stage-row" key={`new-stage-${index}`}>
-                    <span>{index + 1}</span>
-                    <div>{source.trim() ? <img src={source.trim()} alt={`Стадія ${index + 1}`} /> : 'URL'}</div>
-                    <input aria-label={`URL стадії ${index + 1}`} value={source} onChange={(event) => { const stages = growthImagesText.split(/\r?\n/); stages[index] = event.target.value; setGrowthImagesText(stages.join('\n')); restartPreviewCycle(); }} placeholder="https://… або /assets/…" />
-                    <button type="button" onClick={() => { const stages = growthImagesText.split(/\r?\n/); stages.splice(index, 1); setGrowthImagesText(stages.join('\n')); restartPreviewCycle(); }} aria-label={`Видалити стадію ${index + 1}`}><X size={15} /></button>
+                    <div className="admin-new-stage-identity"><span>{index + 1}</span><div>{source.trim() ? <img src={resolveImageUrl(source, assetBaseUrl)} alt={`Стадія ${index + 1}`} /> : 'PNG'}</div></div>
+                    <AdminImageUrlInput key={`stage-${index}-${assetBaseUrl}`} className="admin-new-stage-url" label={`Стадія ${index + 1}`} value={source} assetBaseUrl={assetBaseUrl} onChange={(value) => { setGrowthImageSources((current) => current.map((entry, entryIndex) => entryIndex === index ? value : entry)); restartPreviewCycle(); }} />
+                    <button type="button" onClick={() => { setGrowthImageSources((current) => current.filter((_, entryIndex) => entryIndex !== index)); restartPreviewCycle(); }} aria-label={`Видалити стадію ${index + 1}`}><X size={15} /></button>
                   </div>
                 ))}
               </div>
@@ -467,7 +477,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
             <div className={`admin-footprint-board${footprintMode === 'mini' ? ' is-mini-mode' : ''}`} role="group" aria-label="Сітка footprint 8 на 8">
               {Array.from({ length: 64 }, (_, index) => renderFootprintTile(index))}
               {previewPosition && <div className="admin-footprint-sprite" style={previewPosition} aria-hidden="true">
-                {previewImage ? <img src={previewImage} alt="" /> : <span>{selectedIcon}</span>}
+                {previewImage ? <img src={resolveImageUrl(previewImage, assetBaseUrl)} alt="" /> : <span>{selectedIcon}</span>}
               </div>}
             </div>
             <div className="admin-footprint-legend"><span><i className="is-free" />Вільно</span><span><i className="is-used" />Зайнято</span></div>
@@ -485,9 +495,9 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
           <div className="admin-create-preview-name"><span>{type}</span><strong>{name.trim() || 'Новий товар'}</strong><small>{id.trim() || 'item_id'}</small></div>
           <div className="admin-preview-thumbnails" aria-label="Зображення товару">
             <button type="button" onClick={() => setPreviewSelection({ title: 'Іконка магазину', icon: selectedIcon })} aria-label="Збільшити іконку магазину"><span>{selectedIcon}</span><small>Іконка</small></button>
-            {shopImage.trim() && <button type="button" onClick={() => setPreviewSelection({ title: 'Зображення магазину', image: shopImage.trim() })} aria-label="Збільшити зображення магазину"><img src={shopImage.trim()} alt="" /><small>Магазин</small></button>}
-            {growthImages.map((source, index) => <button type="button" key={`${source}-${index}`} onClick={() => setPreviewSelection({ title: `Стадія ${index + 1}`, image: source })} aria-label={`Збільшити стадію ${index + 1}`}><img src={source} alt="" /><small>{index + 1}</small></button>)}
-            {yieldImage.trim() && <button type="button" onClick={() => setPreviewSelection({ title: 'Зображення врожаю', image: yieldImage.trim(), icon: yieldIcon })} aria-label="Збільшити зображення врожаю"><img src={yieldImage.trim()} alt="" /><small>Врожай</small></button>}
+            {shopImage.trim() && <button type="button" onClick={() => setPreviewSelection({ title: 'Зображення магазину', image: shopImage.trim() })} aria-label="Збільшити зображення магазину"><img src={resolveImageUrl(shopImage.trim(), assetBaseUrl)} alt="" /><small>Магазин</small></button>}
+            {growthImages.map((source, index) => <button type="button" key={`${source}-${index}`} onClick={() => setPreviewSelection({ title: `Стадія ${index + 1}`, image: source })} aria-label={`Збільшити стадію ${index + 1}`}><img src={resolveImageUrl(source, assetBaseUrl)} alt="" /><small>{index + 1}</small></button>)}
+            {yieldImage.trim() && <button type="button" onClick={() => setPreviewSelection({ title: 'Зображення врожаю', image: yieldImage.trim(), icon: yieldIcon })} aria-label="Збільшити зображення врожаю"><img src={resolveImageUrl(yieldImage.trim(), assetBaseUrl)} alt="" /><small>Врожай</small></button>}
           </div>
           <div className="admin-create-preview-meta"><span>Поверхня</span><strong>{placementSurface === 'grass' ? 'Трава' : 'Грядка'}</strong><span>Ціна</span><strong>{Number(price || 0).toLocaleString('uk-UA')} монет</strong></div>
         </aside>
