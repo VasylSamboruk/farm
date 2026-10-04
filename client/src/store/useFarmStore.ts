@@ -40,11 +40,13 @@ interface FarmTileResponse {
 }
 
 interface FarmResponse {
+  size?: number;
   tiles: FarmTileResponse[];
 }
 
 interface FarmState {
   tiles: Record<string, TileData>;
+  farmSize: number;
   harvestQueue: HarvestQueueEntry[];
   activeHarvestStartedAt: number | null;
   gameMessage: string | null;
@@ -52,13 +54,15 @@ interface FarmState {
   notifyGameMessage: (message: string) => void;
   dismissGameMessage: () => void;
   loadFarm: (userId: string) => Promise<void>;
+  expandFarm: (userId: string, itemId: string, fromInventory?: boolean) => Promise<boolean>;
   digTile: (row: number, col: number, userId: string) => void;
   removeTile: (row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
-  placeItem: (row: number, col: number, quadrant: number, itemId: string, userId: string) => Promise<boolean>;
+  placeItem: (row: number, col: number, quadrant: number, itemId: string, userId: string, fromInventory?: boolean) => Promise<boolean>;
   rotateTile: (row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
   moveTile: (fromRow: number, fromCol: number, fromQuadrant: number, row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
   harvestItem: (row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
   sellItem: (userId: string, itemId: string, amount: number) => Promise<boolean>;
+  sellFarmItem: (userId: string, itemId: string, amount: number) => Promise<boolean>;
 }
 
 const convertToDbArray = (tiles: Record<string, TileData>) => {
@@ -113,6 +117,7 @@ export const useFarmStore = create<FarmState>((set, get) => {
 
   return {
   tiles: {},
+  farmSize: 15,
   harvestQueue: [],
   activeHarvestStartedAt: null,
   gameMessage: null,
@@ -155,10 +160,47 @@ export const useFarmStore = create<FarmState>((set, get) => {
             };
           }
       });
-      set({ tiles: loadedTiles });
+      set({ tiles: loadedTiles, farmSize: data.size ?? 15 });
     } catch (error) {
       console.error('Не вдалося завантажити ферму:', error);
       throw error;
+    }
+  },
+
+  expandFarm: async (userId, itemId, fromInventory = false) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/expand`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, itemId, fromInventory }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося розширити ферму' });
+        return false;
+      }
+      const expandedTiles: Record<string, TileData> = {};
+      (data.tiles as FarmTileResponse[]).forEach((tile) => {
+        const key = `${tile.y},${tile.x},${tile.isDirt ? -1 : tile.quadrant}`;
+        expandedTiles[key] = tile.isDirt ? { type: 'dirt' } : {
+          type: 'item',
+          itemId: tile.itemId,
+          stage: tile.stage,
+          quadrant: tile.quadrant,
+          occupiedQuadrants: tile.occupiedQuadrants?.length ? tile.occupiedQuadrants : [tile.quadrant],
+          occupiedCells: tile.occupiedCells?.map((cell) => ({ row: cell.y, col: cell.x, quadrant: cell.quadrant })),
+          flipX: tile.flipX ?? false,
+          placedAt: tile.placedAt,
+          lastHarvestedAt: tile.lastHarvestedAt,
+        };
+      });
+      set({ tiles: expandedTiles, farmSize: data.size });
+      useAuthStore.getState().updateUser(data.user);
+      return true;
+    } catch (error) {
+      console.error('Помилка розширення ферми', error);
+      set({ gameMessage: 'Не вдалося розширити ферму. Перевір з’єднання із сервером.' });
+      return false;
     }
   },
 
@@ -191,7 +233,7 @@ export const useFarmStore = create<FarmState>((set, get) => {
         }
         return { tiles: newTiles };
       });
-      if (data.user) useAuthStore.getState().updateUser({ coins: data.user.coins });
+      if (data.user) useAuthStore.getState().updateUser({ coins: data.user.coins, rubies: data.user.rubies });
       return true;
     } catch (err) {
       console.error('Помилка видалення', err);
@@ -200,12 +242,12 @@ export const useFarmStore = create<FarmState>((set, get) => {
     }
   },
 
-  placeItem: async (row, col, quadrant, itemId, userId) => {
+  placeItem: async (row, col, quadrant, itemId, userId, fromInventory = false) => {
     try {
       const res = await fetch(`${API_BASE_URL}/farm/place`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, x: col, y: row, quadrant, itemId })
+        body: JSON.stringify({ userId, x: col, y: row, quadrant, itemId, fromInventory })
       });
       const data = await res.json();
       
@@ -217,6 +259,8 @@ export const useFarmStore = create<FarmState>((set, get) => {
       // Оновлюємо монети І ДОСВІД
       useAuthStore.getState().updateUser({ 
         coins: data.user.coins, 
+        rubies: data.user.rubies,
+        itemInventory: data.user.itemInventory,
         xp: data.user.xp, 
         level: data.user.level 
       });
@@ -381,6 +425,31 @@ export const useFarmStore = create<FarmState>((set, get) => {
     } catch (error) {
       console.error('Помилка продажу:', error);
       set({ gameMessage: 'Не вдалося продати товар. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
+  sellFarmItem: async (userId, itemId, amount) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/sell-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, itemId, amount }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося продати предмет' });
+        return false;
+      }
+      useAuthStore.getState().updateUser({
+        coins: data.user.coins,
+        rubies: data.user.rubies,
+        itemInventory: data.user.itemInventory,
+      });
+      return true;
+    } catch (error) {
+      console.error('Помилка продажу предмета:', error);
+      set({ gameMessage: 'Не вдалося продати предмет. Перевір з’єднання із сервером.' });
       return false;
     }
   }

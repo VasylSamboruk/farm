@@ -14,6 +14,7 @@ type CategoryOption = {
 };
 
 const categoryOptions: CategoryOption[] = [
+  { type: 'ALL', label: 'Усі врожайні товари', icon: <Calculator size={17} /> },
   { type: 'TREE', label: 'Дерева й кущі', icon: <TreePine size={17} /> },
   { type: 'CROP', label: 'Рослини', icon: <Sprout size={17} /> },
   { type: 'ANIMAL', label: 'Тварини', icon: <PawPrint size={17} /> },
@@ -35,11 +36,12 @@ const getErrorMessage = (error: unknown) => {
 export const AdminPricing: React.FC = () => {
   const showToast = useAdminToast();
   const [catalog, setCatalog] = useState<AdminCatalogItem[]>([]);
-  const [category, setCategory] = useState<PricingCategory>('TREE');
+  const [category, setCategory] = useState<PricingCategory>('ALL');
   const [duration, setDuration] = useState<DurationParts>({ hours: '01', minutes: '00', seconds: '00' });
   const [markupPercent, setMarkupPercent] = useState('100');
   const [manualPrice, setManualPrice] = useState<string | null>(null);
   const [manualSellPrice, setManualSellPrice] = useState<string | null>(null);
+  const [yieldAmountInput, setYieldAmountInput] = useState('1');
   const [applyItemId, setApplyItemId] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -56,22 +58,23 @@ export const AdminPricing: React.FC = () => {
   }, []);
 
   const durationMs = durationPartsToMilliseconds(duration);
-  const references = catalog.filter((item) => item.type === category && !item.disabled && item.yieldItem &&
-    Number.isSafeInteger(item.productionTimeMs) && (item.productionTimeMs ?? 0) > 0 &&
-    Number.isSafeInteger(item.price) && Number.isSafeInteger(item.sellPrice) && (item.sellPrice ?? -1) >= 0);
-  const estimate = durationMs !== null && durationMs >= 1000
-    ? estimateItemPricing(references, category, durationMs)
-    : null;
   const parsedMarkup = Number(markupPercent);
   const safeMarkup = Number.isFinite(parsedMarkup) && parsedMarkup > 0 ? parsedMarkup : 100;
-  const suggestedPrice = estimate ? Math.round(estimate.price * safeMarkup / 100) : null;
-  const suggestedSellPrice = estimate ? Math.round(estimate.sellPrice * safeMarkup / 100) : null;
-  const purchasePrice = manualPrice === null ? suggestedPrice : Number(manualPrice);
-  const proportionalSellPrice = estimate && purchasePrice !== null && estimate.price > 0
-    ? Math.round(estimate.sellPrice * purchasePrice / estimate.price)
-    : suggestedSellPrice;
-  const sellPrice = manualSellPrice === null ? proportionalSellPrice : Number(manualSellPrice);
-  const categoryItems = catalog.filter((item) => item.type === category && !item.disabled && item.yieldItem);
+  const yieldAmount = Number(yieldAmountInput);
+  const referenceItems = catalog.filter((item) =>
+    (category === 'ALL' || item.type === category) && !item.disabled && item.yieldItem &&
+    item.priceCurrency !== 'rubies' &&
+    Number.isSafeInteger(item.productionTimeMs) && (item.productionTimeMs ?? 0) > 0 &&
+    Number.isSafeInteger(item.price) && Number.isSafeInteger(item.sellPrice) && (item.sellPrice ?? -1) >= 0
+  );
+  const estimate = durationMs !== null && durationMs >= 1000 && Number.isSafeInteger(yieldAmount) && yieldAmount > 0
+    ? estimateItemPricing(catalog, category, durationMs, yieldAmount, manualPrice === null ? undefined : Number(manualPrice), safeMarkup)
+    : null;
+  const purchasePrice = estimate?.price ?? null;
+  const sellPrice = manualSellPrice === null ? estimate?.sellPrice ?? null : Number(manualSellPrice);
+  const categoryItems = catalog.filter((item) =>
+    (category === 'ALL' || item.type === category) && !item.disabled && item.yieldItem && item.priceCurrency !== 'rubies'
+  );
   const selectedItem = categoryItems.find((item) => item.id === applyItemId);
 
   const resetManualPrices = () => {
@@ -85,7 +88,7 @@ export const AdminPricing: React.FC = () => {
   };
 
   const applyPricing = async () => {
-    if (!selectedItem || durationMs === null || durationMs < 1000 || purchasePrice === null || sellPrice === null ||
+    if (!selectedItem || durationMs === null || durationMs < 1000 || !Number.isSafeInteger(yieldAmount) || yieldAmount < 1 || purchasePrice === null || sellPrice === null ||
         !Number.isSafeInteger(purchasePrice) || purchasePrice < 0 ||
         !Number.isSafeInteger(sellPrice) || sellPrice < 0) {
       setError('Обери товар, коректний час і цілі невід’ємні ціни.');
@@ -99,10 +102,11 @@ export const AdminPricing: React.FC = () => {
       const updated = await adminApi.updateConfig(selectedItem.id, {
         price: purchasePrice,
         sellPrice,
+        yieldAmount,
         productionTimeMs: durationMs,
       });
       setCatalog(await adminApi.getCatalog());
-      setNotice(`Для «${updated.name}» застосовано ${formatGameDuration(durationMs)}, ${formatPrice(purchasePrice)} монет за покупку та ${formatPrice(sellPrice)} за врожай.`);
+      setNotice(`Для «${updated.name}» застосовано ${formatGameDuration(durationMs)}, урожай ×${yieldAmount}, ${formatPrice(purchasePrice)} монет за покупку та ${formatPrice(sellPrice)} за одиницю.`);
       showToast('success', `Ціни «${updated.name}» оновлено.`);
     } catch (saveError) {
       const message = getErrorMessage(saveError);
@@ -119,7 +123,7 @@ export const AdminPricing: React.FC = () => {
         <div>
           <span className="admin-eyebrow">ЕКОНОМІКА ГРИ</span>
           <h1 id="admin-pricing-title">Ціноутворення</h1>
-          <p>Оцінка ціни за актуальними товарами каталогу</p>
+          <p>Оцінка окупності й ціни врожаю за всім активним каталогом</p>
         </div>
         <Calculator size={23} aria-hidden="true" />
       </header>
@@ -144,25 +148,31 @@ export const AdminPricing: React.FC = () => {
             </fieldset>
 
             <div className="admin-pricing-duration">
-              <span>Час до одного врожаю</span>
+              <span>Час до одного врожайного циклу</span>
               <AdminDurationInput label="Час до врожаю" value={duration} onChange={(value) => { setDuration(value); resetManualPrices(); }} />
             </div>
 
             <label className="admin-pricing-markup">
               <span><strong>Множник ціни</strong><b>{markupPercent || '0'}%</b></span>
               <input type="range" min="25" max="400" step="5" value={Math.min(400, Math.max(25, Number(markupPercent) || 25))} onChange={(event) => changeMarkup(event.target.value)} />
-              <small>Змінює ціну покупки й пропорційну ціну продажу врожаю</small>
+              <small>Множить оцінену ціну посадки та виручку за цикл</small>
             </label>
 
             {estimate && (
               <div className="admin-pricing-manual-grid">
-                <label>Ціна покупки<input type="number" min="0" step="1" value={purchasePrice ?? ''} onChange={(event) => { setManualPrice(event.target.value); setManualSellPrice(null); }} /></label>
-                <label>Продаж одиниці врожаю<input type="number" min="0" step="1" value={sellPrice ?? ''} onChange={(event) => setManualSellPrice(event.target.value)} /></label>
+                <label>Ціна предмета<input type="number" min="0" step="1" value={purchasePrice ?? ''} onChange={(event) => { setManualPrice(event.target.value); setManualSellPrice(null); }} /></label>
+                <label>Урожай за цикл<input type="number" min="1" max="100000" step="1" value={yieldAmountInput} onChange={(event) => { setYieldAmountInput(event.target.value); setManualSellPrice(null); }} /></label>
+                <label>Продаж за одиницю<input type="number" min="0" step="1" value={sellPrice ?? ''} onChange={(event) => setManualSellPrice(event.target.value)} /></label>
               </div>
             )}
 
             <label className="admin-pricing-apply-select">Застосувати до товару
-              <select value={applyItemId} onChange={(event) => setApplyItemId(event.target.value)}>
+              <select value={applyItemId} onChange={(event) => {
+                const itemId = event.target.value;
+                setApplyItemId(itemId);
+                const item = categoryItems.find((entry) => entry.id === itemId);
+                if (item) setYieldAmountInput(String(item.yieldAmount ?? 1));
+              }}>
                 <option value="">Обери товар або скопіюй розрахунок вручну</option>
                 {categoryItems.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}
               </select>
@@ -184,25 +194,26 @@ export const AdminPricing: React.FC = () => {
               <>
                 <div className="admin-pricing-result-grid">
                   <article><span>Покупка в магазині</span><strong>{purchasePrice === null ? '—' : formatPrice(purchasePrice)}</strong><small>монет за товар</small></article>
-                  <article><span>Продаж врожаю</span><strong>{sellPrice === null ? '—' : formatPrice(sellPrice)}</strong><small>монет за одиницю</small></article>
+                  <article><span>Продаж врожаю</span><strong>{sellPrice === null ? '—' : formatPrice(sellPrice)}</strong><small>монет за одиницю · {yieldAmount} за цикл</small></article>
+                  <article><span>Виручка за цикл</span><strong>{formatPrice((sellPrice ?? 0) * yieldAmount)}</strong><small>мінімум ¼ ціни посадки</small></article>
                 </div>
                 <p className="admin-pricing-formula">{estimate.exactTimeMatch
-                  ? 'Є товари цієї категорії з таким самим часом: за основу взято медіанну ціну.'
-                  : 'Оцінка зважена за трьома найближчими таймерами каталогу; вплив часу масштабується через квадратний корінь, щоб довгий цикл не роздував ціну лінійно.'}</p>
+                  ? 'Знайдено приклади з таким самим часом циклу; виручка враховує всю кількість урожаю.'
+                  : 'Усі активні монетні дерева, культури й тварини зважуються за близькістю часу циклу. Виручка за цикл не нижча за ¼ ціни посадки: предмет окупається щонайменше за чотири збори.'}</p>
                 <div className="admin-pricing-reference-list">
-                  <h3>Орієнтири з каталогу <span>{estimate.references.length}</span></h3>
+                  <h3>Орієнтири з усього каталогу <span>{estimate.references.length}</span></h3>
                   {estimate.references.map((reference) => (
                     <div key={reference.item.id}>
-                      <span><strong>{reference.item.name}</strong><small>{formatGameDuration(reference.item.productionTimeMs ?? 0)}</small></span>
-                      <span><b>{formatPrice(reference.item.price)}</b><small>покупка</small></span>
-                      <span><b>{formatPrice(reference.item.sellPrice ?? 0)}</b><small>продаж</small></span>
+                      <span><strong>{reference.item.name}</strong><small>{reference.item.type} · {reference.item.yieldAmount ?? 1} × {reference.item.yieldName ?? 'урожай'} · {formatGameDuration(reference.item.productionTimeMs ?? 0)}</small></span>
+                      <span><b>{formatPrice(reference.estimatedPrice)}</b><small>посадка</small></span>
+                      <span><b>{formatPrice(reference.estimatedCycleRevenue)}</b><small>за цикл</small></span>
                     </div>
                   ))}
                 </div>
               </>
             ) : (
-              <div className="admin-pricing-empty"><Calculator size={25} /><p>{references.length === 0
-                ? 'У цій категорії немає товарів з налаштованою ціною продажу для порівняння.'
+              <div className="admin-pricing-empty"><Calculator size={25} /><p>{referenceItems.length === 0
+                ? 'У каталозі немає активних монетних товарів, що дають урожай і мають ціну продажу.'
                 : 'Вкажи коректний час від 1 секунди, щоб отримати рекомендацію.'}</p></div>
             )}
           </section>

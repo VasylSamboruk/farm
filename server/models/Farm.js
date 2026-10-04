@@ -19,6 +19,7 @@ const tileSchema = new mongoose.Schema({
 
 const farmSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+    size: { type: Number, default: 15, min: 15 },
     tiles: [tileSchema]
 }, { timestamps: true });
 

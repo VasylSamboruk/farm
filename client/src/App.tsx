@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { useFarmStore } from './store/useFarmStore';
 import { useGameConfigStore } from './store/useGameConfigStore';
+import { authApi } from './api/auth.api';
 import { AuthForm } from './components/auth/AuthForm';
 import { PlayerProfile } from './components/auth/PlayerProfile';
 import { AdminUsers } from './components/admin/AdminUsers';
@@ -10,6 +11,7 @@ import { AdminShop } from './components/admin/AdminShop';
 import { AdminCreateItem } from './components/admin/AdminCreateItem.tsx';
 import { AdminMedia } from './components/admin/AdminMedia';
 import { AdminPricing } from './components/admin/AdminPricing';
+import { AdminLevelRewards } from './components/admin/AdminLevelRewards.tsx';
 import { AdminShell } from './components/admin/AdminShell';
 import { GameHUD } from './components/game/GameHUD';
 import { FarmCanvas } from './components/game/FarmCanvas';
@@ -29,6 +31,7 @@ export const App: React.FC = () => {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
+  const updateUser = useAuthStore((state) => state.updateUser);
   const loadFarm = useFarmStore((state) => state.loadFarm);
   const loadGameItems = useGameConfigStore((state) => state.loadItems);
   const userId = user?.id;
@@ -42,7 +45,8 @@ export const App: React.FC = () => {
     ? 'shop'
     : location.pathname === '/admin/items/new' ? 'create'
       : location.pathname === '/admin/media' ? 'media'
-        : location.pathname === '/admin/pricing' ? 'pricing' : 'users';
+        : location.pathname === '/admin/pricing' ? 'pricing'
+          : location.pathname === '/admin/rewards' ? 'rewards' : 'users';
   const playRequested = Boolean(sessionKey && sessionKey === playSessionKey);
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('farmcanvas:theme') === 'light' ? 'light' : 'dark'
@@ -74,9 +78,28 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (!playRequested) return;
-    const intervalId = window.setInterval(() => { void loadGameItems(true); }, 30_000);
-    return () => window.clearInterval(intervalId);
-  }, [loadGameItems, playRequested]);
+    let active = true;
+    const refreshCurrentUser = async () => {
+      try {
+        const currentUser = await authApi.getCurrentUser();
+        if (active) updateUser(currentUser);
+      } catch (error) {
+        console.error('Не вдалося оновити профіль гравця:', error);
+      }
+    };
+    const refreshGameData = () => {
+      void loadGameItems(true);
+      void refreshCurrentUser();
+    };
+    void refreshCurrentUser();
+    const intervalId = window.setInterval(refreshGameData, 30_000);
+    window.addEventListener('focus', refreshCurrentUser);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshCurrentUser);
+    };
+  }, [loadGameItems, playRequested, updateUser]);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +166,8 @@ export const App: React.FC = () => {
                 ? <AdminMedia />
                 : adminSection === 'pricing'
                   ? <AdminPricing />
+                  : adminSection === 'rewards'
+                    ? <AdminLevelRewards />
                   : <AdminUsers />}
         </AdminShell>
       </div>

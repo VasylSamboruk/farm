@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
 import { useToolStore } from '../../store/useToolStore';
 import { useFarmStore } from '../../store/useFarmStore';
-import type { GameItemType } from '../../types/game';
+import type { GameItemConfig, GameItemType } from '../../types/game';
 import { formatGameDuration } from '../../game/trees';
 
 interface ShopModalProps {
@@ -16,13 +17,20 @@ const CATEGORIES: { type: GameItemType; label: string }[] = [
   { type: 'CROP', label: '🌱 Рослини' },
   { type: 'ANIMAL', label: '🐮 Тварини' },
   { type: 'BUILDING', label: '🏠 Декор' },
+  { type: 'OTHER', label: '🧰 Інше' },
 ];
+
+const getTitleFontSize = (name: string) => Math.max(9, Math.min(13, (13 * 14) / name.length));
 
 export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<GameItemType>('TREE');
+  const [pendingExpansion, setPendingExpansion] = useState<GameItemConfig | null>(null);
+  const [expanding, setExpanding] = useState(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
   const { user } = useAuthStore();
   const { setActiveTool } = useToolStore();
   const notifyGameMessage = useFarmStore((state) => state.notifyGameMessage);
+  const expandFarm = useFarmStore((state) => state.expandFarm);
   const { items, loading, error } = useGameConfigStore();
 
   if (!isOpen) return null;
@@ -37,14 +45,40 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
       notifyGameMessage(`Цей товар доступний з ${requiredLevel} рівня.`);
       return;
     }
-    if ((user?.coins ?? 0) < item.price) {
-      notifyGameMessage('Не вистачає монет для цього предмета.');
+    const currency = item.priceCurrency ?? 'coins';
+    const balance = currency === 'rubies' ? (user?.rubies ?? 25) : (user?.coins ?? 0);
+    if (balance < item.price) {
+      notifyGameMessage(`Не вистачає ${currency === 'rubies' ? 'рубінів' : 'монет'} для цього предмета.`);
       onClose();
+      return;
+    }
+    if (item.mechanic === 'expand_farm') {
+      setPendingExpansion(item);
+      return;
+    }
+    if (item.type === 'OTHER') {
+      notifyGameMessage('Механіка цього товару ще не доступна.');
       return;
     }
     // Беремо в руку насіння
     setActiveTool(`place_${item.id}`);
     onClose();
+  };
+
+  const confirmExpansion = async () => {
+    if (!pendingExpansion || !user?.id || expanding) return;
+    setExpanding(true);
+    const success = await expandFarm(user.id, pendingExpansion.id);
+    setExpanding(false);
+    if (success) {
+      notifyGameMessage('Ферму розширено! Додано по одному квадрату з кожного боку.');
+      setPendingExpansion(null);
+      onClose();
+    }
+  };
+
+  const scrollCategories = (direction: -1 | 1) => {
+    tabsRef.current?.scrollBy({ left: direction * 180, behavior: 'smooth' });
   };
 
   return (
@@ -65,7 +99,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div className="modal-resource-chip" style={styles.resourceItem}>
                 <img src="/assets/ui/rubin.png" alt="" style={styles.resourceIcon} draggable={false} />
-                <span className="shop-modal-balance" style={styles.resourceValue}>25</span>
+                <span className="shop-modal-balance" style={styles.resourceValue}>{(user?.rubies ?? 25).toLocaleString('uk-UA')}</span>
               </div>
             </div>
           </div>
@@ -73,6 +107,8 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         <div className="shop-modal-tabs" style={styles.tabContainer}>
+          <button className="shop-category-scroll" type="button" onClick={() => scrollCategories(-1)} aria-label="Прокрутити категорії вліво"><ChevronLeft size={21} /></button>
+          <div className="shop-category-track" ref={tabsRef}>
           {CATEGORIES.map((category) => (
             <button
               key={category.type}
@@ -82,12 +118,28 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
               {category.label}
             </button>
           ))}
+          </div>
+          <button className="shop-category-scroll" type="button" onClick={() => scrollCategories(1)} aria-label="Прокрутити категорії вправо"><ChevronRight size={21} /></button>
         </div>
+
+        {pendingExpansion && (
+          <div className="shop-confirm-overlay" role="presentation">
+            <section className="shop-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="shop-confirm-title">
+              <h3 id="shop-confirm-title">Розширення ферми</h3>
+              <p>Чи дійсно бажаєте купити розширення для своєї ферми?</p>
+              <p className="shop-confirm-price">{pendingExpansion.price.toLocaleString('uk-UA')} <img src="/assets/ui/rubin.png" alt="рубінів" draggable={false} /></p>
+              <div className="shop-confirm-actions">
+                <button type="button" onClick={() => setPendingExpansion(null)} disabled={expanding}>Скасувати</button>
+                <button type="button" onClick={() => void confirmExpansion()} disabled={expanding}>{expanding ? 'Купуємо…' : 'Підтвердити покупку'}</button>
+              </div>
+            </section>
+          </div>
+        )}
 
         <div className="shop-modal-grid modal-scrollbar-hidden" style={styles.gridContainer}>
           {filteredItems.map((item) => (
             <div key={item.id} className="game-modal-card shop-modal-card" style={styles.itemCard}>
-              <div className="shop-modal-card-title" style={styles.cardTitle}>{item.name}</div>
+              <div className="shop-modal-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.name)}px` }} title={item.name}>{item.name}</div>
               <div className="shop-modal-icon-box" style={styles.iconBox}>
                 {item.shopImage || item.growthImages?.at(-1) ? (
                   <img
@@ -112,13 +164,15 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div className="shop-modal-stats" style={styles.statsContainer}>
                 <div style={styles.statRow}><span>Доступно з:</span><span className="shop-modal-level" style={styles.levelRequirement}>{item.requiredLevel ?? 1} рівня</span></div>
-                {item.type !== 'BUILDING' && typeof item.productionTimeMs === 'number' && item.productionTimeMs > 0 && (
+                {item.type === 'OTHER' ? (
+                  <div style={styles.statRow}><span>Механіка:</span><span>{item.mechanic === 'expand_farm' ? '+1 квадрат по периметру' : 'Спеціальна дія'}</span></div>
+                ) : item.type !== 'BUILDING' && typeof item.productionTimeMs === 'number' && item.productionTimeMs > 0 && (
                   <div style={styles.statRow}>
                     <span>Готовність:</span>
                     <span>{formatGameDuration(item.productionTimeMs)}</span>
                   </div>
                 )}
-                <div style={styles.statRow}><span>Досвід:</span><span style={{ color: '#8b5ac7', fontWeight: 'bold' }}>+{item.plantingXp} XP</span></div>
+                {item.type !== 'OTHER' && <div style={styles.statRow}><span>Досвід:</span><span style={{ color: '#8b5ac7', fontWeight: 'bold' }}>+{item.plantingXp} XP</span></div>}
               </div>
               <button
                 className="shop-modal-buy-button"
@@ -128,7 +182,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                 title={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Доступно з ${item.requiredLevel ?? 1} рівня` : undefined}
               >
                 <span>{(user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Рівень ${item.requiredLevel ?? 1}` : `−${item.price.toLocaleString('uk-UA')}`}</span>
-                {(user?.level ?? 1) >= (item.requiredLevel ?? 1) && <img src="/assets/ui/coin.png" alt="" className="currency-small-icon" draggable={false} />}
+                {(user?.level ?? 1) >= (item.requiredLevel ?? 1) && <img src={item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png'} alt="" className="currency-small-icon" draggable={false} />}
               </button>
             </div>
           ))}
@@ -152,10 +206,10 @@ const styles: Record<string, React.CSSProperties> = {
   resourceItem: { display: 'flex', alignItems: 'center', gap: '5px' },
   resourceIcon: { width: '18px', height: '18px', objectFit: 'contain' },
   resourceValue: { color: '#263b58', fontWeight: '900', fontSize: '13px', textShadow: '0 1px rgba(255,255,255,0.55)' },
-  tabContainer: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', padding: '10px 16px', gap: '8px', background: 'linear-gradient(180deg, rgba(143, 94, 43, 0.09), rgba(143, 94, 43, 0.025))', borderBottom: '1px solid rgba(132, 83, 39, 0.18)' },
+  tabContainer: { display: 'flex', alignItems: 'center', padding: '10px 12px', gap: '4px', background: 'linear-gradient(180deg, rgba(143, 94, 43, 0.09), rgba(143, 94, 43, 0.025))', borderBottom: '1px solid rgba(132, 83, 39, 0.18)' },
   gridContainer: { padding: '14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px', overflowY: 'auto' },
   itemCard: { background: 'linear-gradient(145deg, #fffdf1, #f1dfb9)', border: '1px solid #d8b77e', borderRadius: '12px', padding: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 3px 0 rgba(129, 81, 42, 0.16), 0 7px 14px rgba(112, 77, 34, 0.08)' },
-  cardTitle: { color: '#2b394d', fontWeight: '900', fontSize: '13px', marginBottom: '8px', textAlign: 'center' },
+  cardTitle: { width: '100%', overflow: 'hidden', color: '#2b394d', fontWeight: '900', fontSize: '13px', marginBottom: '8px', textAlign: 'center', whiteSpace: 'nowrap' },
   iconBox: { position: 'relative', width: '100%', height: '82px', background: 'linear-gradient(145deg, rgba(249,250,251,0.96), rgba(220,225,231,0.88))', border: '1px solid rgba(255,255,255,0.94)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.98)' },
   shopImage: { width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 7px rgba(35,51,72,0.18))' },
   yieldBadge: { position: 'absolute', zIndex: 2, left: -7, bottom: -8, display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 29, margin: 0, padding: '2px 8px 2px 2px', border: '1px solid rgba(255,255,255,0.98)', borderRadius: 18, color: '#17653c', background: 'linear-gradient(180deg, rgba(235,250,241,0.98), rgba(193,230,207,0.96))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.98), 0 4px 10px rgba(35,86,57,0.2)' },

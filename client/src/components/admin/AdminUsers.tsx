@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Ban, Coins, Eye, PackagePlus, Pencil, RotateCcw, Search, ShieldOff, Sparkles, Sprout, Trash2, UserRound, Users, X } from 'lucide-react';
+import { Ban, Coins, Eye, Gift, PackagePlus, Pencil, Plus, RotateCcw, Search, ShieldOff, Sparkles, Sprout, Trash2, UserRound, Users, X } from 'lucide-react';
 import { adminApi, type AdminCatalogItem, type AdminFarmItem, type AdminUser } from '../../api/admin.api';
+import type { AdminGiftReward } from '../../types/game';
 import { getLevelProgress } from '../../config/progression';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
 import type { TileData } from '../../store/useFarmStore';
@@ -52,9 +53,13 @@ export const AdminUsers: React.FC = () => {
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [coinsDelta, setCoinsDelta] = useState('');
+  const [rubiesDelta, setRubiesDelta] = useState('');
   const [xpDelta, setXpDelta] = useState('');
   const [inventoryItemId, setInventoryItemId] = useState('');
   const [inventoryDelta, setInventoryDelta] = useState('1');
+  const [giftTitle, setGiftTitle] = useState('Подарунок від адміністратора');
+  const [giftDescription, setGiftDescription] = useState('');
+  const [giftItems, setGiftItems] = useState<AdminGiftReward[]>([{ kind: 'item', itemId: '', amount: 1 }]);
   const [farmItemId, setFarmItemId] = useState('');
   const [usernameDraft, setUsernameDraft] = useState('');
   const [roleDraft, setRoleDraft] = useState<'user' | 'admin'>('user');
@@ -135,6 +140,7 @@ export const AdminUsers: React.FC = () => {
   const selectedUser = users.find((entry) => entry.id === selectedUserId) ?? null;
   const productCatalog = catalog.filter((item) => item.yieldItem);
   const farmCatalog = catalog.filter((item) => !item.disabled && ['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type));
+  const giftCatalog = catalog.filter((item) => !item.disabled);
 
   const handleSearch = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -168,13 +174,15 @@ export const AdminUsers: React.FC = () => {
     event.preventDefault();
     if (!selectedUser) return;
     const coins = Number(coinsDelta || 0);
+    const rubies = Number(rubiesDelta || 0);
     const xp = Number(xpDelta || 0);
-    if (!Number.isSafeInteger(coins) || !Number.isSafeInteger(xp) || (coins === 0 && xp === 0)) {
-      reportError('Введи цілу ненульову зміну монет або XP.');
+    if (!Number.isSafeInteger(coins) || !Number.isSafeInteger(rubies) || !Number.isSafeInteger(xp) || (coins === 0 && rubies === 0 && xp === 0)) {
+      reportError('Введи цілу ненульову зміну монет, рубінів або XP.');
       return;
     }
-    await runAction(() => adminApi.updateStats(selectedUser.id, coins, xp), 'Баланс та досвід оновлено.');
+    await runAction(() => adminApi.updateStats(selectedUser.id, coins, rubies, xp), 'Баланс та досвід оновлено.');
     setCoinsDelta('');
+    setRubiesDelta('');
     setXpDelta('');
   };
 
@@ -190,6 +198,29 @@ export const AdminUsers: React.FC = () => {
       return;
     }
     await runAction(() => adminApi.updateInventory(selectedUser.id, inventoryItemId, amount), 'Інвентар гравця оновлено.');
+  };
+
+  const handleSendGift = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedUser) return;
+    if (giftTitle.trim().length < 2 || giftTitle.trim().length > 100 || giftDescription.trim().length > 300 ||
+        giftItems.length < 1 || giftItems.length > 20 || giftItems.some((entry) => {
+          if (!Number.isSafeInteger(entry.amount)) return true;
+          if (entry.kind === 'item') return !giftCatalog.some((item) => item.id === entry.itemId) || entry.amount < 1 || entry.amount > 1000;
+          if (entry.kind === 'level') return entry.amount < 2 || entry.amount > 999;
+          return entry.amount < 1 || entry.amount > 100_000;
+        })) {
+      reportError('Перевір назву, опис і склад подарунка.');
+      return;
+    }
+    const sent = await runAction(
+      () => adminApi.sendGift(selectedUser.id, { title: giftTitle.trim(), description: giftDescription.trim(), items: giftItems }),
+      'Подарунок надіслано гравцю.'
+    );
+    if (sent) {
+      setGiftDescription('');
+      setGiftItems([{ kind: 'item', itemId: '', amount: 1 }]);
+    }
   };
 
   const handleFarmItem = async (event: React.FormEvent) => {
@@ -352,6 +383,7 @@ export const AdminUsers: React.FC = () => {
 
                 <div className="admin-stat-grid">
                   <div className="admin-stat-card"><img src="/assets/ui/coin.png" alt="" /><span>Монети</span><strong>{formatNumber(selectedUser.coins)}</strong></div>
+                  <div className="admin-stat-card"><img src="/assets/ui/rubin.png" alt="" /><span>Рубіни</span><strong>{formatNumber(selectedUser.rubies)}</strong></div>
                   <div className="admin-stat-card"><Sparkles size={22} /><span>Досвід</span><strong>{formatNumber(selectedUser.xp)} XP</strong></div>
                   <div className="admin-stat-card"><PackagePlus size={22} /><span>Предметів у фермі</span><strong>{selectedUser.farmItems.length}</strong></div>
                 </div>
@@ -386,10 +418,11 @@ export const AdminUsers: React.FC = () => {
 
                 <div className="admin-action-grid">
                   <form className="admin-action-card" onSubmit={handleStats}>
-                    <div className="admin-action-title"><Coins size={18} /><h3>Монети та досвід</h3></div>
+                    <div className="admin-action-title"><Coins size={18} /><h3>Баланс і досвід</h3></div>
                     <p>Додатне число нарахує, від’ємне — зніме.</p>
                     <div className="admin-input-pair">
                       <label>Монети<input type="number" step="1" value={coinsDelta} onChange={(event) => setCoinsDelta(event.target.value)} placeholder="0" /></label>
+                      <label>Рубіни<input type="number" step="1" value={rubiesDelta} onChange={(event) => setRubiesDelta(event.target.value)} placeholder="0" /></label>
                       <label>XP<input type="number" step="1" value={xpDelta} onChange={(event) => setXpDelta(event.target.value)} placeholder="0" /></label>
                     </div>
                     <button className="admin-primary-button" type="submit" disabled={busy}>Застосувати</button>
@@ -400,6 +433,35 @@ export const AdminUsers: React.FC = () => {
                     <label>Продукт<select value={inventoryItemId} onChange={(event) => setInventoryItemId(event.target.value)}><option value="">Обери продукт</option>{productCatalog.map((item) => <option key={`${item.id}-${item.yieldItem}`} value={item.yieldItem}>{item.yieldName ?? item.name} · {item.yieldItem}</option>)}</select></label>
                     <label>Кількість<input type="number" step="1" value={inventoryDelta} onChange={(event) => setInventoryDelta(event.target.value)} placeholder="1 або -1" /></label>
                     <button className="admin-primary-button" type="submit" disabled={busy}>Оновити інвентар</button>
+                  </form>
+
+                  <form className="admin-action-card admin-send-gift-card" onSubmit={(event) => void handleSendGift(event)}>
+                    <div className="admin-action-title"><Gift size={18} /><h3>Подарунок від адміністратора</h3></div>
+                    <label>Заголовок<input value={giftTitle} onChange={(event) => setGiftTitle(event.target.value)} maxLength={100} required /></label>
+                    <label>Короткий опис<textarea value={giftDescription} onChange={(event) => setGiftDescription(event.target.value)} maxLength={300} rows={2} placeholder="Необов’язково" /></label>
+                    <div className="admin-send-gift-items">
+                      {giftItems.map((entry, index) => (
+                        <div className={`admin-send-gift-row${entry.kind === 'item' ? ' has-item' : ''}`} key={`gift-item-${index}`}>
+                          <label>Тип<select value={entry.kind} onChange={(event) => {
+                            const kind = event.target.value as AdminGiftReward['kind'];
+                            setGiftItems((current) => current.map((giftItem, row) => row === index
+                              ? kind === 'item' ? { kind, itemId: '', amount: 1 } : { kind, amount: kind === 'level' ? 2 : 100 }
+                              : giftItem));
+                          }}>
+                            <option value="item">Предмет</option><option value="coins">Монети</option><option value="rubies">Рубіни</option><option value="xp">XP</option><option value="level">Рівень</option>
+                          </select></label>
+                          {entry.kind === 'item' && <label className="admin-send-gift-item">Предмет<select value={entry.itemId} onChange={(event) => setGiftItems((current) => current.map((giftItem, row) => row === index && giftItem.kind === 'item' ? { ...giftItem, itemId: event.target.value } : giftItem))}>
+                            <option value="">Обери товар</option>{giftCatalog.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.type}</option>)}
+                          </select></label>}
+                          <label>{entry.kind === 'level' ? 'До рівня' : 'Кількість'}<input type="number" min={entry.kind === 'level' ? 2 : 1} max={entry.kind === 'level' ? 999 : entry.kind === 'item' ? 1000 : 100000} step="1" value={entry.amount} onChange={(event) => setGiftItems((current) => current.map((giftItem, row) => row === index ? { ...giftItem, amount: Number(event.target.value) } : giftItem))} /></label>
+                          <button type="button" className="admin-send-gift-remove" onClick={() => setGiftItems((current) => current.filter((_, row) => row !== index))} disabled={giftItems.length <= 1} aria-label={`Видалити предмет ${index + 1}`}><Trash2 size={15} /></button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="admin-send-gift-actions">
+                      <button className="admin-secondary-button" type="button" onClick={() => setGiftItems((current) => [...current, { kind: 'item', itemId: '', amount: 1 }])} disabled={giftItems.length >= 20}><Plus size={15} />Додати нагороду</button>
+                      <button className="admin-primary-button" type="submit" disabled={busy || giftItems.length === 0}><Gift size={15} />Надіслати подарунок</button>
+                    </div>
                   </form>
 
                   <form className="admin-action-card" onSubmit={handleFarmItem}>
@@ -464,7 +526,7 @@ export const AdminUsers: React.FC = () => {
           </section>
 
         </div>
-        {showFarmPreview && selectedUser && <div className="admin-farm-overlay"><FarmCanvas readOnly previewTiles={toFarmPreviewTiles(selectedUser.farmItems)} /><header className="admin-farm-overlay-header"><div><strong>{selectedUser.username}</strong><small>ID: {selectedUser.id}</small></div><button type="button" onClick={() => setShowFarmPreview(false)} aria-label="Закрити перегляд ферми"><X size={18} /></button></header></div>}
+        {showFarmPreview && selectedUser && <div className="admin-farm-overlay"><FarmCanvas readOnly previewTiles={toFarmPreviewTiles(selectedUser.farmItems)} farmSize={selectedUser.farmSize} /><header className="admin-farm-overlay-header"><div><strong>{selectedUser.username}</strong><small>ID: {selectedUser.id}</small></div><button type="button" onClick={() => setShowFarmPreview(false)} aria-label="Закрити перегляд ферми"><X size={18} /></button></header></div>}
     </>
   );
 };

@@ -869,6 +869,34 @@ html, body, #root {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76), 0 6px 16px rgba(38, 48, 61, 0.14) !important;
 }
 .shop-modal-tabs { align-items: center; }
+.shop-category-track { display: flex; flex: 1 1 auto; min-width: 0; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-behavior: smooth; touch-action: pan-x; }
+.shop-category-track::-webkit-scrollbar { display: none; }
+.shop-category-track .shop-modal-tab { flex: 1 0 145px; }
+.shop-category-scroll { display: grid; flex: 0 0 28px; width: 28px; height: 36px; place-items: center; padding: 0; border: 0; color: #405168; background: transparent; cursor: pointer; }
+.shop-confirm-overlay { position: absolute; z-index: 8; inset: 0; display: grid; place-items: center; padding: 18px; background: rgba(30, 39, 51, .48); backdrop-filter: blur(3px); }
+.shop-confirm-dialog { width: min(390px, 100%); padding: 20px; border: 1px solid #d8b77e; border-radius: 10px; color: #263447; background: linear-gradient(145deg, #fffdf1, #f1dfb9); box-shadow: 0 12px 32px rgba(34, 40, 49, .3); text-align: center; }
+.shop-confirm-dialog h3 { margin: 0 0 10px; font-size: 18px; }
+.shop-confirm-dialog p { margin: 8px 0; }
+.shop-confirm-price { display: inline-flex; align-items: center; gap: 5px; font-weight: 900; }
+.shop-confirm-price img { width: 20px; height: 20px; object-fit: contain; }
+.shop-confirm-actions { display: flex; justify-content: center; gap: 8px; margin-top: 16px; }
+.shop-confirm-actions button { min-height: 38px; padding: 7px 12px; border: 1px solid #a4b4c2; border-radius: 6px; color: #263447; background: #f7f9fa; font-weight: 800; cursor: pointer; }
+.shop-confirm-actions button:last-child { border-color: #347865; color: white; background: #397866; }
+.level-reward-overlay { position: fixed; z-index: 260; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(18, 27, 23, .62); backdrop-filter: blur(5px); pointer-events: auto; }
+.level-reward-dialog { display: grid; justify-items: center; gap: 9px; width: min(430px, 100%); max-height: min(86vh, 700px); overflow-y: auto; padding: 24px; border: 3px solid #9b6d39; border-radius: 12px; color: #382719; background: linear-gradient(155deg, #fff8e5, #ead2a4); box-shadow: inset 0 0 0 2px rgba(255,255,255,.8), 0 12px 34px rgba(12,20,15,.36); text-align: center; }
+.level-reward-gift { display: grid; place-items: center; width: 56px; height: 56px; border: 2px solid #d6b96f; border-radius: 50%; color: #7c5b17; background: #fff2bb; }
+.level-reward-kicker { color: #71804c; font-size: 10px; font-weight: 900; }
+.level-reward-dialog h2 { margin: 0; color: #39291c; font: 700 21px/1.2 Georgia, serif; }
+.admin-gift-description { max-width: 340px; margin: 0; color: #5c6047; font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
+.level-reward-level { color: #3e7953; font-size: 17px; }
+.level-reward-items { display: grid; gap: 6px; width: 100%; margin: 5px 0; }
+.level-reward-item { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 46px; padding: 5px 9px; border: 1px solid rgba(132, 94, 44, .25); border-radius: 6px; background: rgba(255,255,255,.58); text-align: left; }
+.level-reward-item-icon { display: grid; place-items: center; width: 32px; height: 32px; overflow: hidden; }
+.level-reward-item-icon img { width: 100%; height: 100%; object-fit: contain; }
+.level-reward-item strong { overflow: hidden; color: #465444; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.level-reward-item > span:last-child { color: #536e46; font-size: 12px; font-weight: 900; white-space: nowrap; }
+.level-reward-claim { min-width: 150px; min-height: 42px; margin-top: 4px; padding: 8px 18px; border: 1px solid #27664a; border-radius: 7px; color: white; background: linear-gradient(180deg, #4b9b68, #2f7651); box-shadow: inset 0 1px rgba(255,255,255,.35), 0 3px 0 #25543a; font-size: 13px; font-weight: 900; cursor: pointer; pointer-events: auto; }
+.level-reward-claim:disabled { opacity: .7; cursor: progress; }
 .shop-modal-tab {
   display: flex;
   align-items: center;
@@ -912,11 +940,14 @@ html, body, #root {
 
 @media (max-width: 520px) {
   .shop-modal-tabs { padding: 8px !important; gap: 5px !important; }
-  .shop-modal-tab { min-height: 38px; padding: 7px 4px; font-size: 11px; }
+  .shop-category-track .shop-modal-tab { flex-basis: 132px; min-height: 38px; padding: 7px 8px; font-size: 11px; }
+  .shop-category-scroll { flex-basis: 24px; width: 24px; }
   .shop-modal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; padding: 10px !important; }
   .shop-modal-card { padding: 8px !important; }
   .shop-modal-icon-box { height: 70px !important; }
   .game-modal-window { max-height: 92dvh !important; }
+  .level-reward-dialog { padding: 19px 14px; }
+  .level-reward-dialog h2 { font-size: 18px; }
 }
 
 @media (max-width: 340px) {

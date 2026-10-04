@@ -115,13 +115,22 @@
 .admin-console .admin-action-card label { display: grid; gap: 5px; min-width: 0; color: #58695c; font-size: 11px; font-weight: 700; }
 .admin-console .admin-action-card input:not([type='checkbox']),
 .admin-console .admin-action-card select,
+.admin-console .admin-action-card textarea,
 .admin-console .admin-farm-item-editor input:not([type='checkbox']),
 .admin-console .admin-farm-item-editor select { width: 100%; min-width: 0; height: 37px; padding: 0 9px; border: 1px solid #d4dfd4; border-radius: 5px; outline-color: #579071; color: var(--admin-ink); background: #fbfcf9; font-size: 12px; }
+.admin-console .admin-action-card textarea { min-height: 64px; height: auto; padding-block: 8px; resize: vertical; }
 .admin-console .admin-action-card input:focus,
 .admin-console .admin-action-card select:focus,
 .admin-console .admin-product-fields input:focus,
 .admin-console .admin-product-fields select:focus { border-color: #649a75; outline: 2px solid rgba(74, 142, 97, 0.13); }
 .admin-console .admin-input-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.admin-send-gift-items { display: grid; gap: 7px; }
+.admin-send-gift-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 32px; align-items: end; gap: 6px; }
+.admin-send-gift-row.has-item { grid-template-columns: 90px minmax(0, 1fr) 78px 32px; }
+.admin-send-gift-row label { min-width: 0; }
+.admin-send-gift-remove { display: grid; place-items: center; width: 32px; height: 37px; border: 1px solid #e4cbc5; border-radius: 5px; color: #995447; background: #fff7f5; cursor: pointer; }
+.admin-send-gift-remove:disabled { opacity: .45; cursor: not-allowed; }
+.admin-send-gift-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .admin-console .admin-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 37px; padding: 0 11px; border: 1px solid var(--admin-green); border-radius: 5px; color: #fff; background: var(--admin-green); box-shadow: none; font-size: 11px; font-weight: 800; cursor: pointer; transition: background 120ms ease; }
 .admin-console .admin-primary-button:hover:not(:disabled) { background: var(--admin-green-dark); }
 .admin-console .admin-primary-button:disabled { opacity: 0.55; cursor: wait; }
@@ -290,14 +299,14 @@
 .admin-pricing-markup b { color: #2f754a; font-variant-numeric: tabular-nums; }
 .admin-pricing-markup input { width: 100%; accent-color: var(--admin-green); }
 .admin-pricing-markup small { color: var(--admin-muted); font-size: 9px; line-height: 1.4; }
-.admin-pricing-manual-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.admin-pricing-manual-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .admin-pricing-manual-grid label,
 .admin-pricing-apply-select { display: grid; gap: 5px; min-width: 0; color: #58695c; font-size: 10px; font-weight: 700; }
 .admin-pricing-manual-grid input,
 .admin-pricing-apply-select select { width: 100%; min-width: 0; height: 36px; padding: 0 8px; border: 1px solid #d4dfd4; border-radius: 5px; color: var(--admin-ink); background: #fff; font-size: 11px; }
 .admin-pricing-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .admin-pricing-results { min-height: 365px; }
-.admin-pricing-result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.admin-pricing-result-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .admin-pricing-result-grid article { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 13px; border: 1px solid #d8e3d8; border-radius: 5px; background: linear-gradient(145deg, #fff, #f1f6ee); }
 .admin-pricing-result-grid article > span { color: #637467; font-size: 10px; font-weight: 700; }
 .admin-pricing-result-grid article > strong { color: #286a43; font: 800 24px/1 'Trebuchet MS', sans-serif; font-variant-numeric: tabular-nums; }
@@ -313,6 +322,32 @@
 .admin-pricing-reference-list small { color: #829083; font-size: 9px; }
 .admin-pricing-empty { display: grid; place-items: center; align-content: center; gap: 10px; flex: 1; min-height: 230px; color: #839084; text-align: center; }
 .admin-pricing-empty p { max-width: 300px; margin: 0; font-size: 11px; line-height: 1.5; }
+.admin-level-rewards-page { max-width: 1100px; min-height: 100%; margin: 0 auto; padding: 26px clamp(17px, 3vw, 42px) 38px; }
+.admin-level-rewards-editor { display: grid; gap: 14px; max-width: 850px; padding: 17px; border: 1px solid #dce4dc; border-radius: 6px; background: #fbfcf8; }
+.admin-level-select { display: grid; grid-template-columns: minmax(0, 1fr) 150px; align-items: center; gap: 12px; max-width: 390px; color: #58695c; font-size: 11px; font-weight: 800; }
+.admin-level-select input,
+.admin-level-reward-row select,
+.admin-level-reward-row input { min-width: 0; height: 36px; padding: 0 8px; border: 1px solid #d4dfd4; border-radius: 5px; color: var(--admin-ink); background: #fff; font-size: 11px; }
+.admin-level-reward-list { display: grid; gap: 8px; }
+.admin-level-reward-row { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(220px, 1.4fr) 130px 36px; align-items: end; gap: 9px; padding: 10px; border: 1px solid #e0e7df; border-radius: 5px; background: #fff; }
+.admin-level-reward-row label { display: grid; gap: 5px; min-width: 0; color: #58695c; font-size: 10px; font-weight: 800; }
+.admin-level-reward-row:not(:has(.admin-level-reward-item)) { grid-template-columns: minmax(150px, .7fr) 130px 36px; }
+.admin-level-reward-remove { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid #e2c8c3; border-radius: 5px; color: #995447; background: #fff7f5; cursor: pointer; }
+.admin-level-reward-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-level-rewards-empty { margin: 0; padding: 15px; color: #7b897c; background: #f5f8f2; font-size: 11px; }
+.admin-level-reward-saved-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
+.admin-level-reward-saved-list h2 { flex-basis: 100%; margin: 0 0 3px; color: var(--admin-ink); font: 700 15px Georgia, serif; }
+.admin-level-reward-saved-list button { display: grid; gap: 3px; min-width: 120px; padding: 9px 11px; border: 1px solid #d9e3d8; border-radius: 5px; color: #45674c; background: #f8fbf6; text-align: left; cursor: pointer; }
+.admin-level-reward-saved-list button strong { font-size: 11px; }
+.admin-level-reward-saved-list button span { color: #79877a; font-size: 9px; }
+@media (max-width: 680px) {
+  .admin-level-reward-row,
+  .admin-level-reward-row:not(:has(.admin-level-reward-item)) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; }
+  .admin-level-reward-row label:first-child { grid-column: 1 / 2; }
+  .admin-level-reward-row .admin-level-reward-item { grid-column: 1 / 3; grid-row: 2; }
+  .admin-level-reward-row label:nth-last-of-type(1) { grid-column: 2; }
+  .admin-level-reward-row button { grid-column: 3; grid-row: 1; }
+}
 .admin-image-url-field { display: grid; align-content: start; gap: 5px; min-width: 0; }
 .admin-image-url-label { color: #596b5c; font-size: 10px; font-weight: 700; }
 .admin-image-url-modes { display: flex; flex-wrap: wrap; gap: 3px; }
@@ -519,6 +554,8 @@
   .admin-console .admin-player-name h2 { font-size: 16px; }
   .admin-console .admin-farm-item-editor { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-product-grid { grid-template-columns: 1fr; }
+  .admin-pricing-manual-grid,
+  .admin-pricing-result-grid { grid-template-columns: minmax(0, 1fr); }
   .admin-shop-heading { align-items: flex-start; }
   .admin-shop-heading p { max-width: 225px; line-height: 1.45; }
   .admin-shop-total { gap: 5px; padding: 8px; }

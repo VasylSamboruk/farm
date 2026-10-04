@@ -14,11 +14,13 @@ const categories: { type: 'ALL' | AdminCatalogItem['type']; label: string }[] = 
   { type: 'CROP', label: 'Рослини' },
   { type: 'ANIMAL', label: 'Тварини' },
   { type: 'BUILDING', label: 'Декор' },
+  { type: 'OTHER', label: 'Інше' },
 ];
 
 interface ItemDraft {
   name: string;
   price: string;
+  priceCurrency: 'coins' | 'rubies';
   sellPrice: string;
   plantingXp: string;
   requiredLevel: string;
@@ -48,6 +50,7 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => {
   return {
   name: item.name,
   price: String(item.price),
+  priceCurrency: item.priceCurrency ?? 'coins',
   sellPrice: String(item.sellPrice ?? ''),
   plantingXp: String(item.plantingXp ?? 0),
   requiredLevel: String(item.requiredLevel ?? 1),
@@ -189,7 +192,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     setNotice('');
     try {
       const updated = await adminApi.updateConfig(item.id, {
-        name: draft.name.trim(), price, sellPrice,
+        name: draft.name.trim(), price, sellPrice, priceCurrency: draft.priceCurrency,
         plantingXp, requiredLevel, sortOrder, productionTimeMs,
         yieldItem: draft.yieldItem.trim(), yieldName: draft.yieldName.trim(), yieldIcon: draft.yieldIcon.trim(), yieldAmount,
         placementSurface: draft.placementSurface, flipX: draft.flipX, canFlip: draft.canFlip,
@@ -301,6 +304,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                 <div className="admin-product-fields">
                   <label>Назва<input value={draft.name} maxLength={120} onChange={(event) => updateDraft(item.id, { name: event.target.value })} /></label>
                   <label>Ціна покупки<input type="number" min="0" step="1" value={draft.price} onChange={(event) => updateDraft(item.id, { price: event.target.value })} /></label>
+                  <label>Валюта<select value={draft.priceCurrency} onChange={(event) => updateDraft(item.id, { priceCurrency: event.target.value as ItemDraft['priceCurrency'] })}><option value="coins">Монети</option><option value="rubies">Рубіни</option></select></label>
                   <label>Ціна продажу<input type="number" min="0" step="1" value={draft.sellPrice} placeholder="Не продається" onChange={(event) => updateDraft(item.id, { sellPrice: event.target.value })} /></label>
                   <label>Мінімальний рівень<input type="number" min="1" max="999" value={draft.requiredLevel} onChange={(event) => updateDraft(item.id, { requiredLevel: event.target.value })} /></label>
                   <label>Позиція у списку<input type="number" min="1" max="9999" value={draft.sortOrder} onChange={(event) => updateDraft(item.id, { sortOrder: event.target.value })} /></label>

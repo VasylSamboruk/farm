@@ -1,4 +1,6 @@
 import { api } from './axios';
+import type { LevelRewardEntry } from '../types/game';
+import type { AdminGiftReward } from '../types/game';
 
 export interface AdminFarmItem {
   itemId: string;
@@ -23,9 +25,11 @@ export interface AdminUser {
   role: 'user' | 'admin';
   avatar: string;
   coins: number;
+  rubies: number;
   xp: number;
   level: number;
   inventory: Record<string, number>;
+  farmSize: number;
   createdAt?: string;
   isBanned: boolean;
   banUntil: string | null;
@@ -36,7 +40,7 @@ export interface AdminUser {
 export interface AdminCatalogItem {
   id: string;
   name: string;
-  type: 'TREE' | 'CROP' | 'ANIMAL' | 'BUILDING';
+  type: 'TREE' | 'CROP' | 'ANIMAL' | 'BUILDING' | 'OTHER';
   yieldItem?: string;
   yieldName?: string;
   yieldIcon?: string;
@@ -46,6 +50,7 @@ export interface AdminCatalogItem {
   shopIcon?: string;
   placementSurface?: 'grass' | 'soil';
   price: number;
+  priceCurrency?: 'coins' | 'rubies';
   sellPrice?: number | null;
   plantingXp: number;
   requiredLevel: number;
@@ -78,6 +83,14 @@ export const adminApi = {
   getCatalog: async () => {
     const response = await api.get<{ items: AdminCatalogItem[] }>('/admin/catalog');
     return response.data.items;
+  },
+  getLevelRewards: async (): Promise<LevelRewardEntry[]> => {
+    const response = await api.get<{ levels: LevelRewardEntry[] }>('/admin/level-rewards');
+    return response.data.levels;
+  },
+  saveLevelRewards: async (level: number, rewards: LevelRewardEntry['rewards']): Promise<LevelRewardEntry> => {
+    const response = await api.put<LevelRewardEntry>(`/admin/level-rewards/${level}`, { rewards });
+    return response.data;
   },
   getMediaSettings: async () => {
     const response = await api.get<AdminMediaSettings>('/admin/media/settings');
@@ -113,9 +126,13 @@ export const adminApi = {
     const response = await api.patch<{ item: AdminCatalogItem }>(`/admin/catalog/${itemId}/config`, config);
     return response.data.item;
   },
-  updateStats: async (userId: string, coinsDelta: number, xpDelta: number) => {
-    const response = await api.patch<{ user: AdminUser }>(`/admin/users/${userId}/stats`, { coinsDelta, xpDelta });
+  updateStats: async (userId: string, coinsDelta: number, rubiesDelta: number, xpDelta: number) => {
+    const response = await api.patch<{ user: AdminUser }>(`/admin/users/${userId}/stats`, { coinsDelta, rubiesDelta, xpDelta });
     return response.data.user;
+  },
+  sendGift: async (userId: string, gift: { title: string; description: string; items: AdminGiftReward[] }) => {
+    const response = await api.post<{ success: boolean; message: string }>(`/admin/users/${userId}/gifts`, gift);
+    return response.data;
   },
   updateProfile: async (userId: string, changes: { username?: string; role?: 'user' | 'admin' }) => {
     const response = await api.patch<{ user: AdminUser }>(`/admin/users/${userId}/profile`, changes);

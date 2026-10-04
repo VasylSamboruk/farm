@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Moon, Sun } from 'lucide-react';
+import { ArrowLeft, Gift, Moon, Sparkles, Sun } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
 import { ShopModal } from './ShopModal'; // НЕ ЗАБУДЬ імпортувати ShopModal якщо його ще тут немає
 import { InventoryModal } from './InventoryModal.tsx';
 import { getLevelProgress } from '../../config/progression';
+import { gameApi } from '../../api/game.api';
+import type { AdminGiftEntry, LevelRewardEntry } from '../../types/game';
+import { useGameConfigStore } from '../../store/useGameConfigStore';
 
 type ToolType = 'shovel' | 'trash' | 'move' | 'rotate' | null;
 
@@ -20,11 +23,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
   const { activeTool, setActiveTool } = useToolStore();
   const gameMessage = useFarmStore((state) => state.gameMessage);
   const dismissGameMessage = useFarmStore((state) => state.dismissGameMessage);
+  const notifyGameMessage = useFarmStore((state) => state.notifyGameMessage);
+  const updateUser = useAuthStore((state) => state.updateUser);
+  const gameItems = useGameConfigStore((state) => state.items);
   
   const [showXpBar, setShowXpBar] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false); // Стан для модалки
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [pendingRewards, setPendingRewards] = useState<LevelRewardEntry[]>([]);
+  const [claimingReward, setClaimingReward] = useState(false);
+  const [pendingAdminGifts, setPendingAdminGifts] = useState<AdminGiftEntry[]>([]);
+  const [claimingAdminGift, setClaimingAdminGift] = useState(false);
 
   const toggleTool = (tool: ToolType) => {
     if (activeTool === tool) {
@@ -67,11 +77,128 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
     return () => clearTimeout(timer);
   }, [gameMessage, dismissGameMessage]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    void gameApi.getPendingLevelRewards()
+      .then((rewards) => { if (active) setPendingRewards(rewards); })
+      .catch((error: unknown) => console.error('Не вдалося завантажити нагороди рівня:', error));
+    return () => { active = false; };
+  }, [user?.id, user?.xp, user?.level]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    const refreshAdminGifts = async () => {
+      try {
+        const gifts = await gameApi.getPendingAdminGifts();
+        if (active) setPendingAdminGifts(gifts);
+      } catch (error) {
+        console.error('Не вдалося завантажити подарунки адміністратора:', error);
+      }
+    };
+    void refreshAdminGifts();
+    const intervalId = window.setInterval(() => void refreshAdminGifts(), 30_000);
+    window.addEventListener('focus', refreshAdminGifts);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshAdminGifts);
+    };
+  }, [user?.id]);
+
+  const claimLevelReward = async () => {
+    const reward = pendingRewards[0];
+    if (!reward || claimingReward) return;
+    setClaimingReward(true);
+    try {
+      const updatedUser = await gameApi.claimLevelReward(reward.level);
+      updateUser(updatedUser);
+      setPendingRewards((current) => current.filter((entry) => entry.level !== reward.level));
+    } catch (error) {
+      notifyGameMessage(error instanceof Error ? error.message : 'Не вдалося забрати нагороду.');
+    } finally {
+      setClaimingReward(false);
+    }
+  };
+
+  const claimAdminGift = async () => {
+    const gift = pendingAdminGifts[0];
+    if (!gift || claimingAdminGift) return;
+    setClaimingAdminGift(true);
+    try {
+      const updatedUser = await gameApi.claimAdminGift(gift.id);
+      updateUser(updatedUser);
+      setPendingAdminGifts((current) => current.filter((entry) => entry.id !== gift.id));
+    } catch (error) {
+      notifyGameMessage(error instanceof Error ? error.message : 'Не вдалося забрати подарунок.');
+    } finally {
+      setClaimingAdminGift(false);
+    }
+  };
+
   const progression = getLevelProgress(user?.xp ?? 0);
   const xpPercent = (progression.xpInLevel / progression.xpToNextLevel) * 100;
   return (
     <div style={styles.hudOverlay}>
       {gameMessage && <div style={styles.gameToast} role="status">{gameMessage}</div>}
+      {pendingRewards[0] && (
+        <div className="level-reward-overlay">
+          <section className="level-reward-dialog" role="dialog" aria-modal="true" aria-labelledby="level-reward-title">
+            <div className="level-reward-gift"><Gift size={30} /></div>
+            <span className="level-reward-kicker">НОВИЙ РІВЕНЬ</span>
+            <h2 id="level-reward-title">Вітаємо з новим рівнем!</h2>
+            <strong className="level-reward-level">Рівень {pendingRewards[0].level}</strong>
+            <div className="level-reward-items">
+              {pendingRewards[0].rewards.map((reward, index) => {
+                const item = reward.kind === 'item' ? gameItems[reward.itemId] : undefined;
+                const icon = reward.kind === 'coins' ? '/assets/ui/coin.png' : reward.kind === 'rubies' ? '/assets/ui/rubin.png' : item?.shopImage ?? item?.growthImages?.at(-1);
+                const label = reward.kind === 'coins' ? 'Монети' : reward.kind === 'rubies' ? 'Рубіни' : item?.name ?? reward.itemId;
+                return <div className="level-reward-item" key={`${reward.kind}-${reward.kind === 'item' ? reward.itemId : index}`}>
+                  <span className="level-reward-item-icon">{icon ? <img src={icon} alt="" draggable={false} /> : <span>{item?.shopIcon ?? '🎁'}</span>}</span>
+                  <strong>{label}</strong><span>× {reward.amount}</span>
+                </div>;
+              })}
+            </div>
+            <button className="level-reward-claim" type="button" onClick={() => void claimLevelReward()} disabled={claimingReward}>
+              {claimingReward ? 'Забираємо…' : 'Забрати'}
+            </button>
+          </section>
+        </div>
+      )}
+      {!pendingRewards[0] && pendingAdminGifts[0] && (
+        <div className="level-reward-overlay">
+          <section className="level-reward-dialog admin-gift-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-gift-title">
+            <div className="level-reward-gift"><Gift size={30} /></div>
+            <span className="level-reward-kicker">ПОДАРУНОК</span>
+            <h2 id="admin-gift-title">{pendingAdminGifts[0].title}</h2>
+            {pendingAdminGifts[0].description && <p className="admin-gift-description">{pendingAdminGifts[0].description}</p>}
+            <div className="level-reward-items">
+              {pendingAdminGifts[0].items.map((giftItem, index) => {
+                const item = giftItem.kind === 'item' ? gameItems[giftItem.itemId] : undefined;
+                const icon = giftItem.kind === 'coins' ? '/assets/ui/coin.png'
+                  : giftItem.kind === 'rubies' ? '/assets/ui/rubin.png'
+                    : giftItem.kind === 'level' ? '/assets/ui/lvl_ico.png'
+                      : item?.shopImage ?? item?.growthImages?.at(-1);
+                const label = giftItem.kind === 'coins' ? 'Монети'
+                  : giftItem.kind === 'rubies' ? 'Рубіни'
+                    : giftItem.kind === 'xp' ? 'Досвід'
+                      : giftItem.kind === 'level' ? 'Рівень'
+                        : giftItem.kind === 'item' ? item?.name ?? giftItem.itemId : 'Подарунок';
+                const amountLabel = giftItem.kind === 'level' ? `До ${giftItem.amount}`
+                  : giftItem.kind === 'item' ? `× ${giftItem.amount}` : `+${giftItem.amount}`;
+                return <div className="level-reward-item" key={giftItem.kind === 'item' ? giftItem.itemId : `${giftItem.kind}-${index}`}>
+                  <span className="level-reward-item-icon">{icon ? <img src={icon} alt="" draggable={false} /> : giftItem.kind === 'xp' ? <Sparkles size={23} /> : <span>{item?.shopIcon ?? '🎁'}</span>}</span>
+                  <strong>{label}</strong><span>{amountLabel}</span>
+                </div>;
+              })}
+            </div>
+            <button className="level-reward-claim" type="button" onClick={() => void claimAdminGift()} disabled={claimingAdminGift}>
+              {claimingAdminGift ? 'Забираємо…' : 'Забрати'}
+            </button>
+          </section>
+        </div>
+      )}
       {(activeTool === 'move' || activeTool?.startsWith('place_')) && (
         <div className="game-touch-hint" role="status">
           {activeTool === 'move' ? 'Перетягни предмет у потрібну клітинку' : 'Торкнись місця на фермі, щоб розмістити'}
@@ -105,7 +232,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
           </div>
           <div className="game-currency-chip game-ruby-chip">
             <img src="/assets/ui/rubin.png" alt="" draggable={false} />
-            <span style={styles.currencyValue}>25</span>
+            <span style={styles.currencyValue}>{(user?.rubies ?? 25).toLocaleString('uk-UA')}</span>
           </div>
         </div>
         <div style={styles.topRightActions}>

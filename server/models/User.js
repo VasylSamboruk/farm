@@ -2,6 +2,22 @@ import mongoose from 'mongoose';
 
 export const USER_STARTING_COINS = 1000;
 
+const adminGiftSchema = new mongoose.Schema({
+    title: { type: String, required: true, trim: true, maxlength: 100 },
+    description: { type: String, default: '', trim: true, maxlength: 300 },
+    items: {
+        type: [{
+            kind: { type: String, enum: ['item', 'coins', 'rubies', 'xp', 'level'], required: true },
+            itemId: { type: String, default: '' },
+            amount: { type: Number, min: 1, max: 100000, required: true },
+        }],
+        required: true,
+        validate: (items) => items.length > 0 && items.length <= 20,
+    },
+    claimed: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now },
+}, { _id: true });
+
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -12,9 +28,13 @@ const userSchema = new mongoose.Schema({
     bannedAt: { type: Date, default: null },
     bannedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     coins: { type: Number, default: USER_STARTING_COINS },
+    rubies: { type: Number, default: 25 },
     xp: { type: Number, default: 0 },
     level: { type: Number, default: 1 },
     inventory: { type: Map, of: Number, default: {} },
+    itemInventory: { type: Map, of: Number, default: {} },
+    claimedLevelRewards: { type: [Number], default: [] },
+    adminGifts: { type: [adminGiftSchema], default: [] },
     avatar: { type: String, default: '' },
     friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     friendRequestsReceived: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

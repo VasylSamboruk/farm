@@ -52,18 +52,57 @@ router.get('/:userId', async (req, res) => {
     }
 });
 
+router.post('/expand', async (req, res) => {
+    try {
+        const { userId, itemId, fromInventory = false } = req.body;
+        const item = getGameItem(itemId);
+        if (!item || item.mechanic !== 'expand_farm' || item.disabled) {
+            return res.status(400).json({ message: 'Розширення ферми недоступне' });
+        }
+        const farm = await Farm.findOne({ userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        const currencyField = item.priceCurrency === 'rubies' ? 'rubies' : 'coins';
+        const user = fromInventory
+            ? await User.findOneAndUpdate(
+                { _id: userId, [`itemInventory.${itemId}`]: { $gte: 1 } },
+                { $inc: { [`itemInventory.${itemId}`]: -1 } },
+                { new: true }
+            )
+            : await User.findOneAndUpdate(
+                { _id: userId, [currencyField]: { $gte: item.price } },
+                { $inc: { [currencyField]: -item.price } },
+                { new: true }
+            );
+        if (!user) return res.status(400).json({ message: fromInventory ? 'Цього предмета немає в інвентарі' : `Недостатньо ${currencyField === 'rubies' ? 'рубінів' : 'монет'}!` });
+
+        farm.tiles.forEach((tile) => { tile.x += 1; tile.y += 1; });
+        farm.size += 2;
+        await farm.save();
+        return res.json({
+            success: true,
+            size: farm.size,
+            tiles: farm.tiles,
+            user: { coins: user.coins, rubies: user.rubies, itemInventory: Object.fromEntries(user.itemInventory ?? []) },
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося розширити ферму', error: error.message });
+    }
+});
+
 // ПОСАДКА: Знімає гроші, дає XP
 router.post('/place', async (req, res) => {
     try {
-        const { userId, x, y, quadrant, itemId } = req.body;
+        const { userId, x, y, quadrant, itemId, fromInventory = false } = req.body;
         const item = getGameItem(itemId);
         if (!item) {
             return res.status(400).json({ message: 'Товар не знайдено' });
         }
-        if (item.disabled) return res.status(400).json({ message: 'Цей товар більше недоступний у магазині' });
+        if ((item.disabled && !fromInventory) || !['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type)) return res.status(400).json({ message: 'Цей товар не можна розмістити' });
         const occupiedQuadrants = getOccupiedQuadrants(quadrant, item);
         const occupiedCells = getOccupiedCells(x, y, quadrant, item, false);
-        if (!occupiedCells || occupiedCells.some(cell => cell.x < 0 || cell.x >= 15 || cell.y < 0 || cell.y >= 15)) {
+        const farm = await Farm.findOne({ userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        if (!occupiedCells || occupiedCells.some(cell => cell.x < 0 || cell.x >= farm.size || cell.y < 0 || cell.y >= farm.size)) {
             return res.status(400).json({ message: 'Цей розмір предмета не поміщається в це місце' });
         }
         
@@ -74,12 +113,15 @@ router.post('/place', async (req, res) => {
         if (item.access === 'admin' && user?.role !== 'admin') {
             return res.status(403).json({ message: 'Цей товар доступний лише адміністратору' });
         }
-        if (!user || user.coins < item.price) {
-            return res.status(400).json({ message: 'Недостатньо монет!' });
+        const currencyField = item.priceCurrency === 'rubies' ? 'rubies' : 'coins';
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+        if (fromInventory && Number(user.itemInventory?.get(itemId) ?? 0) < 1) {
+            return res.status(400).json({ message: 'Цього предмета немає в інвентарі' });
+        }
+        if (!fromInventory && (user[currencyField] ?? 0) < item.price) {
+            return res.status(400).json({ message: `Недостатньо ${currencyField === 'rubies' ? 'рубінів' : 'монет'}!` });
         }
 
-        const farm = await Farm.findOne({ userId });
-        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
         const occupiedDirtTiles = farm.tiles.filter(t => t.isDirt && occupiedCells.some(cell => cell.x === t.x && cell.y === t.y));
         if (item.placementSurface === 'soil' && occupiedDirtTiles.length !== new Set(occupiedCells.map(cell => `${cell.x},${cell.y}`)).size) {
             return res.status(400).json({ message: 'Цей товар можна садити лише на грядку' });
@@ -94,7 +136,11 @@ router.post('/place', async (req, res) => {
         if (isOccupied) return res.status(400).json({ message: 'Місце зайняте!' });
 
         // Економіка
-        user.coins -= item.price;
+        if (fromInventory) {
+            user.itemInventory.set(itemId, Number(user.itemInventory.get(itemId) ?? 0) - 1);
+        } else {
+            user[currencyField] -= item.price;
+        }
         user.xp += item.plantingXp;
         user.level = getLevelProgress(user.xp).level;
         await user.save();
@@ -106,7 +152,7 @@ router.post('/place', async (req, res) => {
         res.json({ 
             success: true, 
             newTile, 
-            user: { coins: user.coins, xp: user.xp, level: user.level } 
+            user: { coins: user.coins, rubies: user.rubies, xp: user.xp, level: user.level, itemInventory: Object.fromEntries(user.itemInventory ?? []) }
         });
     } catch (error) {
         res.status(500).json({ message: 'Помилка збереження', error: error.message });
@@ -129,12 +175,13 @@ router.post('/remove', async (req, res) => {
         if (!targetTile && !dirtTile) return res.status(404).json({ message: 'Предмет не знайдено' });
 
         const item = targetTile ? getGameItem(targetTile.itemId) : null;
-        const coinsEarned = item ? Math.floor(item.price / 2) : 0;
+        const refundCurrency = item?.priceCurrency === 'rubies' ? 'rubies' : 'coins';
+        const refundEarned = item ? Math.floor(item.price / 2) : 0;
         let user = null;
         if (item) {
             user = await User.findById(userId);
             if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
-            user.coins += coinsEarned;
+            user[refundCurrency] = (user[refundCurrency] ?? 0) + refundEarned;
         }
 
         const removedTiles = [];
@@ -156,8 +203,9 @@ router.post('/remove', async (req, res) => {
             success: true,
             removedTiles,
             itemName: item?.name,
-            coinsEarned,
-            ...(user ? { user: { coins: user.coins } } : {})
+            refundEarned,
+            refundCurrency,
+            ...(user ? { user: { coins: user.coins, rubies: user.rubies } } : {})
         });
     } catch (error) {
         res.status(500).json({ message: 'Помилка видалення', error: error.message });
@@ -202,7 +250,7 @@ router.post('/move', async (req, res) => {
 
         if (tile.isDirt) {
             const destinationOccupied = farm.tiles.some(t => t !== tile && t.x === x && t.y === y);
-            if (quadrant !== -1 || x < 0 || x >= 15 || y < 0 || y >= 15 || destinationOccupied) {
+            if (quadrant !== -1 || x < 0 || x >= farm.size || y < 0 || y >= farm.size || destinationOccupied) {
                 return res.status(400).json({ message: 'Ця грядка не поміщається в це місце' });
             }
             tile.x = x;
@@ -226,7 +274,7 @@ router.post('/move', async (req, res) => {
             quadrant,
             { ...item, flipX: tile.flipX ?? false }
         );
-        if (!occupiedCells || occupiedCells.some(cell => cell.x < 0 || cell.x >= 15 || cell.y < 0 || cell.y >= 15)) {
+        if (!occupiedCells || occupiedCells.some(cell => cell.x < 0 || cell.x >= farm.size || cell.y < 0 || cell.y >= farm.size)) {
             return res.status(400).json({ message: 'Цей розмір предмета не поміщається в це місце' });
         }
 
@@ -366,6 +414,43 @@ router.post('/sell', async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ message: 'Помилка продажу', error: error.message });
+    }
+});
+
+router.post('/sell-item', async (req, res) => {
+    try {
+        const { userId, itemId, amount } = req.body;
+        if (!Number.isSafeInteger(amount) || amount <= 0) {
+            return res.status(400).json({ message: 'Вкажіть коректну кількість для продажу' });
+        }
+        const item = getGameItem(itemId);
+        if (!item) return res.status(400).json({ message: 'Цей предмет не можна продати' });
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const itemInventory = user.itemInventory ?? new Map();
+        const currentAmount = Number(itemInventory.get(itemId) ?? 0);
+        if (currentAmount < amount) return res.status(400).json({ message: 'В інвентарі недостатньо предметів' });
+
+        const currencyField = item.priceCurrency === 'rubies' ? 'rubies' : 'coins';
+        const earned = Math.floor(item.price / 2) * amount;
+        itemInventory.set(itemId, currentAmount - amount);
+        user.itemInventory = itemInventory;
+        user[currencyField] = (user[currencyField] ?? 0) + earned;
+        await user.save();
+        return res.json({
+            success: true,
+            itemId,
+            amount,
+            earned,
+            currency: currencyField,
+            user: {
+                coins: user.coins,
+                rubies: user.rubies,
+                itemInventory: Object.fromEntries(user.itemInventory ?? []),
+            },
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Помилка продажу предмета', error: error.message });
     }
 });
 

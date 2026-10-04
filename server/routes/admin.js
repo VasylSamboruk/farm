@@ -2,6 +2,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import Farm from '../models/Farm.js';
+import LevelReward from '../models/LevelReward.js';
 import User, { USER_STARTING_COINS } from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
 import { createStarterFarmTiles } from '../services/starterFarm.js';
@@ -44,6 +45,7 @@ const serializeAdminUser = (user, farm, mediaSettings = {}) => ({
     role: user.role,
     avatar: user.avatar ?? '',
     coins: user.coins ?? 0,
+    rubies: user.rubies ?? 0,
     xp: user.xp ?? 0,
     level: getLevelProgress(user.xp ?? 0).level,
     inventory: serializeInventory(user.inventory),
@@ -51,6 +53,7 @@ const serializeAdminUser = (user, farm, mediaSettings = {}) => ({
     isBanned: user.isBanned ?? false,
     banUntil: user.banUntil ?? null,
     banReason: user.banReason ?? '',
+    farmSize: farm?.size ?? 15,
     farmItems: (farm?.tiles ?? [])
         .map((tile) => {
             const item = getGameItem(tile.itemId);
@@ -84,6 +87,7 @@ const serializeCatalogItem = (item) => ({
     shopImage: item.shopImage ?? item.growthImages?.at(-1),
     placementSurface: item.placementSurface,
     price: item.price,
+    priceCurrency: item.priceCurrency ?? 'coins',
     sellPrice: item.sellPrice,
     plantingXp: item.plantingXp,
     requiredLevel: item.requiredLevel ?? 1,
@@ -154,18 +158,57 @@ router.get('/catalog', async (_req, res, next) => {
     }
 });
 
+router.get('/level-rewards', async (_req, res, next) => {
+    try {
+        const levels = await LevelReward.find({}).sort({ level: 1 }).lean();
+        return res.json({ levels: levels.map(({ level, rewards }) => ({ level, rewards })) });
+    } catch (error) {
+        return next(error);
+    }
+});
+
+router.put('/level-rewards/:level', async (req, res) => {
+    const level = Number(req.params.level);
+    const rewards = req.body?.rewards;
+    if (!Number.isSafeInteger(level) || level < 2 || level > 999 || !Array.isArray(rewards) || rewards.length > 20) {
+        return res.status(400).json({ message: 'Вкажи рівень від 2 до 999 та до 20 нагород' });
+    }
+    for (const reward of rewards) {
+        if (!reward || !Number.isSafeInteger(reward.amount) || reward.amount < 1 || reward.amount > 100_000) {
+            return res.status(400).json({ message: 'Кількість нагороди має бути цілим числом від 1 до 100 000' });
+        }
+        if (reward.kind === 'item') {
+            if (typeof reward.itemId !== 'string' || !getGameItem(reward.itemId)) {
+                return res.status(400).json({ message: 'Обраного предмета немає в каталозі' });
+            }
+        } else if (!['coins', 'rubies'].includes(reward.kind)) {
+            return res.status(400).json({ message: 'Невідомий тип нагороди' });
+        }
+    }
+    try {
+        const entry = await LevelReward.findOneAndUpdate(
+            { level },
+            { $set: { level, rewards } },
+            { new: true, upsert: true, runValidators: true }
+        ).lean();
+        return res.json({ level: entry.level, rewards: entry.rewards });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося зберегти нагороди', error: error.message });
+    }
+});
+
 router.post('/catalog', async (req, res) => {
     const body = req.body ?? {};
-    const { id, name, type, price, plantingXp, requiredLevel, productionTimeMs, yieldItem, yieldName,
+    const { id, name, type, price, priceCurrency = 'coins', plantingXp, requiredLevel, productionTimeMs, yieldItem, yieldName,
         yieldIcon, yieldAmount, sellPrice, placementSurface, spriteScale, shopImage, shopIcon,
         yieldImage, growthImages, footprint, largeFootprint, canFlip, access } = body;
-    const allowedTypes = ['TREE', 'CROP', 'ANIMAL', 'BUILDING'];
+    const allowedTypes = ['TREE', 'CROP', 'ANIMAL', 'BUILDING', 'OTHER'];
     const producesItems = ['TREE', 'CROP', 'ANIMAL'].includes(type);
     const validId = typeof id === 'string' && /^[a-z][a-z0-9_]{1,47}$/.test(id);
     const validImageList = Array.isArray(growthImages) && growthImages.length <= 12 && growthImages.every(isImageSource);
 
     if (!validId || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 120 ||
-        !allowedTypes.includes(type) || !Number.isSafeInteger(price) || price < 0 ||
+        !allowedTypes.includes(type) || !Number.isSafeInteger(price) || price < 0 || !['coins', 'rubies'].includes(priceCurrency) ||
         !Number.isSafeInteger(plantingXp) || plantingXp < 0 ||
         !Number.isSafeInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 999 ||
         (producesItems && (!Number.isSafeInteger(productionTimeMs) || productionTimeMs < 1000)) ||
@@ -197,6 +240,7 @@ router.post('/catalog', async (req, res) => {
             name: name.trim(),
             type,
             price,
+            priceCurrency,
             plantingXp,
             requiredLevel,
             sortOrder,
@@ -227,7 +271,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         const item = getGameItem(req.params.itemId);
         if (!item) return res.status(404).json({ message: 'Предмет не знайдено в каталозі' });
         const allowedFields = new Set([
-            'name', 'price', 'sellPrice', 'plantingXp', 'productionTimeMs', 'yieldItem', 'yieldName',
+            'name', 'price', 'priceCurrency', 'sellPrice', 'plantingXp', 'productionTimeMs', 'yieldItem', 'yieldName',
             'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'canFlip', 'footprint',
             'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX', 'access', 'requiredLevel', 'sortOrder', 'disabled',
         ]);
@@ -241,6 +285,11 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 const parsed = Number(value);
                 if (!Number.isSafeInteger(parsed) || parsed < 0) return res.status(400).json({ message: `${field} має бути невід’ємним цілим числом` });
                 updates[field] = parsed;
+                continue;
+            }
+            if (field === 'priceCurrency') {
+                if (!['coins', 'rubies'].includes(value)) return res.status(400).json({ message: 'Валюта має бути монетами або рубінами' });
+                updates[field] = value;
                 continue;
             }
             if (field === 'requiredLevel') {
@@ -404,14 +453,14 @@ router.get('/users', async (req, res) => {
         const [total, users] = await Promise.all([
             User.countDocuments(filter),
             User.find(filter)
-                .select('_id username role avatar coins xp inventory createdAt isBanned banUntil banReason')
+                .select('_id username role avatar coins rubies xp inventory createdAt isBanned banUntil banReason')
                 .sort({ createdAt: -1, _id: 1 })
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean(),
         ]);
         const farms = await Farm.find({ userId: { $in: users.map((user) => user._id) } })
-            .select('userId tiles')
+            .select('userId size tiles')
             .lean();
         const farmsByUserId = new Map(farms.map((farm) => [String(farm.userId), farm]));
 
@@ -647,9 +696,10 @@ router.patch('/users/:userId/stats', async (req, res) => {
     try {
         if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
         const coinsDelta = req.body.coinsDelta ?? 0;
+        const rubiesDelta = req.body.rubiesDelta ?? 0;
         const xpDelta = req.body.xpDelta ?? 0;
-        if (!Number.isSafeInteger(coinsDelta) || !Number.isSafeInteger(xpDelta)) {
-            return res.status(400).json({ message: 'Монети й XP мають бути цілими числами' });
+        if (!Number.isSafeInteger(coinsDelta) || !Number.isSafeInteger(rubiesDelta) || !Number.isSafeInteger(xpDelta)) {
+            return res.status(400).json({ message: 'Монети, рубіни й XP мають бути цілими числами' });
         }
 
         const user = await User.findById(req.params.userId);
@@ -659,16 +709,65 @@ router.patch('/users/:userId/stats', async (req, res) => {
         }
 
         const nextCoins = (user.coins ?? 0) + coinsDelta;
+        const nextRubies = (user.rubies ?? 0) + rubiesDelta;
         const nextXp = (user.xp ?? 0) + xpDelta;
-        if (nextCoins < 0 || nextXp < 0) return res.status(400).json({ message: 'Баланс і XP не можуть бути меншими за нуль' });
+        if (nextCoins < 0 || nextRubies < 0 || nextXp < 0) return res.status(400).json({ message: 'Баланс і XP не можуть бути меншими за нуль' });
 
         user.coins = nextCoins;
+        user.rubies = nextRubies;
         user.xp = nextXp;
         user.level = getLevelProgress(nextXp).level;
         await user.save();
         return res.json({ user: serializeAdminUser(user.toObject(), null) });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося оновити показники', error: error.message });
+    }
+});
+
+router.post('/users/:userId/gifts', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+        const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
+        const items = req.body?.items;
+        if (title.length < 2 || title.length > 100 || description.length > 300 ||
+            !Array.isArray(items) || items.length < 1 || items.length > 20) {
+            return res.status(400).json({ message: 'Вкажи назву, опис до 300 символів і від 1 до 20 предметів' });
+        }
+        const giftItems = [];
+        for (const entry of items) {
+            if (!entry || !Number.isSafeInteger(entry.amount)) {
+                return res.status(400).json({ message: 'Кількість нагороди має бути цілим числом' });
+            }
+            if (entry.kind === 'item') {
+                const item = getGameItem(entry.itemId);
+                if (!item || item.disabled || entry.amount < 1 || entry.amount > 1000) {
+                    return res.status(400).json({ message: 'Перевір активний предмет і його кількість від 1 до 1000' });
+                }
+                giftItems.push({ kind: 'item', itemId: item.id, amount: entry.amount });
+            } else if (['coins', 'rubies', 'xp'].includes(entry.kind)) {
+                if (entry.amount < 1 || entry.amount > 100_000) {
+                    return res.status(400).json({ message: 'Кількість валюти або XP має бути від 1 до 100 000' });
+                }
+                giftItems.push({ kind: entry.kind, amount: entry.amount });
+            } else if (entry.kind === 'level') {
+                if (entry.amount < 2 || entry.amount > 999) {
+                    return res.status(400).json({ message: 'Рівень подарунка має бути від 2 до 999' });
+                }
+                giftItems.push({ kind: 'level', amount: entry.amount });
+            } else {
+                return res.status(400).json({ message: 'Невідомий тип нагороди' });
+            }
+        }
+        const user = await User.findByIdAndUpdate(
+            req.params.userId,
+            { $push: { adminGifts: { title, description, items: giftItems } } },
+            { new: true, runValidators: true }
+        ).select('_id');
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+        return res.status(201).json({ success: true, message: 'Подарунок надіслано гравцю' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося надіслати подарунок', error: error.message });
     }
 });
 

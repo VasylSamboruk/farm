@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Calculator, Check, Image, Leaf, PackagePlus, ShieldCheck, Store, TriangleAlert, Users, X } from 'lucide-react';
+import { ArrowLeft, Calculator, Check, Gift, Image, Leaf, PackagePlus, ShieldCheck, Store, TriangleAlert, Users, X } from 'lucide-react';
 import './Admin.css';
 import { AdminToastContext, type AdminToast } from './adminToast';
 
-export type AdminSection = 'users' | 'shop' | 'create' | 'media' | 'pricing';
+export type AdminSection = 'users' | 'shop' | 'create' | 'media' | 'pricing' | 'rewards';
 interface AdminShellProps {
   section: AdminSection;
   username: string;
@@ -37,13 +37,14 @@ export const AdminShell: React.FC<AdminShellProps> = ({ section, username, onSec
             <button className={section === 'shop' ? 'is-active' : ''} type="button" aria-current={section === 'shop' ? 'page' : undefined} onClick={() => onSectionChange('shop')}><Store size={18} /><span>Магазин</span></button>
             <button className={section === 'create' ? 'is-active' : ''} type="button" aria-current={section === 'create' ? 'page' : undefined} onClick={() => onSectionChange('create')}><PackagePlus size={18} /><span>Додати товар</span></button>
             <button className={section === 'pricing' ? 'is-active' : ''} type="button" aria-current={section === 'pricing' ? 'page' : undefined} onClick={() => onSectionChange('pricing')}><Calculator size={18} /><span>Ціноутворення</span></button>
+            <button className={section === 'rewards' ? 'is-active' : ''} type="button" aria-current={section === 'rewards' ? 'page' : undefined} onClick={() => onSectionChange('rewards')}><Gift size={18} /><span>Нагороди рівнів</span></button>
             <button className={section === 'media' ? 'is-active' : ''} type="button" aria-current={section === 'media' ? 'page' : undefined} onClick={() => onSectionChange('media')}><Image size={18} /><span>Зображення</span></button>
           </nav>
           <div className="admin-sidebar-footer"><span className="admin-online-dot" /><span>Увійшов як</span><strong>{username}</strong></div>
         </aside>
         <div className="admin-main-column">
           <header className="admin-topbar">
-            <div className="admin-topbar-heading"><span><ShieldCheck size={17} /> ПАНЕЛЬ АДМІНІСТРАТОРА</span><strong>{section === 'users' ? 'Користувачі' : section === 'shop' ? 'Магазин' : section === 'media' ? 'Зображення' : section === 'pricing' ? 'Ціноутворення' : 'Додати товар'}</strong></div>
+            <div className="admin-topbar-heading"><span><ShieldCheck size={17} /> ПАНЕЛЬ АДМІНІСТРАТОРА</span><strong>{section === 'users' ? 'Користувачі' : section === 'shop' ? 'Магазин' : section === 'media' ? 'Зображення' : section === 'pricing' ? 'Ціноутворення' : section === 'rewards' ? 'Нагороди рівнів' : 'Додати товар'}</strong></div>
             <button className="admin-back-button" type="button" onClick={onBack}><ArrowLeft size={16} /><span>До профілю</span></button>
           </header>
           <div className="admin-page-content" key={section}>{children}</div>

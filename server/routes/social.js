@@ -211,7 +211,7 @@ router.get('/profile/:friendId', async (req, res) => {
             Farm.findOne({ userId: req.params.friendId }).lean(),
         ]);
         if (!friend || !farm) return res.status(404).json({ message: 'Профіль або ферму не знайдено' });
-        return res.json({ profile: publicProfile(friend), tiles: farm.tiles ?? [] });
+        return res.json({ profile: publicProfile(friend), size: farm.size ?? 15, tiles: farm.tiles ?? [] });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося відкрити профіль', error: error.message });
     }

@@ -23,7 +23,8 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
   const [idCopied, setIdCopied] = useState(false);
   const progression = getLevelProgress(user.xp ?? 0);
   const progressPercent = (progression.xpInLevel / progression.xpToNextLevel) * 100;
-  const inventoryCount = Object.values(user.inventory ?? {}).reduce((total, amount) => total + amount, 0);
+  const inventoryCount = Object.values(user.inventory ?? {}).reduce((total, amount) => total + amount, 0) +
+    Object.values(user.itemInventory ?? {}).reduce((total, amount) => total + amount, 0);
 
   const handleAvatarSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

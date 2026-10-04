@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, ImagePlus, PawPrint, RotateCcw, Sprout, TreePine, Warehouse, X } from 'lucide-react';
+import { ArrowLeft, Check, ImagePlus, Package, PawPrint, RotateCcw, Sprout, TreePine, Warehouse, X } from 'lucide-react';
 import { adminApi, type AdminCatalogItem } from '../../api/admin.api';
 import { AdminImageUrlInput } from './AdminImageUrlInput';
 import { AdminDurationInput } from './AdminDurationInput';
@@ -19,6 +19,7 @@ const itemTypes: { type: ItemType; label: string; icon: React.ReactNode; iconTex
   { type: 'CROP', label: 'Рослина', icon: <Sprout size={18} />, iconText: '🌱' },
   { type: 'ANIMAL', label: 'Тварина', icon: <PawPrint size={18} />, iconText: '🐮' },
   { type: 'BUILDING', label: 'Декор', icon: <Warehouse size={18} />, iconText: '🏠' },
+  { type: 'OTHER', label: 'Інше', icon: <Package size={18} />, iconText: '🧰' },
 ];
 
 const getRectangle = (cells: { x: number; y: number }[]) => {
@@ -106,6 +107,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [name, setName] = useState('');
   const [id, setId] = useState('');
   const [price, setPrice] = useState('100');
+  const [priceCurrency, setPriceCurrency] = useState<'coins' | 'rubies'>('coins');
   const [sellPrice, setSellPrice] = useState('');
   const [plantingXp, setPlantingXp] = useState('10');
   const [requiredLevel, setRequiredLevel] = useState('1');
@@ -146,7 +148,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
     return { x, y };
   });
   const largeRectangle = getRectangle(largeCoordinates);
-  const isBuilding = type === 'BUILDING';
+  const isBuilding = type === 'BUILDING' || type === 'OTHER';
   const previewImage = shopImage.trim() || growthImages[0] || '';
   const selectedIcon = shopIcon.trim() || itemTypes.find((item) => item.type === type)?.iconText || '🌱';
   const previewDuration = Math.max(1000, productionTimeMs ?? 60_000);
@@ -315,6 +317,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
         name: name.trim(),
         type,
         price: parsedPrice,
+        priceCurrency,
         plantingXp: parsedPlantingXp,
         requiredLevel: parsedLevel,
         access,
@@ -422,6 +425,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
             <div className="admin-create-section-heading"><span>02</span><div><h2>Економіка та доступ</h2><p>Налаштування покупки й розміщення</p></div></div>
             <div className="admin-create-fields admin-create-fields-three">
               <label>Ціна покупки<input type="number" min="0" step="1" value={price} onChange={(event) => setPrice(event.target.value)} required /></label>
+              <label>Валюта покупки<select value={priceCurrency} onChange={(event) => setPriceCurrency(event.target.value as 'coins' | 'rubies')}><option value="coins">Монети</option><option value="rubies">Рубіни</option></select></label>
               <label>Досвід за встановлення<input type="number" min="0" step="1" value={plantingXp} onChange={(event) => setPlantingXp(event.target.value)} required /></label>
               <label>Доступ з рівня<input type="number" min="1" max="999" step="1" value={requiredLevel} onChange={(event) => setRequiredLevel(event.target.value)} required /></label>
             </div>
@@ -502,7 +506,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
             {growthImages.map((source, index) => <button type="button" key={`${source}-${index}`} onClick={() => setPreviewSelection({ title: `Стадія ${index + 1}`, image: source })} aria-label={`Збільшити стадію ${index + 1}`}><img src={resolveImageUrl(source, assetBaseUrl)} alt="" /><small>{index + 1}</small></button>)}
             {yieldImage.trim() && <button type="button" onClick={() => setPreviewSelection({ title: 'Зображення врожаю', image: yieldImage.trim(), icon: yieldIcon })} aria-label="Збільшити зображення врожаю"><img src={resolveImageUrl(yieldImage.trim(), assetBaseUrl)} alt="" /><small>Врожай</small></button>}
           </div>
-          <div className="admin-create-preview-meta"><span>Поверхня</span><strong>{placementSurface === 'grass' ? 'Трава' : 'Грядка'}</strong><span>Ціна</span><strong>{Number(price || 0).toLocaleString('uk-UA')} монет</strong></div>
+          <div className="admin-create-preview-meta"><span>Поверхня</span><strong>{placementSurface === 'grass' ? 'Трава' : 'Грядка'}</strong><span>Ціна</span><strong>{Number(price || 0).toLocaleString('uk-UA')} {priceCurrency === 'rubies' ? 'рубінів' : 'монет'}</strong></div>
         </aside>
       </form>
       {previewSelection && <div className="admin-preview-lightbox" role="presentation" onClick={() => setPreviewSelection(null)}>

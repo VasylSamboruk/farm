@@ -1,4 +1,15 @@
-export type GameItemType = 'TREE' | 'CROP' | 'ANIMAL' | 'BUILDING';
+export type GameItemType = 'TREE' | 'CROP' | 'ANIMAL' | 'BUILDING' | 'OTHER';
+export type LevelReward = { kind: 'coins'; amount: number } | { kind: 'rubies'; amount: number } | { kind: 'item'; amount: number; itemId: string };
+export interface LevelRewardEntry { level: number; rewards: LevelReward[]; }
+export interface AdminGiftEntry {
+  id: string;
+  title: string;
+  description: string;
+  items: AdminGiftReward[];
+}
+export type AdminGiftReward =
+  | { kind: 'item'; itemId: string; amount: number }
+  | { kind: 'coins' | 'rubies' | 'xp' | 'level'; amount: number };
 
 export interface GameItemConfig {
   id: string;
@@ -10,6 +21,8 @@ export interface GameItemConfig {
   flipX?: boolean;
   canFlip?: boolean;
   price: number;
+  priceCurrency?: 'coins' | 'rubies';
+  mechanic?: 'expand_farm';
   plantingXp: number;
   requiredLevel?: number;
   sortOrder?: number;

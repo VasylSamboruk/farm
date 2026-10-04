@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { HARVEST_QUEUE_DURATION_MS, useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
 import { useAuthStore } from '../../store/authStore';
@@ -35,14 +35,17 @@ interface FloatingText {
 
 type FloatingTarget = 'inventory' | 'level';
 
-const GRID_CONFIG = { cols: 15, rows: 15, tileWidth: 200, tileHeight: 100 };
+const GRID_TILE_SIZE = { tileWidth: 200, tileHeight: 100 };
+const getPlacementItemId = (tool: string) => tool.replace(/^place_(?:inventory_)?/, '');
+const isInventoryPlacement = (tool: string) => tool.startsWith('place_inventory_');
 
 interface FarmCanvasProps {
   readOnly?: boolean;
   previewTiles?: Record<string, TileData>;
+  farmSize?: number;
 }
 
-export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previewTiles }) => {
+export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previewTiles, farmSize: previewFarmSize }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [pendingSale, setPendingSale] = useState<{
     row: number;
@@ -52,10 +55,12 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     image?: string;
     icon: string;
     refund: number;
+    refundCurrency: 'coins' | 'rubies';
   } | null>(null);
 
   const {
     tiles,
+    farmSize: storedFarmSize,
     digTile,
     removeTile,
     placeItem,
@@ -66,10 +71,12 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     harvestQueue,
     activeHarvestStartedAt,
   } = useFarmStore();
-  const { activeTool } = useToolStore();
+  const { activeTool, setActiveTool } = useToolStore();
   const { user } = useAuthStore();
   const gameItems = useGameConfigStore((state) => state.items);
   const displayedTiles = previewTiles ?? tiles;
+  const farmSize = previewFarmSize ?? storedFarmSize;
+  const gridConfig = useMemo(() => ({ ...GRID_TILE_SIZE, cols: farmSize, rows: farmSize }), [farmSize]);
 
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1, minZoom: 0.5, maxZoom: 2.2 });
   const isDragging = useRef(false);
@@ -153,8 +160,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     cameraRef.current.x = viewportWidth / 2;
     cameraRef.current.y = readOnly ? viewportHeight / 2 : viewportHeight / 4.5;
     if (readOnly) {
-      const worldWidth = (GRID_CONFIG.cols + GRID_CONFIG.rows) * GRID_CONFIG.tileWidth / 2;
-      const worldHeight = (GRID_CONFIG.cols + GRID_CONFIG.rows) * GRID_CONFIG.tileHeight / 2 + TREE_RENDER_HEIGHT;
+      const worldWidth = (gridConfig.cols + gridConfig.rows) * gridConfig.tileWidth / 2;
+      const worldHeight = (gridConfig.cols + gridConfig.rows) * gridConfig.tileHeight / 2 + TREE_RENDER_HEIGHT;
       cameraRef.current.minZoom = 0.06;
       cameraRef.current.maxZoom = 1.4;
       cameraRef.current.zoom = Math.min(viewportWidth / worldWidth, viewportHeight / worldHeight) * 0.92;
@@ -232,8 +239,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
 
     // ФУНКЦІЯ: Додати вилітаючий текст
     const addFloatingText = (row: number, col: number, q: number, lines: { msg: string; color: string; image?: string }[], target?: FloatingTarget) => {
-      const halfW = GRID_CONFIG.tileWidth / 2;
-      const halfH = GRID_CONFIG.tileHeight / 2;
+      const halfW = gridConfig.tileWidth / 2;
+      const halfH = gridConfig.tileHeight / 2;
       const isoX = (col - row) * halfW;
       const isoY = (col + row) * halfH;
       const { dx, dy } = getQuadrantOffset(q, halfW, halfH);
@@ -287,7 +294,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       ctx.translate(cameraRef.current.x, cameraRef.current.y);
       ctx.scale(cameraRef.current.zoom, cameraRef.current.zoom);
 
-      const { cols, rows, tileWidth, tileHeight } = GRID_CONFIG;
+      const { cols, rows, tileWidth, tileHeight } = gridConfig;
       const halfW = tileWidth / 2;
       const halfH = tileHeight / 2;
       const now = Date.now();
@@ -299,7 +306,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       if (hovered && activeGridTool) {
         let gridCells = [{ row: hovered.row, col: hovered.col }];
         if (activeGridTool.startsWith('place_')) {
-          const previewItem = gameItemsRef.current[activeGridTool.replace('place_', '')];
+          const previewItem = gameItemsRef.current[getPlacementItemId(activeGridTool)];
           const footprintCells = previewItem
             ? getOccupiedCells(hovered.row, hovered.col, hovered.quadrant, previewItem)
             : null;
@@ -470,7 +477,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
               ? tilesRef.current[`${movingItemRef.current!.row},${movingItemRef.current!.col},${movingItemRef.current!.quadrant}`]
               : undefined;
             const previewItemId = activeToolRef.current.startsWith('place_')
-              ? activeToolRef.current.replace('place_', '')
+              ? getPlacementItemId(activeToolRef.current)
               : movingTile?.itemId;
             const previewItem = previewItemId ? gameItemsRef.current[previewItemId] : undefined;
             const movingSourceDirt = isMovePreview && movingItemRef.current
@@ -799,7 +806,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     animationFrameId = requestAnimationFrame(render);
 
     const getGridTileFromScreen = (screenX: number, screenY: number) => {
-      const { tileWidth, tileHeight, cols, rows } = GRID_CONFIG;
+      const { tileWidth, tileHeight, cols, rows } = gridConfig;
       const halfW = tileWidth / 2;
       const halfH = tileHeight / 2;
       const relX = (screenX - cameraRef.current.x) / cameraRef.current.zoom;
@@ -824,8 +831,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     };
 
     const getReadyItemAtScreen = (screenX: number, screenY: number, readyOnly = true) => {
-      const halfW = GRID_CONFIG.tileWidth / 2;
-      const halfH = GRID_CONFIG.tileHeight / 2;
+      const halfW = gridConfig.tileWidth / 2;
+      const halfH = gridConfig.tileHeight / 2;
       const now = Date.now();
       const worldX = (screenX - cameraRef.current.x) / cameraRef.current.zoom;
       const worldY = (screenY - cameraRef.current.y) / cameraRef.current.zoom;
@@ -991,20 +998,23 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
                   image: item.shopImage ?? item.growthImages?.at(-1),
                   icon: item.shopIcon ?? item.yieldIcon ?? '📦',
                   refund: Math.floor(item.price / 2),
+                  refundCurrency: item.priceCurrency ?? 'coins',
                 });
               }
             } else if (tilesRef.current[`${tile.row},${tile.col},-1`]) {
               await removeTile(tile.row, tile.col, -1, userRef.current.id);
             }
           } else if (tool && tool.startsWith('place_')) {
-            const itemId = tool.replace('place_', '');
-            const success = await placeItem(tile.row, tile.col, tile.quadrant, itemId, userRef.current.id);
+            const itemId = getPlacementItemId(tool);
+            const fromInventory = isInventoryPlacement(tool);
+            const success = await placeItem(tile.row, tile.col, tile.quadrant, itemId, userRef.current.id, fromInventory);
             
             // Якщо посадка успішна, малюємо вилітаючий текст!
             if (success) {
               const item = gameItemsRef.current[itemId];
-               addFloatingText(tile.row, tile.col, tile.quadrant, [
-                { msg: `-${item?.price ?? 0}`, image: '/assets/ui/coin.png', color: "#ff5252" },
+              if (fromInventory) setActiveTool(null);
+              addFloatingText(tile.row, tile.col, tile.quadrant, [
+                ...(!fromInventory ? [{ msg: `-${item?.price ?? 0}`, image: item?.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png', color: '#ff5252' }] : []),
                 { msg: `+${item?.plantingXp ?? 0} XP`, color: "#b388ff" }
                ]);
             }
@@ -1183,7 +1193,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [digTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, readOnly]);
+  }, [digTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, readOnly, gridConfig, setActiveTool]);
 
   const canvas = (
     <canvas
@@ -1225,7 +1235,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
             <div className="sale-dialog-price" style={styles.salePrice}>
               <span className="sale-dialog-price-label" style={styles.salePriceLabel}>Ви отримаєте</span>
               <strong className="sale-dialog-price-amount" style={styles.salePriceAmount}>{pendingSale.refund.toLocaleString('uk-UA')}</strong>
-              <img src="/assets/ui/coin.png" alt="монет" style={styles.saleCoin} draggable={false} />
+              <img src={pendingSale.refundCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png'} alt={pendingSale.refundCurrency === 'rubies' ? 'рубінів' : 'монет'} style={styles.saleCoin} draggable={false} />
             </div>
             <div style={styles.saleActions}>
               <button type="button" className="sale-confirm-button" style={styles.saleConfirmButton} onClick={() => void confirmSale()}>Так</button>

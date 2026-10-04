@@ -3,6 +3,9 @@ import { Minus, Plus } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
+import { useToolStore } from '../../store/useToolStore';
+
+const getTitleFontSize = (name: string) => Math.max(9, Math.min(13, (13 * 14) / name.length));
 
 interface InventoryModalProps {
   isOpen: boolean;
@@ -16,12 +19,19 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
   const repeatIntervalRef = useRef<number | null>(null);
   const user = useAuthStore((state) => state.user);
   const sellItem = useFarmStore((state) => state.sellItem);
+  const sellFarmItem = useFarmStore((state) => state.sellFarmItem);
+  const expandFarm = useFarmStore((state) => state.expandFarm);
+  const notifyGameMessage = useFarmStore((state) => state.notifyGameMessage);
+  const setActiveTool = useToolStore((state) => state.setActiveTool);
   const items = useGameConfigStore((state) => state.items);
 
   const inventory = user?.inventory ?? {};
   const stockedItems = Object.values(items).filter(
     (item) => item.yieldItem && (inventory[item.yieldItem] ?? 0) > 0
   );
+  const stockedFarmItems = Object.entries(user?.itemInventory ?? {}).filter(([, amount]) => amount > 0)
+    .map(([itemId, amount]) => ({ item: items[itemId], amount }))
+    .filter((entry) => entry.item);
 
   const stopAmountHold = () => {
     if (repeatTimeoutRef.current !== null) window.clearTimeout(repeatTimeoutRef.current);
@@ -57,6 +67,28 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
     setSellingItemId(null);
   };
 
+  const handleUseFarmItem = async (itemId: string, mechanic?: string) => {
+    if (!user) return;
+    if (mechanic === 'expand_farm') {
+      const success = await expandFarm(user.id, itemId, true);
+      if (success) notifyGameMessage('Подароване розширення застосовано.');
+      return;
+    }
+    if (items[itemId]?.type === 'OTHER') {
+      notifyGameMessage('Механіка цього предмета ще не доступна.');
+      return;
+    }
+    setActiveTool(`place_inventory_${itemId}`);
+    onClose();
+  };
+
+  const handleSellFarmItem = async (itemId: string, amount: number) => {
+    if (!user || amount <= 0 || sellingItemId) return;
+    setSellingItemId(itemId);
+    await sellFarmItem(user.id, itemId, amount);
+    setSellingItemId(null);
+  };
+
   return (
     <div style={styles.overlay} onClick={onClose}>
       <section className="game-modal-window inventory-modal-window" style={styles.window} onClick={(event) => event.stopPropagation()}>
@@ -69,16 +101,17 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
             <span className="modal-title-divider" aria-hidden="true" />
             <div style={styles.resources}>
               <span className="modal-resource-chip"><img src="/assets/ui/coin.png" alt="" draggable={false} />{(user?.coins ?? 0).toLocaleString('uk-UA')}</span>
-              <span className="modal-resource-chip"><img src="/assets/ui/rubin.png" alt="" draggable={false} />25</span>
+                <span className="modal-resource-chip"><img src="/assets/ui/rubin.png" alt="" draggable={false} />{(user?.rubies ?? 25).toLocaleString('uk-UA')}</span>
             </div>
           </div>
           <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити інвентар">✕</button>
         </header>
 
-        {stockedItems.length === 0 ? (
+        {stockedItems.length === 0 && stockedFarmItems.length === 0 ? (
           <div className="inventory-modal-empty" style={styles.empty}>Поки що склад порожній</div>
         ) : (
           <div className="modal-scrollbar-hidden" style={styles.grid}>
+              {stockedItems.length > 0 && <h3 className="inventory-section-title" style={styles.sectionTitle}>Урожай</h3>}
               {stockedItems.map((item) => {
                 const itemId = item.yieldItem!;
                 const stockAmount = inventory[itemId] ?? 0;
@@ -88,7 +121,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
 
                 return (
                   <article key={itemId} className="game-modal-card" style={styles.card}>
-                    <h3 className="inventory-card-title" style={styles.cardTitle}>{item.yieldName ?? item.name}</h3>
+                    <h3 className="inventory-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.yieldName ?? item.name)}px` }} title={item.yieldName ?? item.name}>{item.yieldName ?? item.name}</h3>
                     <div className="inventory-image-box" style={styles.imageBox}>
                       {item.yieldImage ? (
                         <img src={item.yieldImage} alt="" style={styles.productImage} draggable={false} />
@@ -154,6 +187,44 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                   </article>
                 );
               })}
+              {stockedFarmItems.length > 0 && <h3 className="inventory-section-title" style={styles.sectionTitle}>Предмети ферми</h3>}
+              {stockedFarmItems.map(({ item, amount: stockAmount }) => {
+                if (!item) return null;
+                const refund = Math.floor(item.price / 2);
+                const currencyImage = item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png';
+                const isBusy = sellingItemId === item.id;
+                return (
+                  <article key={item.id} className="game-modal-card" style={styles.card}>
+                    <h3 className="inventory-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.name)}px` }} title={item.name}>{item.name}</h3>
+                    <div className="inventory-image-box" style={styles.imageBox}>
+                      {item.shopImage || item.growthImages?.at(-1)
+                        ? <img src={item.shopImage ?? item.growthImages?.at(-1)} alt="" style={styles.farmItemImage} draggable={false} />
+                        : <span style={styles.productIcon}>{item.shopIcon ?? '🎁'}</span>}
+                    </div>
+                    <div className="inventory-stock-line" style={styles.stockLine}><span>Запас</span><strong>{stockAmount}</strong></div>
+                    <div className="inventory-stock-line" style={styles.stockLine}><span>Продаж / шт.</span><strong className="currency-inline inventory-unit-price" style={styles.unitPrice}>{refund}<img src={currencyImage} alt="" draggable={false} /></strong></div>
+                    <button
+                      type="button"
+                      className="inventory-sell-button"
+                      style={styles.sellButton}
+                      onClick={() => void handleUseFarmItem(item.id, item.mechanic)}
+                      disabled={isBusy}
+                    >
+                      {item.mechanic === 'expand_farm' ? 'Застосувати' : 'Розмістити'}
+                    </button>
+                    <button
+                      type="button"
+                      className="inventory-sell-all-button"
+                      style={styles.sellAllButton}
+                      onClick={() => void handleSellFarmItem(item.id, stockAmount)}
+                      disabled={isBusy || refund <= 0}
+                    >
+                      <span>{isBusy ? 'Продаємо…' : `Продати все · ${stockAmount} шт.`}</span>
+                      <small style={styles.sellPrice}>+{(refund * stockAmount).toLocaleString('uk-UA')}<img src={currencyImage} alt="" style={styles.sellPriceCoin} draggable={false} /></small>
+                    </button>
+                  </article>
+                );
+              })}
           </div>
         )}
       </section>
@@ -179,11 +250,13 @@ const styles: Record<string, React.CSSProperties> = {
   title: { margin: 0, color: '#1f2e42', fontFamily: 'Georgia, serif', fontSize: 19, fontWeight: 900 },
   resources: { display: 'flex', alignItems: 'center', gap: 7 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12, padding: 16, overflowY: 'auto', maxHeight: '76vh' },
+  sectionTitle: { gridColumn: '1 / -1', margin: '2px 0', color: '#47674d', font: '700 14px Georgia, serif' },
   card: { background: 'linear-gradient(145deg, #fff9e6, #ecd6aa)', border: '2px solid #d8b77e', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 3px 0 rgba(129, 81, 42, 0.16)' },
-  cardTitle: { margin: 0, color: '#2b394d', textAlign: 'center', fontFamily: 'Trebuchet MS, sans-serif', fontSize: 13, fontWeight: 900 },
-  imageBox: { height: 82, display: 'grid', placeItems: 'center', borderRadius: 12, border: '1px solid rgba(255,255,255,0.88)', background: 'linear-gradient(145deg, rgba(255,255,255,0.62), rgba(229,238,249,0.5))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.96)' },
+  cardTitle: { width: '100%', margin: 0, overflow: 'hidden', color: '#2b394d', textAlign: 'center', fontFamily: 'Trebuchet MS, sans-serif', fontSize: 13, fontWeight: 900, whiteSpace: 'nowrap' },
+  imageBox: { position: 'relative', width: '100%', minWidth: 0, height: 82, overflow: 'hidden', display: 'grid', placeItems: 'center', boxSizing: 'border-box', borderRadius: 12, border: '1px solid rgba(255,255,255,0.88)', background: 'linear-gradient(145deg, rgba(255,255,255,0.62), rgba(229,238,249,0.5))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.96)' },
   productIcon: { fontSize: 38 },
-  productImage: { width: '70%', height: '70%', objectFit: 'contain' as const },
+  productImage: { display: 'block', width: '70%', height: '70%', maxWidth: '70%', maxHeight: '70%', objectFit: 'contain' as const },
+  farmItemImage: { display: 'block', width: '100%', height: '100%', objectFit: 'contain' as const, filter: 'drop-shadow(0 4px 7px rgba(35,51,72,0.18))' },
   stockLine: { display: 'flex', justifyContent: 'space-between', color: '#65748a', fontFamily: 'Trebuchet MS, sans-serif', fontSize: 10, fontWeight: 600 },
   unitPrice: { color: '#218a55', whiteSpace: 'nowrap' },
   stepper: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 },

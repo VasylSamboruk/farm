@@ -260,7 +260,7 @@ export const FriendsPanel: React.FC = () => {
 
       {selectedFarm && createPortal(
         <div className="friend-farm-overlay">
-          <FarmCanvas readOnly previewTiles={displayedTiles} />
+          <FarmCanvas readOnly previewTiles={displayedTiles} farmSize={selectedFarm.size} />
           <div className="friend-farm-toolbar">
             <button className="friend-back-button" type="button" onClick={() => setSelectedFarm(null)} aria-label="Повернутися до профілю" title="Повернутися до профілю"><ArrowLeft size={20} /></button>
             <div className="friend-farm-player">
