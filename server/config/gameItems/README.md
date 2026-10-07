@@ -33,6 +33,10 @@
 
 Зображення добрив кладіть у `client/public/assets/fertilizers/`. Назви стандартних файлів: `fertilizer_30m.png`, `fertilizer_4h.png` і `fertilizer_16h.png`; у каталозі використовуйте відповідний шлях `/assets/fertilizers/<назва-файла>`. До додавання картинок у товар можна використовувати `shopIcon`.
 
-## Декор і будівлі
+## Декор, загони й фабрики
 
-`buildings.js` містить декоративні будівлі. Перший об'єкт — амбар `barn`: `largeFootprint: 2×2` великих клітинки (16 мініклітинок), ціна `5000`, XP за встановлення `100`, поверхня `grass`. Його зображення має бути у `client/public/assets/buildings/barn/barn.png`. Рекомендований canvas — `1024×1024 px` з прозорим фоном.
+`buildings.js` містить декор, загони й фабрики. Млин `mill` переробляє 1 пшеницю (`wheat`) за 60 секунд на 1 мішок борошна (`flour`); черга вміщує 25 одиниць, а борошно продається за 25 монет. Зображення млина: `client/public/assets/buildings/fabrik/mlyn.png`.
+
+Для фабрики задай `buildingCategory: 'FACTORY'`, ID предмета сировини в `factoryInputItemId`, місткість `factoryCapacity`, час на одну одиницю в `productionTimeMs` і готовий складський продукт через `yieldItem`, `yieldName`, `yieldIcon` або `yieldImage`, `yieldAmount` та `sellPrice`. Вихідний `yieldItem` має бути унікальним серед усіх товарів каталогу. Ціна продажу задається за одну одиницю готового продукту.
+
+Будівля для тварин має `housing` і категорію `PEN`; будівля без цих налаштувань належить до `DECOR`. Амбар `barn` має `largeFootprint: 2×2` великих клітинки, ціну `5000`, XP за встановлення `100` і поверхню `grass`. Його зображення: `client/public/assets/buildings/barn/barn.png`.

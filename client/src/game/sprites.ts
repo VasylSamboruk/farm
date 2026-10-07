@@ -114,6 +114,9 @@ export const preloadGameImages = async (items: GameItemConfig[]) => {
   ]));
   sources.add('/assets/ui/coin.png');
   sources.add('/assets/ui/rubin.png');
+  if (items.some((item) => item.yieldItem === 'flour')) {
+    sources.add('/assets/buildings/fabrik/muka.png');
+  }
   await Promise.all([...sources].map(loadGameImage));
 };
 

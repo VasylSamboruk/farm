@@ -23,6 +23,9 @@ export interface SocialFarmTile {
   flipX?: boolean;
   placedAt?: string;
   lastHarvestedAt?: string;
+  factoryQueuedUnits?: number;
+  factoryStartedAt?: string;
+  factoryInputItemId?: string;
 }
 
 export interface FriendFarm {

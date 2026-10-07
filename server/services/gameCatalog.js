@@ -43,6 +43,22 @@ export const listGameItems = () => {
         });
 };
 
+export const listPermanentlyDeletedGameItems = () => Array.from(priceOverrides.entries())
+    .filter(([itemId, config]) => GAME_ITEMS[itemId] && config.deleted)
+    .map(([itemId]) => ({
+        ...GAME_ITEMS[itemId],
+        disabled: true,
+        permanentlyDeleted: true,
+    }));
+
+export const restorePermanentlyDeletedGameItem = async (itemId) => {
+    if (!GAME_ITEMS[itemId] || !priceOverrides.get(itemId)?.deleted) return null;
+
+    await GameItemPrice.deleteOne({ itemId });
+    priceOverrides.delete(itemId);
+    return GAME_ITEMS[itemId];
+};
+
 export const updateGameItemPrices = async (itemId, updates) => {
     const item = getGameItem(itemId);
     if (!item) return null;

@@ -7,7 +7,7 @@ import farmRoutes from './routes/farm.js'; // ДОДАНО: імпорт мар�
 import gameConfigRoutes from './routes/gameConfig.js';
 import socialRoutes from './routes/social.js';
 import adminRoutes from './routes/admin.js';
-import { loadGameItemPriceOverrides } from './services/gameCatalog.js';
+import { loadGameItemPriceOverrides, restorePermanentlyDeletedGameItem } from './services/gameCatalog.js';
 
 dotenv.config();
 
@@ -46,6 +46,8 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
     await connectDB();
     await loadGameItemPriceOverrides();
+    const restoredMill = await restorePermanentlyDeletedGameItem('mill');
+    if (restoredMill) console.info('Стандартний млин відновлено в каталозі гри.');
     app.listen(PORT, () => {
         console.log(`🚀 Сервер запущено на порту ${PORT}`);
     });

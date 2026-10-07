@@ -14,6 +14,9 @@ export interface TileData {
   placedAt?: string;
   lastHarvestedAt?: string;
   housedAnimals?: HousedAnimal[];
+  factoryQueuedUnits?: number;
+  factoryStartedAt?: string;
+  factoryInputItemId?: string;
 }
 
 export interface HousedAnimal {
@@ -46,6 +49,9 @@ interface FarmTileResponse {
   placedAt?: string;
   lastHarvestedAt?: string;
   housedAnimals?: HousedAnimal[];
+  factoryQueuedUnits?: number;
+  factoryStartedAt?: string;
+  factoryInputItemId?: string;
 }
 
 interface FarmResponse {
@@ -67,6 +73,8 @@ interface FarmState {
   houseAnimal: (userId: string, building: { row: number; col: number; quadrant: number }, animal: { row: number; col: number; quadrant: number }) => Promise<boolean>;
   releaseHousedAnimal: (userId: string, building: { row: number; col: number; quadrant: number }, animalId: string, destination: { row: number; col: number; quadrant: number }) => Promise<boolean>;
   collectHousedAnimals: (userId: string, building: { row: number; col: number; quadrant: number }) => Promise<{ items: { yieldItem: string; yieldName: string; amount: number }[] } | null>;
+  startFactory: (userId: string, building: { row: number; col: number; quadrant: number }, amount: number) => Promise<boolean>;
+  collectFactory: (userId: string, building: { row: number; col: number; quadrant: number }) => Promise<number>;
   buyFertilizer: (userId: string, itemId: string) => Promise<boolean>;
   fertilizeItem: (userId: string, itemId: string, target: { row: number; col: number; quadrant: number }) => Promise<{ appliedTo: string; acceleratedMs: number } | null>;
   digTile: (row: number, col: number, userId: string) => void;
@@ -94,6 +102,9 @@ const convertToDbArray = (tiles: Record<string, TileData>) => {
       placedAt: data.placedAt,
       lastHarvestedAt: data.lastHarvestedAt,
       housedAnimals: data.housedAnimals?.map(({ id, ...animal }) => ({ _id: id, ...animal })),
+      factoryQueuedUnits: data.factoryQueuedUnits,
+      factoryStartedAt: data.factoryStartedAt,
+      factoryInputItemId: data.factoryInputItemId,
     };
   });
 };
@@ -113,6 +124,9 @@ const toFarmTileMap = (tiles: FarmTileResponse[]) => {
       placedAt: tile.placedAt,
       lastHarvestedAt: tile.lastHarvestedAt,
       housedAnimals: tile.housedAnimals,
+      factoryQueuedUnits: tile.factoryQueuedUnits,
+      factoryStartedAt: tile.factoryStartedAt,
+      factoryInputItemId: tile.factoryInputItemId,
     };
   }
   return tileMap;
@@ -294,6 +308,72 @@ export const useFarmStore = create<FarmState>((set, get) => {
       console.error('Не вдалося зібрати продукцію з будівлі:', error);
       set({ gameMessage: 'Не вдалося зібрати продукцію. Перевір з’єднання із сервером.' });
       return null;
+    }
+  },
+
+  startFactory: async (userId, building, amount) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/factory/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          buildingX: building.col,
+          buildingY: building.row,
+          buildingQuadrant: building.quadrant,
+          amount,
+        }),
+      });
+      const data = await response.json() as {
+        message?: string;
+        size?: number;
+        tiles?: FarmTileResponse[];
+        user?: { inventory: Record<string, number> };
+      };
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося запустити фабрику' });
+        return false;
+      }
+      set({ tiles: toFarmTileMap(data.tiles ?? []), farmSize: data.size ?? get().farmSize });
+      if (data.user) useAuthStore.getState().updateUser(data.user);
+      return true;
+    } catch (error) {
+      console.error('Не вдалося запустити фабрику:', error);
+      set({ gameMessage: 'Не вдалося запустити фабрику. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
+  collectFactory: async (userId, building) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/factory/collect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          buildingX: building.col,
+          buildingY: building.row,
+          buildingQuadrant: building.quadrant,
+        }),
+      });
+      const data = await response.json() as {
+        message?: string;
+        size?: number;
+        tiles?: FarmTileResponse[];
+        collected?: number;
+        user?: { inventory: Record<string, number> };
+      };
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося зібрати продукцію фабрики' });
+        return 0;
+      }
+      set({ tiles: toFarmTileMap(data.tiles ?? []), farmSize: data.size ?? get().farmSize });
+      if (data.user) useAuthStore.getState().updateUser(data.user);
+      return data.collected ?? 0;
+    } catch (error) {
+      console.error('Не вдалося зібрати продукцію фабрики:', error);
+      set({ gameMessage: 'Не вдалося зібрати продукцію фабрики. Перевір з’єднання із сервером.' });
+      return 0;
     }
   },
 

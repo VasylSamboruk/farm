@@ -1,4 +1,5 @@
 export type GameItemType = 'TREE' | 'CROP' | 'ANIMAL' | 'BUILDING' | 'OTHER';
+export type BuildingCategory = 'DECOR' | 'PEN' | 'FACTORY';
 export type LevelReward = { kind: 'coins'; amount: number } | { kind: 'rubies'; amount: number } | { kind: 'item'; amount: number; itemId: string };
 export interface LevelRewardEntry { level: number; rewards: LevelReward[]; }
 export interface AdminGiftEntry {
@@ -18,6 +19,9 @@ export interface GameItemConfig {
   footprint?: { width: number; height: number };
   largeFootprint?: { width: number; height: number };
   housing?: { capacity: number; animalTypes: string[] };
+  buildingCategory?: BuildingCategory;
+  factoryInputItemId?: string;
+  factoryCapacity?: number;
   spriteScale?: number;
   flipX?: boolean;
   canFlip?: boolean;

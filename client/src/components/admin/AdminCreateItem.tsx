@@ -104,6 +104,10 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const showToast = useAdminToast();
   const [assetBaseUrl, setAssetBaseUrl] = useState('');
   const [availableAnimals, setAvailableAnimals] = useState<AdminCatalogItem[]>([]);
+  const [availableFactoryInputs, setAvailableFactoryInputs] = useState<AdminCatalogItem[]>([]);
+  const [buildingCategory, setBuildingCategory] = useState<'DECOR' | 'PEN' | 'FACTORY'>('DECOR');
+  const [factoryInputItemId, setFactoryInputItemId] = useState('');
+  const [factoryCapacity, setFactoryCapacity] = useState('25');
   const [type, setType] = useState<ItemType>('TREE');
   const [name, setName] = useState('');
   const [id, setId] = useState('');
@@ -124,7 +128,6 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [spriteScale, setSpriteScale] = useState('1');
   const [canFlip, setCanFlip] = useState(true);
   const [access, setAccess] = useState<'all' | 'admin' | 'gift'>('all');
-  const [housingEnabled, setHousingEnabled] = useState(false);
   const [housingCapacity, setHousingCapacity] = useState('40');
   const [housingAnimalTypes, setHousingAnimalTypes] = useState<string[]>([]);
   const [shopImage, setShopImage] = useState('');
@@ -145,6 +148,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
         if (!active) return;
         setAssetBaseUrl(settings.assetBaseUrl);
         setAvailableAnimals(catalog.filter((item) => item.type === 'ANIMAL'));
+        setAvailableFactoryInputs(catalog.filter((item) => ['TREE', 'CROP', 'ANIMAL'].includes(item.type) && item.yieldItem));
       })
       .catch((loadError: unknown) => {
         if (active) showToast('error', getErrorMessage(loadError));
@@ -161,6 +165,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   });
   const largeRectangle = getRectangle(largeCoordinates);
   const isBuilding = type === 'BUILDING' || type === 'OTHER';
+  const isFactory = type === 'BUILDING' && buildingCategory === 'FACTORY';
   const previewImage = shopImage.trim() || growthImages[0] || '';
   const selectedIcon = shopIcon.trim() || itemTypes.find((item) => item.type === type)?.iconText || '🌱';
   const previewDuration = Math.max(1000, productionTimeMs ?? 60_000);
@@ -189,6 +194,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
       setYieldAmount('');
       setSellPrice('');
       setProductionTimeParts({ ...EMPTY_DURATION });
+      setBuildingCategory('DECOR');
     } else if (isBuilding) {
       setYieldAmount('1');
       setProductionTimeParts({ hours: '00', minutes: '01', seconds: '00' });
@@ -310,11 +316,18 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
       showToast('error', 'Перевір назву, параметри та прямокутний footprint.');
       return;
     }
-    if (!isBuilding && (!yieldItem.trim() || !yieldName.trim() || !Number.isSafeInteger(Number(yieldAmount)) || Number(yieldAmount) < 1 ||
+    if ((!isBuilding || isFactory) && (!yieldItem.trim() || !yieldName.trim() || !Number.isSafeInteger(Number(yieldAmount)) || Number(yieldAmount) < 1 ||
       !Number.isSafeInteger(parsedProductionTime) || (parsedProductionTime ?? 0) < 1000 ||
-      (parsedSellPrice !== undefined && (!Number.isSafeInteger(parsedSellPrice) || parsedSellPrice < 0)))) {
-      setError('Для дерева, рослини чи тварини заповни дані врожаю та час виробництва.');
+      (parsedSellPrice !== undefined && (!Number.isSafeInteger(parsedSellPrice) || parsedSellPrice < 0)) ||
+      (isFactory && parsedSellPrice === undefined))) {
+      setError('Заповни дані продукту та коректний час виробництва.');
       showToast('error', 'Заповни всі обов’язкові параметри виробництва.');
+      return;
+    }
+    if (isFactory && (!availableFactoryInputs.some((item) => item.id === factoryInputItemId) ||
+      !Number.isSafeInteger(Number(factoryCapacity)) || Number(factoryCapacity) < 1 || Number(factoryCapacity) > 1000)) {
+      setError('Обери продукт зі складу для переробки та вкажи місткість фабрики 1–1000.');
+      showToast('error', 'Перевір рецепт фабрики.');
       return;
     }
     if (type === 'ANIMAL' && ((!growthImages[0] && !shopImage.trim()) || !yieldImage.trim())) {
@@ -322,7 +335,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
       showToast('error', 'Тварині потрібні окремі зображення тварини й продукції.');
       return;
     }
-    if (type === 'BUILDING' && housingEnabled &&
+    if (type === 'BUILDING' && buildingCategory === 'PEN' &&
       (!Number.isSafeInteger(parsedHousingCapacity) || parsedHousingCapacity < 1 || parsedHousingCapacity > 1000 ||
         housingAnimalTypes.length === 0 || housingAnimalTypes.some((animalId) => !availableAnimals.some((animal) => animal.id === animalId)))) {
       setError('Для тваринницької будівлі вкажи місткість від 1 до 1000 та обери дозволених тварин.');
@@ -357,9 +370,11 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
         giftOnly: access === 'gift',
         footprint,
         ...(largeFootprint ? { largeFootprint } : {}),
-        ...(type === 'BUILDING' && housingEnabled
+        ...(type === 'BUILDING' ? { buildingCategory } : {}),
+        ...(type === 'BUILDING' && buildingCategory === 'PEN'
           ? { housing: { capacity: parsedHousingCapacity, animalTypes: housingAnimalTypes } }
           : {}),
+        ...(isFactory ? { factoryInputItemId, factoryCapacity: Number(factoryCapacity) } : {}),
         ...(type === 'OTHER' && otherMechanic !== 'none' ? {
           mechanic: otherMechanic,
           ...(otherMechanic === 'accelerate_growth' ? { accelerationMs } : {}),
@@ -367,7 +382,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
         placementSurface,
         spriteScale: parsedScale,
         canFlip,
-        ...(isBuilding ? {} : {
+        ...((!isBuilding || isFactory) ? {
           sellPrice: parsedSellPrice,
           productionTimeMs: parsedProductionTime,
           yieldItem: yieldItem.trim(),
@@ -375,7 +390,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
           yieldIcon: yieldIcon.trim() || undefined,
           yieldAmount: Number(yieldAmount),
           yieldImage: yieldImage.trim() || undefined,
-        }),
+        } : {}),
         shopImage: shopImage.trim() || undefined,
         shopIcon: shopIcon.trim() || selectedIcon,
         growthImages,
@@ -480,9 +495,25 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
           </section>
 
           {type === 'BUILDING' && <section className="admin-create-section">
-            <div className="admin-create-section-heading"><span>03</span><div><h2>Приміщення для тварин</h2><p>Необов’язково: увімкни зберігання та виробництво тварин усередині</p></div></div>
-            <label className="admin-create-check"><input type="checkbox" checked={housingEnabled} onChange={(event) => setHousingEnabled(event.target.checked)} />Ця будівля може утримувати тварин</label>
-            {housingEnabled && <>
+            <div className="admin-create-section-heading"><span>03</span><div><h2>Призначення будівлі</h2><p>Обери роль будівлі в магазині та на фермі</p></div></div>
+            <div className="admin-footprint-modes" role="group" aria-label="Категорія будівлі">
+              {([
+                ['DECOR', 'Декор'],
+                ['FACTORY', 'Фабрика'],
+                ['PEN', 'Загін'],
+              ] as const).map(([category, label]) => (
+                <button
+                  className={buildingCategory === category ? 'is-active' : ''}
+                  key={category}
+                  type="button"
+                  aria-pressed={buildingCategory === category}
+                  onClick={() => setBuildingCategory(category)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {buildingCategory === 'PEN' && <>
               <div className="admin-create-fields admin-create-fields-two">
                 <label>Місткість<input type="number" min="1" max="1000" step="1" value={housingCapacity} onChange={(event) => setHousingCapacity(event.target.value)} /></label>
               </div>
@@ -506,6 +537,15 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
                 )}
               </fieldset>
             </>}
+            {isFactory && <div className="admin-create-fields admin-create-fields-two">
+              <label>Що переробляє фабрика<select value={factoryInputItemId} onChange={(event) => setFactoryInputItemId(event.target.value)} required>
+                <option value="">Обери продукт зі складу</option>
+                {availableFactoryInputs.map((input) => (
+                  <option key={input.id} value={input.id}>{input.name} — {input.yieldName ?? input.yieldItem}</option>
+                ))}
+              </select></label>
+              <label>Місткість черги<input type="number" min="1" max="1000" step="1" value={factoryCapacity} onChange={(event) => setFactoryCapacity(event.target.value)} required /></label>
+            </div>}
           </section>}
 
           {type === 'OTHER' && <section className="admin-create-section">
@@ -520,11 +560,11 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
             </div>
           </section>}
 
-          {!isBuilding && <section className="admin-create-section">
-            <div className="admin-create-section-heading"><span>03</span><div><h2>Виробництво</h2><p>Урожай і винагороди</p></div></div>
+          {(!isBuilding || isFactory) && <section className="admin-create-section">
+            <div className="admin-create-section-heading"><span>03</span><div><h2>{isFactory ? 'Рецепт переробки' : 'Виробництво'}</h2><p>{isFactory ? 'Налаштуй готовий продукт, час циклу й продажну ціну' : 'Урожай і винагороди'}</p></div></div>
             <div className="admin-create-fields admin-create-fields-three">
               {type === 'ANIMAL' && <p className="admin-product-fields-note">Зображення тварини використовується на фермі та в курнику. Зображення продукції — для готового врожаю та збору.</p>}
-              <div className="admin-duration-form-field"><span>Час до врожаю</span><AdminDurationInput label="Час до врожаю" value={productionTimeParts} onChange={(value) => { setProductionTimeParts(value); restartPreviewCycle(); }} /></div>
+              <div className="admin-duration-form-field"><span>{isFactory ? 'Час на 1 одиницю' : 'Час до врожаю'}</span><AdminDurationInput label={isFactory ? 'Час переробки однієї одиниці' : 'Час до врожаю'} value={productionTimeParts} onChange={(value) => { setProductionTimeParts(value); restartPreviewCycle(); }} /></div>
               <label>Кількість за збір<input type="number" min="1" step="1" value={yieldAmount} onChange={(event) => setYieldAmount(event.target.value)} required /></label>
               <label>Ціна продажу<input type="number" min="0" step="1" value={sellPrice} onChange={(event) => setSellPrice(event.target.value)} placeholder="Не продається" /></label>
               <label>ID врожаю<input value={yieldItem} maxLength={64} onChange={(event) => setYieldItem(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))} placeholder="peach" required /></label>

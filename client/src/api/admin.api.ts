@@ -65,9 +65,13 @@ export interface AdminCatalogItem {
   footprint?: { width: number; height: number };
   largeFootprint?: { width: number; height: number } | null;
   housing?: { capacity: number; animalTypes: string[] } | null;
+  buildingCategory?: 'DECOR' | 'PEN' | 'FACTORY';
+  factoryInputItemId?: string;
+  factoryCapacity?: number;
   access: 'all' | 'admin';
   custom?: boolean;
   disabled?: boolean;
+  permanentlyDeleted?: boolean;
   giftOnly?: boolean;
 }
 
@@ -137,6 +141,10 @@ export const adminApi = {
   },
   permanentlyDeleteItem: async (itemId: string) => {
     await api.delete(`/admin/catalog/${itemId}/permanent`);
+  },
+  restorePermanentlyDeletedItem: async (itemId: string) => {
+    const response = await api.post<{ item: AdminCatalogItem }>(`/admin/catalog/${itemId}/restore`);
+    return response.data.item;
   },
   updatePrices: async (itemId: string, price: number, sellPrice?: number) => {
     const response = await api.patch<{ item: AdminCatalogItem }>(`/admin/catalog/${itemId}/prices`, {

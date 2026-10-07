@@ -7,7 +7,7 @@ import GiftShopItem from '../models/GiftShopItem.js';
 import User, { USER_STARTING_COINS } from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
 import { createStarterFarmTiles } from '../services/starterFarm.js';
-import { createCustomGameItem, getGameItem, listGameItems, permanentlyDeleteGameItem, reorderGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
+import { createCustomGameItem, getGameItem, listGameItems, listPermanentlyDeletedGameItems, permanentlyDeleteGameItem, reorderGameItem, restorePermanentlyDeletedGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 import { getMediaSettings, normalizeAssetSource, resolveAssetSource, resolveGameItemImages, restorePreviousAssetBaseUrl, setAssetBaseUrl } from '../services/mediaStorage.js';
 import { listGiftShopItems } from '../services/giftShop.js';
@@ -106,10 +106,14 @@ const serializeCatalogItem = (item) => ({
     footprint: item.footprint,
     largeFootprint: item.largeFootprint,
     housing: item.housing,
+    buildingCategory: item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR'),
+    factoryInputItemId: item.factoryInputItemId,
+    factoryCapacity: item.factoryCapacity,
     access: item.access ?? 'all',
     giftOnly: Boolean(item.giftOnly),
     custom: Boolean(item.custom),
     disabled: Boolean(item.disabled),
+    permanentlyDeleted: Boolean(item.permanentlyDeleted),
 });
 
 const isImageSource = (source) => {
@@ -157,10 +161,24 @@ router.post('/media/settings/restore', async (_req, res, next) => {
 router.get('/catalog', async (_req, res, next) => {
     try {
         const settings = await getMediaSettings();
-        const items = listGameItems().map((item) => serializeCatalogItem(resolveGameItemImages(item, settings)));
+        const items = [
+            ...listGameItems(),
+            ...listPermanentlyDeletedGameItems(),
+        ].map((item) => serializeCatalogItem(resolveGameItemImages(item, settings)));
         return res.json({ items });
     } catch (error) {
         return next(error);
+    }
+});
+
+router.post('/catalog/:itemId/restore', async (req, res) => {
+    try {
+        const item = await restorePermanentlyDeletedGameItem(req.params.itemId);
+        if (!item) return res.status(404).json({ message: 'Стандартний товар не знайдено або він уже відновлений' });
+        const settings = await getMediaSettings();
+        return res.json({ item: serializeCatalogItem(resolveGameItemImages(item, settings)) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося відновити стандартний товар', error: error.message });
     }
 });
 
@@ -237,9 +255,12 @@ router.post('/catalog', async (req, res) => {
     const body = req.body ?? {};
     const { id, name, type, price, priceCurrency = 'coins', plantingXp, requiredLevel, productionTimeMs, yieldItem, yieldName,
         yieldIcon, yieldAmount, sellPrice, placementSurface, spriteScale, shopImage, shopIcon, housing,
-        yieldImage, growthImages, footprint, largeFootprint, canFlip, access, mechanic, accelerationMs, giftOnly = false } = body;
+        yieldImage, growthImages, footprint, largeFootprint, canFlip, access, mechanic, accelerationMs, giftOnly = false,
+        buildingCategory = housing ? 'PEN' : 'DECOR', factoryInputItemId, factoryCapacity = 25 } = body;
     const allowedTypes = ['TREE', 'CROP', 'ANIMAL', 'BUILDING', 'OTHER'];
-    const producesItems = ['TREE', 'CROP', 'ANIMAL'].includes(type);
+    const isFactory = type === 'BUILDING' && buildingCategory === 'FACTORY';
+    const producesItems = ['TREE', 'CROP', 'ANIMAL'].includes(type) || isFactory;
+    const validFactoryInput = getGameItem(factoryInputItemId);
     const validId = typeof id === 'string' && /^[a-z][a-z0-9_]{1,47}$/.test(id);
     const validImageList = Array.isArray(growthImages) && growthImages.length <= 12 && growthImages.every(isImageSource);
 
@@ -256,6 +277,13 @@ router.post('/catalog', async (req, res) => {
         !['grass', 'soil'].includes(placementSurface) ||
         !Number.isFinite(spriteScale) || spriteScale < 0.1 || spriteScale > 8 ||
         !isFootprint(footprint) ||
+        (type === 'BUILDING' && !['DECOR', 'PEN', 'FACTORY'].includes(buildingCategory)) ||
+        (type === 'BUILDING' && buildingCategory === 'PEN' && !housing) ||
+        (isFactory && (!validFactoryInput?.yieldItem || !Number.isSafeInteger(factoryCapacity) || factoryCapacity < 1 || factoryCapacity > 1000)) ||
+        (isFactory && (validFactoryInput.type === 'BUILDING' || validFactoryInput.type === 'OTHER')) ||
+        (isFactory && (typeof yieldItem !== 'string' || !/^[a-z0-9_-]{1,64}$/.test(yieldItem) ||
+            listGameItems().some((catalogItem) => catalogItem.yieldItem === yieldItem))) ||
+        (isFactory && sellPrice === undefined) ||
         (largeFootprint !== null && largeFootprint !== undefined && !isFootprint(largeFootprint, 8)) ||
         (shopImage !== null && shopImage !== undefined && shopImage !== '' && !isImageSource(shopImage)) ||
         (yieldImage !== null && yieldImage !== undefined && yieldImage !== '' && !isImageSource(yieldImage)) ||
@@ -303,6 +331,8 @@ router.post('/catalog', async (req, res) => {
             footprint,
             largeFootprint: largeFootprint || undefined,
             ...(housing ? { housing: { capacity: housing.capacity, animalTypes: housing.animalTypes } } : {}),
+            ...(type === 'BUILDING' ? { buildingCategory } : {}),
+            ...(isFactory ? { factoryInputItemId, factoryCapacity } : {}),
             ...(type === 'OTHER' && mechanic ? { mechanic } : {}),
             ...(mechanic === 'accelerate_growth' ? { accelerationMs } : {}),
             canFlip,
@@ -326,6 +356,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'canFlip', 'footprint',
             'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX', 'access', 'requiredLevel', 'sortOrder', 'disabled',
             'housing',
+            'buildingCategory', 'factoryInputItemId', 'factoryCapacity',
             'giftOnly',
             'mechanic', 'accelerationMs',
         ]);
@@ -373,6 +404,28 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 const parsed = Number(value);
                 if (!Number.isSafeInteger(parsed) || parsed < 1000) return res.status(400).json({ message: 'Час росту має бути цілим числом не менше 1000 мс' });
                 updates[field] = parsed;
+                continue;
+            }
+            if (field === 'factoryCapacity') {
+                if (item.type !== 'BUILDING' || !Number.isSafeInteger(value) || value < 1 || value > 1000) {
+                    return res.status(400).json({ message: 'Місткість фабрики має бути від 1 до 1000 одиниць' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'factoryInputItemId') {
+                const inputItem = getGameItem(value);
+                if (item.type !== 'BUILDING' || !inputItem?.yieldItem || !['TREE', 'CROP', 'ANIMAL'].includes(inputItem.type)) {
+                    return res.status(400).json({ message: 'Обери товар зі складу, який можна переробляти' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'buildingCategory') {
+                if (item.type !== 'BUILDING' || !['DECOR', 'PEN', 'FACTORY'].includes(value)) {
+                    return res.status(400).json({ message: 'Невідома категорія будівлі' });
+                }
+                updates[field] = value;
                 continue;
             }
             if (field === 'mechanic') {
@@ -448,6 +501,18 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 updates[field] = value;
                 continue;
             }
+            if (field === 'yieldItem') {
+                if (typeof value !== 'string' ||
+                    (item.type === 'BUILDING' && item.buildingCategory !== 'FACTORY' && value !== '') ||
+                    (item.type === 'BUILDING' && item.buildingCategory === 'FACTORY' &&
+                        (!/^[a-z0-9_-]{1,64}$/.test(value) ||
+                            listGameItems().some((candidate) => candidate.id !== item.id && candidate.yieldItem === value))) ||
+                    (item.type !== 'BUILDING' && value !== '' && !/^[a-z0-9_-]{1,64}$/.test(value))) {
+                    return res.status(400).json({ message: 'ID готового продукту фабрики має бути унікальним' });
+                }
+                updates[field] = value.trim();
+                continue;
+            }
             if (typeof value !== 'string' || value.trim().length > 120) return res.status(400).json({ message: `${field} має бути текстом до 120 символів` });
             updates[field] = value.trim();
         }
@@ -458,6 +523,27 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         if (resultingMechanic === 'accelerate_growth' &&
             (!Number.isSafeInteger(resultingAcceleration) || resultingAcceleration < 1000 || resultingAcceleration > 2_592_000_000)) {
             return res.status(400).json({ message: 'Для добрива задай прискорення від 1 секунди до 30 днів' });
+        }
+        const resultingBuildingCategory = updates.buildingCategory ?? item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR');
+        if (item.type === 'BUILDING' && resultingBuildingCategory === 'FACTORY') {
+            const resultingInputId = updates.factoryInputItemId ?? item.factoryInputItemId;
+            const resultingInputItem = getGameItem(resultingInputId);
+            const resultingYieldItem = updates.yieldItem ?? item.yieldItem;
+            const resultingYieldName = updates.yieldName ?? item.yieldName;
+            const resultingYieldAmount = updates.yieldAmount ?? item.yieldAmount;
+            const resultingProductionTime = updates.productionTimeMs ?? item.productionTimeMs;
+            const resultingCapacity = updates.factoryCapacity ?? item.factoryCapacity ?? 25;
+            const resultingSellPrice = updates.sellPrice === null ? null : updates.sellPrice ?? item.sellPrice;
+            if (!resultingInputItem?.yieldItem || !['TREE', 'CROP', 'ANIMAL'].includes(resultingInputItem.type) ||
+                !Number.isSafeInteger(resultingCapacity) || resultingCapacity < 1 || resultingCapacity > 1000 ||
+                typeof resultingYieldItem !== 'string' || !/^[a-z0-9_-]{1,64}$/.test(resultingYieldItem) ||
+                listGameItems().some((candidate) => candidate.id !== item.id && candidate.yieldItem === resultingYieldItem) ||
+                typeof resultingYieldName !== 'string' || !resultingYieldName.trim() ||
+                !Number.isSafeInteger(resultingYieldAmount) || resultingYieldAmount < 1 ||
+                !Number.isSafeInteger(resultingProductionTime) || resultingProductionTime < 1000 ||
+                !Number.isSafeInteger(resultingSellPrice) || resultingSellPrice < 0) {
+                return res.status(400).json({ message: 'Перевір рецепт фабрики: сировину, продукт, місткість і час переробки' });
+            }
         }
         const mediaSettings = await getMediaSettings();
         if (updates.growthImages) updates.growthImages = updates.growthImages.map((source) => normalizeAssetSource(source, mediaSettings));

@@ -148,6 +148,8 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
               {visibleCategory === 'harvest' && stockedItems.length > 0 && <h3 className="inventory-section-title" style={styles.sectionTitle}>Урожай</h3>}
               {visibleCategory === 'harvest' && stockedItems.map((item) => {
                 const itemId = item.yieldItem!;
+                const productImage = item.yieldImage
+                  ?? (itemId === 'flour' ? '/assets/buildings/fabrik/muka.png' : undefined);
                 const stockAmount = inventory[itemId] ?? 0;
                 const amount = Math.min(amounts[itemId] ?? 1, stockAmount);
                 const totalCoins = amount * (item.sellPrice ?? 0);
@@ -157,8 +159,8 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                   <article key={itemId} className="game-modal-card" style={styles.card}>
                     <h3 className="inventory-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.yieldName ?? item.name)}px` }} title={item.yieldName ?? item.name}>{item.yieldName ?? item.name}</h3>
                     <div className="inventory-image-box" style={styles.imageBox}>
-                      {item.yieldImage ? (
-                        <img src={item.yieldImage} alt="" style={styles.productImage} draggable={false} />
+                      {productImage ? (
+                        <img src={productImage} alt="" style={styles.productImage} draggable={false} />
                       ) : (
                         <span style={styles.productIcon}>{item.yieldIcon ?? item.shopIcon ?? '📦'}</span>
                       )}

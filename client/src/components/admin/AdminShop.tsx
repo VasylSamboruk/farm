@@ -8,7 +8,7 @@ import { useAdminToast } from './adminToast';
 import { resolveImageUrl } from '../../game/assetUrls';
 import { durationPartsToMilliseconds, millisecondsToDurationParts, type DurationParts } from '../../game/durationInput';
 
-type AdminShopCategory = 'ALL' | AdminCatalogItem['type'] | 'DECOR' | 'HOUSING_BUILDING' | 'GIFTS';
+type AdminShopCategory = 'ALL' | AdminCatalogItem['type'] | 'DECOR' | 'HOUSING_BUILDING' | 'FACTORIES' | 'GIFTS';
 
 const categories: { type: AdminShopCategory; label: string }[] = [
   { type: 'ALL', label: 'Усі товари' },
@@ -16,6 +16,7 @@ const categories: { type: AdminShopCategory; label: string }[] = [
   { type: 'CROP', label: 'Рослини' },
   { type: 'ANIMAL', label: 'Тварини' },
   { type: 'DECOR', label: 'Декор' },
+  { type: 'FACTORIES', label: 'Фабрики' },
   { type: 'HOUSING_BUILDING', label: 'Будівлі' },
   { type: 'OTHER', label: 'Інше' },
   { type: 'GIFTS', label: 'Подарунки' },
@@ -52,6 +53,8 @@ interface ItemDraft {
   housingEnabled: boolean;
   housingCapacity: string;
   housingAnimalTypes: string[];
+  factoryInputItemId: string;
+  factoryCapacity: string;
 }
 
 const createDraft = (item: AdminCatalogItem): ItemDraft => {
@@ -87,6 +90,8 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => {
   housingEnabled: Boolean(item.housing),
   housingCapacity: String(item.housing?.capacity ?? 40),
   housingAnimalTypes: [...(item.housing?.animalTypes ?? [])],
+  factoryInputItemId: item.factoryInputItemId ?? '',
+  factoryCapacity: String(item.factoryCapacity ?? 25),
   };
 };
 
@@ -187,6 +192,8 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     const largeHeight = draft.largeFootprintHeight.trim() ? Number(draft.largeFootprintHeight) : null;
     const spriteScale = Number(draft.spriteScale);
     const housingCapacity = Number(draft.housingCapacity);
+    const factoryCapacity = Number(draft.factoryCapacity);
+    const isFactory = item.type === 'BUILDING' && item.buildingCategory === 'FACTORY';
     const isGiftItem = draft.access === 'gift';
     const giftSetting = giftSettings[item.id];
     const giftPrice = giftSetting?.price ?? item.price;
@@ -208,6 +215,10 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
       (draft.housingEnabled && (!Number.isSafeInteger(housingCapacity) || housingCapacity < 1 || housingCapacity > 1000 ||
         draft.housingAnimalTypes.length === 0 ||
         draft.housingAnimalTypes.some((animalId) => !catalog.some((entry) => entry.id === animalId && entry.type === 'ANIMAL')))) ||
+      (isFactory && (!catalog.some((entry) => entry.id === draft.factoryInputItemId && ['TREE', 'CROP', 'ANIMAL'].includes(entry.type) && entry.yieldItem) ||
+        !Number.isSafeInteger(factoryCapacity) || factoryCapacity < 1 || factoryCapacity > 1000 ||
+        !draft.yieldItem.trim() || !draft.yieldName.trim() || !Number.isSafeInteger(productionTimeMs) || (productionTimeMs ?? 0) < 1000 ||
+        sellPrice === null)) ||
       draft.growthImages.length > 12 || draft.growthImages.some((source) => !source.trim() || !isImageSource(source.trim())) ||
       !isImageSource(draft.shopImage.trim()) || !isImageSource(draft.yieldImage.trim()) ||
       (isGiftItem && (!Number.isSafeInteger(giftPrice) || giftPrice < 0)) ||
@@ -239,6 +250,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
         footprint: { width: footprintWidth, height: footprintHeight },
         largeFootprint: largeWidth === null || largeHeight === null ? null : { width: largeWidth, height: largeHeight },
         housing: draft.housingEnabled ? { capacity: housingCapacity, animalTypes: draft.housingAnimalTypes } : null,
+        ...(isFactory ? { factoryInputItemId: draft.factoryInputItemId, factoryCapacity } : {}),
         access: draft.access === 'gift' ? 'all' : draft.access,
         giftOnly: draft.access === 'gift',
         ...(item.type === 'OTHER' ? {
@@ -320,12 +332,30 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     }
   };
 
+  const restorePermanentlyDeletedItem = async (item: AdminCatalogItem) => {
+    setBusyId(`${item.id}:restore`);
+    setError('');
+    try {
+      await adminApi.restorePermanentlyDeletedItem(item.id);
+      await refreshCatalog(item.id);
+      setNotice(`Стандартний товар «${item.name}» відновлено.`);
+      showToast('success', `«${item.name}» повернуто в каталог.`);
+    } catch (restoreError) {
+      const message = getErrorMessage(restoreError);
+      setError(message);
+      showToast('error', message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const visibleItems = catalog.filter((item) =>
     category === 'GIFTS' ? Boolean(item.giftOnly)
       : category === 'ALL' ? true
       : item.giftOnly ? false
-      : category === 'DECOR' ? item.type === 'BUILDING' && !item.housing
-        : category === 'HOUSING_BUILDING' ? item.type === 'BUILDING' && Boolean(item.housing)
+      : category === 'DECOR' ? item.type === 'BUILDING' && (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR'
+        : category === 'FACTORIES' ? item.type === 'BUILDING' && item.buildingCategory === 'FACTORY'
+        : category === 'HOUSING_BUILDING' ? item.type === 'BUILDING' && (item.buildingCategory === 'PEN' || (!item.buildingCategory && Boolean(item.housing)))
           : item.type === category
   )
     .sort((left, right) => left.sortOrder - right.sortOrder);
@@ -333,6 +363,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
   const getCategoryCount = (categoryType: AdminShopCategory) => categoryType === 'ALL' ? catalog.length
     : categoryType === 'GIFTS' ? catalog.filter((item) => item.giftOnly).length
       : categoryType === 'DECOR' ? catalog.filter((item) => !item.giftOnly && item.type === 'BUILDING' && !item.housing).length
+        : categoryType === 'FACTORIES' ? catalog.filter((item) => !item.giftOnly && item.type === 'BUILDING' && item.buildingCategory === 'FACTORY').length
         : categoryType === 'HOUSING_BUILDING' ? catalog.filter((item) => !item.giftOnly && item.type === 'BUILDING' && item.housing).length
           : catalog.filter((item) => !item.giftOnly && item.type === categoryType).length;
 
@@ -363,8 +394,15 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
               <article className={`admin-product${item.disabled ? ' is-disabled' : ''}`} key={item.id}>
                 <header className="admin-product-header">
                   <div className="admin-product-image">{item.shopImage ? <img src={item.shopImage} alt="" /> : <span>{item.shopIcon ?? item.yieldIcon ?? '🌱'}</span>}</div>
-                  <div className="admin-product-title"><span>{item.type} · {item.id}{item.disabled ? ' · ПРИХОВАНО' : ''}</span><strong>{item.name}</strong></div>
+                  <div className="admin-product-title"><span>{item.type} · {item.id}{item.permanentlyDeleted ? ' · ВИДАЛЕНО НАЗАВЖДИ' : item.disabled ? ' · ПРИХОВАНО' : ''}</span><strong>{item.name}</strong></div>
                 </header>
+                {item.permanentlyDeleted ? (
+                  <div className="admin-product-actions">
+                    <button className="admin-restore-button" type="button" onClick={() => void restorePermanentlyDeletedItem(item)} disabled={busyId === `${item.id}:restore`}>
+                      <RotateCcw size={15} />{busyId === `${item.id}:restore` ? 'Відновлюємо…' : 'Відновити стандартний товар'}
+                    </button>
+                  </div>
+                ) : <>
                 <div className="admin-product-fields">
                   {item.type === 'OTHER' && <>
                     <label>Механіка<select value={draft.mechanic} onChange={(event) => updateDraft(item.id, { mechanic: event.target.value as ItemDraft['mechanic'] })}>
@@ -391,7 +429,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                   <summary>Додаткові параметри</summary>
                   <div className="admin-product-fields">
                     <label>Досвід за посадку<input type="number" min="0" value={draft.plantingXp} onChange={(event) => updateDraft(item.id, { plantingXp: event.target.value })} /></label>
-                    <div className="admin-duration-form-field admin-product-duration"><span>Час до врожаю</span><AdminDurationInput label={`Час до врожаю для ${item.name}`} value={draft.productionTime} onChange={(productionTime) => updateDraft(item.id, { productionTime })} /></div>
+                    <div className="admin-duration-form-field admin-product-duration"><span>{item.buildingCategory === 'FACTORY' ? 'Час на 1 одиницю' : 'Час до врожаю'}</span><AdminDurationInput label={`${item.buildingCategory === 'FACTORY' ? 'Час переробки одиниці' : 'Час до врожаю'} для ${item.name}`} value={draft.productionTime} onChange={(productionTime) => updateDraft(item.id, { productionTime })} /></div>
                     {item.type === 'ANIMAL' && <p className="admin-product-fields-note">Зображення тварини використовується на фермі та в курнику; іконка й картинка врожаю — для готової продукції.</p>}
                     <label>Кількість урожаю<input type="number" min="0" value={draft.yieldAmount} onChange={(event) => updateDraft(item.id, { yieldAmount: event.target.value })} /></label>
                     <label>ID урожаю<input value={draft.yieldItem} onChange={(event) => updateDraft(item.id, { yieldItem: event.target.value })} /></label>
@@ -479,6 +517,15 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                         ))}
                       </>}
                     </>}
+                    {item.buildingCategory === 'FACTORY' && <>
+                      <label>Що переробляє фабрика<select value={draft.factoryInputItemId} onChange={(event) => updateDraft(item.id, { factoryInputItemId: event.target.value })}>
+                        <option value="">Обери продукт</option>
+                        {catalog.filter((entry) => ['TREE', 'CROP', 'ANIMAL'].includes(entry.type) && entry.yieldItem).map((entry) => (
+                          <option key={`${item.id}-${entry.id}`} value={entry.id}>{entry.name} — {entry.yieldName ?? entry.yieldItem}</option>
+                        ))}
+                      </select></label>
+                      <label>Місткість черги<input type="number" min="1" max="1000" value={draft.factoryCapacity} onChange={(event) => updateDraft(item.id, { factoryCapacity: event.target.value })} /></label>
+                    </>}
                     <label>Масштаб зображення<input type="number" min="0.1" max="5" step="0.1" value={draft.spriteScale} onChange={(event) => updateDraft(item.id, { spriteScale: event.target.value })} /></label>
                     <AdminImageUrlInput key={`${item.id}-shop-${assetBaseUrl}`} label={item.type === 'ANIMAL' ? 'Зображення тварини в магазині' : 'Зображення магазину'} value={draft.shopImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { shopImage: value })} />
                     <label>{item.type === 'ANIMAL' ? 'Запасна іконка тварини' : 'Іконка магазину'}<input value={draft.shopIcon} maxLength={16} onChange={(event) => updateDraft(item.id, { shopIcon: event.target.value })} placeholder={item.type === 'ANIMAL' ? '🐔' : '🌱'} /></label>
@@ -512,6 +559,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                     ? <div className="admin-permanent-confirm"><span>Буде видалено з усіх ферм{item.yieldItem ? ' та запасів урожаю, якщо його не дає інший товар' : ''}. Назад не повернути.</span><button type="button" onClick={() => void permanentlyDeleteItem(item)} disabled={busyId === `${item.id}:permanent`}>Видалити назавжди</button><button type="button" onClick={() => setConfirmPermanentDeleteId(null)}>Скасувати</button></div>
                     : <button className="admin-permanent-button" type="button" onClick={() => { setConfirmArchiveId(null); setConfirmPermanentDeleteId(item.id); }}><Trash2 size={14} />Видалити назавжди</button>}
                 </div>
+                </>}
               </article>
             );
           })}

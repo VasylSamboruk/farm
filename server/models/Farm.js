@@ -14,7 +14,10 @@ const tileSchema = new mongoose.Schema({
     isDirt: { type: Boolean, default: false },
     stage: { type: Number, default: 0 },
     placedAt: { type: Date, default: Date.now },
-    lastHarvestedAt: { type: Date }
+    lastHarvestedAt: { type: Date },
+    factoryQueuedUnits: { type: Number, default: 0 },
+    factoryStartedAt: { type: Date },
+    factoryInputItemId: { type: String }
 }, { _id: false });
 
 const housedAnimalSchema = new mongoose.Schema({

@@ -24,6 +24,7 @@ import { getLoadedGameImage, preloadGameImages } from '../../game/sprites';
 import type { TileData } from '../../store/useFarmStore';
 import type { GameItemConfig } from '../../types/game';
 import { HousingModal } from './HousingModal';
+import { FactoryModal } from './FactoryModal';
 
 // Тип для вилітаючих текстів
 interface FloatingText {
@@ -79,6 +80,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     houseAnimal,
     releaseHousedAnimal,
     collectHousedAnimals,
+    collectFactory,
     fertilizeItem,
     harvestQueue,
     activeHarvestStartedAt,
@@ -111,6 +113,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
   const hoveredHousingItemRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
   const [housingPosition, setHousingPosition] = useState<{ row: number; col: number; quadrant: number } | null>(null);
   const [housingOpen, setHousingOpen] = useState(false);
+  const [factoryPosition, setFactoryPosition] = useState<{ row: number; col: number; quadrant: number } | null>(null);
+  const [factoryOpen, setFactoryOpen] = useState(false);
   const [housingMode, setHousingMode] = useState<'store' | 'release' | null>(null);
   const [releaseAnimalId, setReleaseAnimalId] = useState<string | null>(null);
   const housingModeRef = useRef<'store' | 'release' | null>(null);
@@ -584,7 +588,6 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
                   placed.key === `${movingItemRef.current!.row},${movingItemRef.current!.col},${movingItemRef.current!.quadrant}`);
               });
               const isValidPlacement = hasValidFootprint && cellsAreInsideGrid && surfaceIsValid && cropBedIsFree && footprintIsFree;
-
               for (const cell of previewCells) {
                 const cellIsoX = (cell.col - cell.row) * halfW;
                 const cellIsoY = (cell.col + cell.row) * halfH;
@@ -665,9 +668,11 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           (candidate.row === structure.row && candidate.col > structure.col) ||
           (candidate.row === structure.row && candidate.col === structure.col && candidate.quadrant > structure.quadrant)
         ));
-
       const drawPlacedObject = (placed: (typeof placedItems)[number], drawIndicators: boolean) => {
         const { row, col, quadrant, tile, item, occupiedCells, centerX, groundY } = placed;
+        const isFacilityBuilding = item.type === 'BUILDING' && (
+          item.buildingCategory === 'FACTORY' || item.buildingCategory === 'PEN' || Boolean(item.housing)
+        );
         const isHovered = activeToolRef.current === 'trash'
           ? hoveredTrashItemRef.current?.row === row &&
             hoveredTrashItemRef.current.col === col &&
@@ -695,71 +700,25 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           : drawPlacedItem(ctx, item, tile, centerX, groundY, now, isHovered);
         ctx.restore();
 
-        if (drawIndicators && item.housing && housingPositionRef.current?.row === row &&
-          housingPositionRef.current.col === col && housingPositionRef.current.quadrant === quadrant &&
-          !activeToolRef.current && !housingModeRef.current) {
-          const badgeY = groundY - 92;
-          const chicken = item.housing.animalTypes
-            .map((animalId) => gameItemsRef.current[animalId])
-            .find((animalItem) => animalItem?.type === 'ANIMAL');
-          const chickenImage = chicken
-            ? getLoadedGameImage(chicken.growthImages?.[0] ?? chicken.shopImage)
-            : undefined;
-          ctx.save();
-          ctx.translate(centerX, badgeY);
-          ctx.scale(1 / cameraRef.current.zoom, 1 / cameraRef.current.zoom);
-          ctx.fillStyle = 'rgba(27, 39, 28, 0.94)';
-          ctx.beginPath();
-          ctx.arc(0, 0, 19, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(0, 0, 14, 0, Math.PI * 2);
-          ctx.clip();
-          if (chickenImage) {
-            const scale = Math.min(26 / chickenImage.naturalWidth, 26 / chickenImage.naturalHeight);
-            const width = chickenImage.naturalWidth * scale;
-            const height = chickenImage.naturalHeight * scale;
-            ctx.drawImage(chickenImage, -width / 2, -height / 2, width, height);
-          }
-          ctx.restore();
-          ctx.strokeStyle = 'rgba(255, 239, 188, 0.95)';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(0, 0, 19, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.font = "800 11px 'FarmBody', sans-serif";
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = '#ffffff';
-          const countText = `${tile.housedAnimals?.length ?? 0}/${item.housing.capacity}`;
-          ctx.fillStyle = 'rgba(27, 39, 28, 0.96)';
-          ctx.beginPath();
-          ctx.roundRect(-23, 20, 46, 17, 8);
-          ctx.fill();
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText(countText, 0, 28.5);
-          ctx.restore();
-        }
-
         if (!drawIndicators) return;
-        const readyHousedAnimals = item.housing ? getReadyHousedAnimals(tile, gameItemsRef.current, now) : [];
-        const readyAnimalItem = readyHousedAnimals[0]
-          ? gameItemsRef.current[readyHousedAnimals[0].itemId]
-          : undefined;
-        if (readyAnimalItem?.yieldItem) {
-          drawYieldBadge(
-            ctx,
-            centerX,
-            groundY - 148,
-            readyAnimalItem.yieldIcon ?? '📦',
-            now,
-            1,
-            getLoadedGameImage(readyAnimalItem.yieldImage)
+
+        if (item.buildingCategory === 'FACTORY' && (tile.factoryQueuedUnits ?? 0) > 0) {
+          const startedAt = tile.factoryStartedAt ? new Date(tile.factoryStartedAt).getTime() : Number.NaN;
+          const readyUnits = item.productionTimeMs && Number.isFinite(startedAt)
+            ? Math.min(
+              tile.factoryQueuedUnits ?? 0,
+              Math.floor(Math.max(0, now - startedAt) / item.productionTimeMs)
+            )
+            : 0;
+          const yieldImage = getLoadedGameImage(
+            item.yieldImage ?? (item.yieldItem === 'flour' ? '/assets/buildings/fabrik/muka.png' : undefined)
           );
+          if (readyUnits > 0 && yieldImage) {
+            drawYieldBadge(ctx, centerX, groundY - 148, '', now, 1, yieldImage);
+          }
         }
 
-        if (queueIndex === 0 && activeHarvestStartedAtRef.current !== null) {
+        if (!isFacilityBuilding && queueIndex === 0 && activeHarvestStartedAtRef.current !== null) {
           const progress = Math.min(
             1,
             Math.max(0, (now - activeHarvestStartedAtRef.current) / HARVEST_QUEUE_DURATION_MS)
@@ -1082,7 +1041,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       const halfW = gridConfig.tileWidth / 2;
       const halfH = gridConfig.tileHeight / 2;
       let closestHit: {
-        kind: 'button' | 'egg';
+        kind: 'housing' | 'egg' | 'factory';
         position: { row: number; col: number; quadrant: number };
         distance: number;
       } | null = null;
@@ -1090,12 +1049,9 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       for (const [key, tile] of Object.entries(tilesRef.current)) {
         if (tile.type !== 'item' || !tile.itemId) continue;
         const item = gameItemsRef.current[tile.itemId];
-        if (!item?.housing) continue;
+        if (!item?.housing && item?.buildingCategory !== 'FACTORY') continue;
         const [row, col, quadrant] = key.split(',').map(Number);
         const position = { row, col, quadrant };
-        const isSelected = housingPositionRef.current?.row === row &&
-          housingPositionRef.current.col === col &&
-          housingPositionRef.current.quadrant === quadrant;
         const occupiedCells = tile.occupiedCells?.length
           ? tile.occupiedCells
           : getOccupiedCells(row, col, quadrant, item) ?? [{ row, col, quadrant }];
@@ -1107,21 +1063,27 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
         });
         const centerX = positions.reduce((sum, entry) => sum + entry.x, 0) / positions.length;
         const groundY = Math.max(...positions.map((entry) => entry.groundY));
-        const overlays: { kind: 'button' | 'egg'; y: number }[] = [];
-        if (isSelected && !activeToolRef.current && !housingModeRef.current) {
-          overlays.push({ kind: 'button', y: groundY - 92 });
+        const overlays: { kind: 'housing' | 'egg' | 'factory'; y: number }[] = [];
+        if (item.housing && !activeToolRef.current && !housingModeRef.current) {
+          overlays.push({ kind: 'housing', y: groundY - 92 });
         }
-        if (getReadyHousedAnimals(tile, gameItemsRef.current, Date.now()).length > 0) {
+        if (!activeToolRef.current && !housingModeRef.current &&
+          getReadyHousedAnimals(tile, gameItemsRef.current, Date.now()).length > 0) {
           overlays.push({ kind: 'egg', y: groundY - 148 });
+        }
+        if (!activeToolRef.current && !housingModeRef.current &&
+          item.buildingCategory === 'FACTORY' && item.productionTimeMs && tile.factoryStartedAt &&
+          Math.floor(Math.max(0, Date.now() - new Date(tile.factoryStartedAt).getTime()) / item.productionTimeMs) > 0) {
+          overlays.push({ kind: 'factory', y: groundY - 148 });
         }
 
         for (const overlay of overlays) {
           const dx = worldX - centerX;
           const dy = worldY - overlay.y;
           const distance = Math.hypot(dx, dy);
-          const hit = overlay.kind === 'button'
-            ? distance <= hitRadius || (Math.abs(dx) <= 25 / cameraRef.current.zoom &&
-              dy >= 17 / cameraRef.current.zoom && dy <= 38 / cameraRef.current.zoom)
+          const hit = overlay.kind === 'housing'
+            ? distance <= 25 / cameraRef.current.zoom || (Math.abs(dx) <= 31 / cameraRef.current.zoom &&
+              dy >= 17 / cameraRef.current.zoom && dy <= 40 / cameraRef.current.zoom)
             : distance <= hitRadius;
           if (hit && (!closestHit || distance < closestHit.distance)) {
             closestHit = { kind: overlay.kind, position, distance };
@@ -1197,11 +1159,29 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
               `${entry.yieldName} ×${entry.amount}`
             ).join(', ')}`);
           }
-        } else if (housingOverlayHit?.kind === 'button' && userRef.current?.id) {
-          setHousingPosition(housingOverlayHit.position);
-          setHousingOpen(true);
-          setHousingMode(null);
-          setReleaseAnimalId(null);
+        } else if (housingOverlayHit?.kind === 'factory' && userRef.current?.id) {
+          const collected = await collectFactory(userRef.current.id, housingOverlayHit.position);
+          if (collected > 0) {
+            const factoryTile = tilesRef.current[`${housingOverlayHit.position.row},${housingOverlayHit.position.col},${housingOverlayHit.position.quadrant}`];
+            const factoryItem = factoryTile?.itemId ? gameItemsRef.current[factoryTile.itemId] : undefined;
+            notifyGameMessage(`Зібрано з фабрики: ${factoryItem?.yieldName ?? 'продукт'} ×${collected * (factoryItem?.yieldAmount ?? 1)}`);
+          }
+        } else if (housingOverlayHit?.kind === 'housing' && userRef.current?.id) {
+          const coopTile = tilesRef.current[`${housingOverlayHit.position.row},${housingOverlayHit.position.col},${housingOverlayHit.position.quadrant}`];
+          const readyAnimals = coopTile ? getReadyHousedAnimals(coopTile, gameItemsRef.current, Date.now()) : [];
+          if (readyAnimals.length > 0) {
+            const collected = await collectHousedAnimals(userRef.current.id, housingOverlayHit.position);
+            if (collected?.items.length) {
+              notifyGameMessage(`Зібрано з ${coopTile?.itemId ? gameItemsRef.current[coopTile.itemId]?.name ?? 'будівлі' : 'будівлі'}: ${collected.items.map((entry) =>
+                `${entry.yieldName} ×${entry.amount}`
+              ).join(', ')}`);
+            }
+          } else {
+            setHousingPosition(housingOverlayHit.position);
+            setHousingOpen(true);
+            setHousingMode(null);
+            setReleaseAnimalId(null);
+          }
         } else if (tile && userRef.current?.id) {
           if (housingMode === 'store') {
             const selected = selectedItemTile
@@ -1357,9 +1337,15 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
             if (placedItem && item?.type === 'BUILDING' && item.housing) {
               const [row, col] = placedItem.key.split(',').map(Number);
               setHousingPosition({ row, col, quadrant: placedItem.quadrant });
-              setHousingOpen(false);
+              setHousingOpen(true);
               setHousingMode(null);
               setReleaseAnimalId(null);
+              return;
+            }
+            if (placedItem && item?.type === 'BUILDING' && item.buildingCategory === 'FACTORY') {
+              const [row, col] = placedItem.key.split(',').map(Number);
+              setFactoryPosition({ row, col, quadrant: placedItem.quadrant });
+              setFactoryOpen(true);
               return;
             }
 
@@ -1536,7 +1522,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [digTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, houseAnimal, releaseHousedAnimal, collectHousedAnimals, fertilizeItem, readOnly, gridConfig, setActiveTool]);
+  }, [digTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, houseAnimal, releaseHousedAnimal, collectHousedAnimals, collectFactory, fertilizeItem, readOnly, gridConfig, setActiveTool]);
 
   const canvas = (
     <canvas
@@ -1601,6 +1587,15 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           }}
         />
       )}
+      {factoryOpen && factoryPosition && displayedTiles[`${factoryPosition.row},${factoryPosition.col},${factoryPosition.quadrant}`] &&
+        gameItems[displayedTiles[`${factoryPosition.row},${factoryPosition.col},${factoryPosition.quadrant}`].itemId ?? '']?.buildingCategory === 'FACTORY' && (
+          <FactoryModal
+            building={gameItems[displayedTiles[`${factoryPosition.row},${factoryPosition.col},${factoryPosition.quadrant}`].itemId ?? '']}
+            position={factoryPosition}
+            tile={displayedTiles[`${factoryPosition.row},${factoryPosition.col},${factoryPosition.quadrant}`]}
+            onClose={() => setFactoryOpen(false)}
+          />
+        )}
       {pendingSale && (
         <div style={styles.saleOverlay} onClick={() => setPendingSale(null)}>
           <section className="sale-confirm-dialog" style={styles.saleDialog} role="dialog" aria-modal="true" aria-labelledby="sale-dialog-title" onClick={(event) => event.stopPropagation()}>

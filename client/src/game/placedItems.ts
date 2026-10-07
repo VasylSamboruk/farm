@@ -59,7 +59,7 @@ export const drawPlacedItem = (
   }
   ctx.restore();
 
-  if (isReady && (item.yieldIcon || item.yieldImage) && (item.type === 'ANIMAL' || !image)) {
+  if (isReady && item.type !== 'BUILDING' && (item.yieldIcon || item.yieldImage) && (item.type === 'ANIMAL' || !image)) {
     const badge = getYieldBadgePosition(item, tile, centerX, groundY, now);
     drawYieldBadge(
       ctx,

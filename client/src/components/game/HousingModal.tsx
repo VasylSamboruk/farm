@@ -25,7 +25,7 @@ export const HousingModal: React.FC<HousingModalProps> = ({ building, position, 
   const animalIcon = building.housing?.animalTypes
     .map((animalId) => gameItems[animalId])
     .find((item) => item?.type === 'ANIMAL');
-  const animalImage = animalIcon?.growthImages?.[0] ?? animalIcon?.shopImage;
+  const animalImage = building.shopImage ?? animalIcon?.growthImages?.[0] ?? animalIcon?.shopImage;
   const readyProducts = [...new Set(animals
     .filter((animal) => {
       const item = gameItems[animal.itemId];
@@ -63,24 +63,33 @@ export const HousingModal: React.FC<HousingModalProps> = ({ building, position, 
 
   return (
     <div className="housing-modal-backdrop" role="presentation" onClick={onClose}>
-      <section className="housing-modal game-modal-window" role="dialog" aria-modal="true" aria-labelledby="housing-modal-title" onClick={(event) => event.stopPropagation()}>
+      <section className="housing-modal coop-modal game-modal-window" role="dialog" aria-modal="true" aria-labelledby="housing-modal-title" onClick={(event) => event.stopPropagation()}>
         <header className="housing-modal-header shared-modal-header game-modal-header">
           <div className="housing-modal-heading">
             <span className="housing-modal-icon" aria-hidden="true">
               {animalImage && <img src={animalImage} alt="" draggable={false} />}
             </span>
             <div className="housing-modal-title-copy">
-              <span className="housing-modal-eyebrow">ТВАРИННИЦЬКА БУДІВЛЯ</span>
+              <span className="housing-modal-eyebrow">ТВАРИННИЦТВО</span>
               <h2 id="housing-modal-title">{building.name}</h2>
-              <span className="housing-capacity">{animals.length}/{capacity} тварин</span>
+              <span className="housing-capacity">{animals.length}/{capacity} місць зайнято</span>
             </div>
           </div>
           <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити">×</button>
         </header>
         <div className="housing-modal-content">
+          <section className="coop-capacity-panel" aria-label="Місткість будівлі">
+            <div className="coop-capacity-heading">
+              <span>МІСЦЯ У ЗАГОНІ</span>
+              <strong>{animals.length}/{capacity}</strong>
+            </div>
+            <div className="coop-capacity-track" role="progressbar" aria-label="Заповнення загону" aria-valuemin={0} aria-valuemax={capacity} aria-valuenow={animals.length}>
+              <span style={{ width: `${capacity ? Math.min(100, animals.length / capacity * 100) : 0}%` }} />
+            </div>
+          </section>
           <div className="housing-actions">
-            <button type="button" onClick={onStartHousing} disabled={animals.length >= capacity}>Помістити тварин</button>
-            <button type="button" onClick={() => void collectReady()} disabled={!readyCount || collecting}>
+            <button className="coop-action-button" type="button" onClick={onStartHousing} disabled={animals.length >= capacity}>Додати тварин</button>
+            <button className="coop-action-button is-collect" type="button" onClick={() => void collectReady()} disabled={!readyCount || collecting}>
               {readyProducts.map((item) => {
                 const productImage = item?.yieldImage;
                 return productImage

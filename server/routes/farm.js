@@ -114,11 +114,178 @@ const findHousingBuilding = (farm, x, y, quadrant) => {
     return item?.type === 'BUILDING' && item.housing ? { tile, item } : null;
 };
 
+const findFactoryBuilding = (farm, x, y, quadrant) => {
+    const tile = farm.tiles.find(t => !t.isDirt && t.x === x && t.y === y && t.quadrant === quadrant);
+    const item = tile ? getGameItem(tile.itemId) : null;
+    return item?.type === 'BUILDING' && item.buildingCategory === 'FACTORY' ? { tile, item } : null;
+};
+
 const getFarmResponseTiles = (farm) => getFarmTilesWithOccupiedCells(farm.toObject().tiles);
 const isValidTilePosition = (x, y, quadrant, size) =>
     Number.isSafeInteger(x) && Number.isSafeInteger(y) &&
     Number.isSafeInteger(quadrant) && x >= 0 && x < size && y >= 0 && y < size &&
     quadrant >= 0 && quadrant <= 3;
+
+router.post('/factory/start', async (req, res) => {
+    let chargedUser;
+    let chargedInputId;
+    let chargedAmount = 0;
+    try {
+        const { userId, buildingX, buildingY, buildingQuadrant, amount } = req.body;
+        if (!Number.isSafeInteger(amount) || amount < 1) {
+            return res.status(400).json({ message: 'Вкажи кількість від 1 одиниці' });
+        }
+        const farm = await Farm.findOne({ userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        if (!isValidTilePosition(buildingX, buildingY, buildingQuadrant, farm.size)) {
+            return res.status(400).json({ message: 'Некоректне місце фабрики' });
+        }
+        const factory = findFactoryBuilding(farm, buildingX, buildingY, buildingQuadrant);
+        if (!factory) return res.status(404).json({ message: 'Фабрику не знайдено' });
+        const inputItem = getGameItem(factory.item.factoryInputItemId);
+        if (!inputItem?.yieldItem || !Number.isSafeInteger(factory.item.productionTimeMs) || factory.item.productionTimeMs < 1000 ||
+            !factory.item.yieldItem || !Number.isSafeInteger(factory.item.yieldAmount) || factory.item.yieldAmount < 1) {
+            return res.status(400).json({ message: 'Налаштування рецепта фабрики неповні' });
+        }
+        const queuedUnits = factory.tile.factoryQueuedUnits ?? 0;
+        if (amount + queuedUnits > (factory.item.factoryCapacity ?? 25)) {
+            return res.status(400).json({ message: `Фабрика вміщує не більше ${factory.item.factoryCapacity ?? 25} одиниць` });
+        }
+        chargedUser = await User.findOneAndUpdate(
+            { _id: userId, [`inventory.${inputItem.yieldItem}`]: { $gte: amount } },
+            { $inc: { [`inventory.${inputItem.yieldItem}`]: -amount } },
+            { new: true }
+        );
+        if (!chargedUser) return res.status(400).json({ message: `Недостатньо ${inputItem.yieldName ?? inputItem.name} на складі` });
+        chargedInputId = inputItem.yieldItem;
+        chargedAmount = amount;
+        const startedAt = factory.tile.factoryStartedAt ?? new Date();
+        const queueStateMatch = queuedUnits === 0
+            ? { $or: [{ factoryQueuedUnits: 0 }, { factoryQueuedUnits: { $exists: false } }] }
+            : { factoryQueuedUnits: queuedUnits };
+        const queueUpdate = await Farm.updateOne(
+            {
+                _id: farm._id,
+                tiles: {
+                    $elemMatch: {
+                        x: buildingX,
+                        y: buildingY,
+                        quadrant: buildingQuadrant,
+                        itemId: factory.item.id,
+                        isDirt: false,
+                        factoryStartedAt: factory.tile.factoryStartedAt ?? null,
+                        ...queueStateMatch,
+                    },
+                },
+            },
+            {
+                $set: {
+                    'tiles.$.factoryQueuedUnits': queuedUnits + amount,
+                    'tiles.$.factoryStartedAt': startedAt,
+                    'tiles.$.factoryInputItemId': inputItem.id,
+                },
+            }
+        );
+        if (!queueUpdate.matchedCount) {
+            await User.updateOne({ _id: chargedUser._id }, { $inc: { [`inventory.${chargedInputId}`]: chargedAmount } });
+            chargedUser = null;
+            return res.status(409).json({ message: 'Черга фабрики щойно змінилася. Онови вікно та спробуй ще раз.' });
+        }
+        const userForResponse = chargedUser;
+        chargedUser = null;
+        factory.tile.factoryQueuedUnits = queuedUnits + amount;
+        factory.tile.factoryStartedAt = startedAt;
+        factory.tile.factoryInputItemId = inputItem.id;
+        return res.json({
+            success: true,
+            size: farm.size,
+            tiles: getFarmResponseTiles(farm),
+            user: { inventory: Object.fromEntries(userForResponse.inventory ?? []) },
+        });
+    } catch (error) {
+        if (chargedUser && chargedInputId) {
+            await User.updateOne({ _id: chargedUser._id }, { $inc: { [`inventory.${chargedInputId}`]: chargedAmount } });
+        }
+        return res.status(500).json({ message: 'Не вдалося запустити фабрику', error: error.message });
+    }
+});
+
+router.post('/factory/collect', async (req, res) => {
+    let farm;
+    let tile;
+    let previousQueuedUnits;
+    let previousStartedAt;
+    let previousInputItemId;
+    let factoryStateSaved = false;
+    try {
+        const { userId, buildingX, buildingY, buildingQuadrant } = req.body;
+        farm = await Farm.findOne({ userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        if (!isValidTilePosition(buildingX, buildingY, buildingQuadrant, farm.size)) {
+            return res.status(400).json({ message: 'Некоректне місце фабрики' });
+        }
+        const factory = findFactoryBuilding(farm, buildingX, buildingY, buildingQuadrant);
+        if (!factory) return res.status(404).json({ message: 'Фабрику не знайдено' });
+        tile = factory.tile;
+        const { item } = factory;
+        const queuedUnits = tile.factoryQueuedUnits ?? 0;
+        const startedAt = tile.factoryStartedAt ? new Date(tile.factoryStartedAt).getTime() : Number.NaN;
+        const processingTimeMs = item.productionTimeMs;
+        if (!queuedUnits || !Number.isFinite(startedAt) || !Number.isSafeInteger(processingTimeMs) || processingTimeMs < 1000) {
+            return res.status(400).json({ message: 'На фабриці немає готової продукції' });
+        }
+        const completedUnits = Math.min(queuedUnits, Math.floor((Date.now() - startedAt) / processingTimeMs));
+        if (completedUnits < 1) return res.status(400).json({ message: 'Продукція ще переробляється' });
+        const outputAmount = completedUnits * item.yieldAmount;
+        previousQueuedUnits = queuedUnits;
+        previousStartedAt = tile.factoryStartedAt;
+        previousInputItemId = tile.factoryInputItemId;
+        tile.factoryQueuedUnits = queuedUnits - completedUnits;
+        tile.factoryStartedAt = tile.factoryQueuedUnits
+            ? new Date(startedAt + completedUnits * processingTimeMs)
+            : undefined;
+        if (!tile.factoryQueuedUnits) tile.factoryInputItemId = undefined;
+        await farm.save();
+        factoryStateSaved = true;
+        const user = await User.findOneAndUpdate(
+            { _id: userId },
+            { $inc: { [`inventory.${item.yieldItem}`]: outputAmount } },
+            { new: true }
+        );
+        if (!user) {
+            tile.factoryQueuedUnits = previousQueuedUnits;
+            tile.factoryStartedAt = previousStartedAt;
+            tile.factoryInputItemId = previousInputItemId;
+            await farm.save();
+            factoryStateSaved = false;
+            return res.status(404).json({ message: 'Гравця не знайдено' });
+        }
+        factoryStateSaved = false;
+        return res.json({
+            success: true,
+            size: farm.size,
+            tiles: getFarmResponseTiles(farm),
+            collected: completedUnits,
+            user: { inventory: Object.fromEntries(user.inventory ?? []) },
+        });
+    } catch (error) {
+        if (factoryStateSaved && farm && tile) {
+            try {
+                tile.factoryQueuedUnits = previousQueuedUnits;
+                tile.factoryStartedAt = previousStartedAt;
+                tile.factoryInputItemId = previousInputItemId;
+                await farm.save();
+            } catch (rollbackError) {
+                return res.status(500).json({
+                    message: 'Не вдалося зібрати продукцію фабрики та відновити чергу',
+                    error: error.message,
+                    rollbackError: rollbackError.message,
+                });
+            }
+        }
+        return res.status(500).json({ message: 'Не вдалося зібрати продукцію фабрики', error: error.message });
+    }
+});
 
 router.post('/housing/store', async (req, res) => {
     try {
@@ -381,7 +548,6 @@ router.post('/place', async (req, res) => {
             occupiedCells.some(cell => cell.x === existingCell.x && cell.y === existingCell.y && cell.quadrant === existingCell.quadrant)
         ));
         if (isOccupied) return res.status(400).json({ message: 'Місце зайняте!' });
-
         // Економіка
         if (fromInventory) {
             user.itemInventory.set(itemId, Number(user.itemInventory.get(itemId) ?? 0) - 1);
@@ -478,7 +644,8 @@ router.post('/rotate', async (req, res) => {
             return res.status(400).json({ message: 'Цей об’єкт не можна перевертати' });
         }
 
-        tile.flipX = !tile.flipX;
+        const nextFlipX = !tile.flipX;
+        tile.flipX = nextFlipX;
         if (item) tile.occupiedCells = getOccupiedCells(tile.x, tile.y, tile.quadrant, item, tile.flipX);
         await farm.save();
         res.json({ success: true, flipX: tile.flipX, tile });

@@ -12,14 +12,14 @@ interface ShopModalProps {
   onClose: () => void;
 }
 
-type ShopCategory = GameItemType | 'HOUSING_BUILDING';
+type ShopCategory = GameItemType;
+type BuildingSubcategory = 'FACTORIES' | 'PENS' | 'DECOR';
 
 const CATEGORIES: { type: ShopCategory; label: string }[] = [
   { type: 'TREE', label: '🌳 Дерева' },
   { type: 'CROP', label: '🌱 Рослини' },
   { type: 'ANIMAL', label: '🐮 Тварини' },
-  { type: 'BUILDING', label: '🪴 Декор' },
-  { type: 'HOUSING_BUILDING', label: '🏠 Будівлі' },
+  { type: 'BUILDING', label: '🏠 Будівлі' },
   { type: 'OTHER', label: '🧰 Інше' },
 ];
 
@@ -27,6 +27,7 @@ const getTitleFontSize = (name: string) => Math.max(9, Math.min(13, (13 * 14) / 
 
 export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<ShopCategory>('TREE');
+  const [buildingSubcategory, setBuildingSubcategory] = useState<BuildingSubcategory>('PENS');
   const [pendingExpansion, setPendingExpansion] = useState<GameItemConfig | null>(null);
   const [expanding, setExpanding] = useState(false);
   const [purchasingItemId, setPurchasingItemId] = useState<string | null>(null);
@@ -41,9 +42,12 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const filteredItems = Object.values(items).filter((item) =>
-    (activeCategory === 'HOUSING_BUILDING'
-      ? item.type === 'BUILDING' && Boolean(item.housing)
-      : item.type === activeCategory && (activeCategory !== 'BUILDING' || !item.housing)) &&
+    (item.type === activeCategory && (activeCategory !== 'BUILDING' ||
+      (buildingSubcategory === 'FACTORIES'
+        ? item.buildingCategory === 'FACTORY'
+        : buildingSubcategory === 'PENS'
+          ? item.buildingCategory === 'PEN' || (!item.buildingCategory && Boolean(item.housing))
+          : (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR'))) &&
     !item.giftOnly && !item.disabled && (item.access !== 'admin' || user?.role === 'admin')
   ).sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0));
 
@@ -140,6 +144,25 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
           <button className="shop-category-scroll" type="button" onClick={() => scrollCategories(1)} aria-label="Прокрутити категорії вправо"><ChevronRight size={21} /></button>
         </div>
 
+        {activeCategory === 'BUILDING' && (
+          <div className="shop-building-subcategories">
+            {([
+              ['FACTORIES', 'Фабрики'],
+              ['PENS', 'Загони'],
+              ['DECOR', 'Декор'],
+            ] as const).map(([category, label]) => (
+              <button
+                key={category}
+                type="button"
+                className={`shop-building-subcategory${buildingSubcategory === category ? ' is-active' : ''}`}
+                onClick={() => setBuildingSubcategory(category)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {pendingExpansion && (
           <div className="shop-confirm-overlay" role="presentation">
             <section className="shop-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="shop-confirm-title">
@@ -155,8 +178,12 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
         )}
 
         <div className="shop-modal-grid modal-scrollbar-hidden" style={styles.gridContainer}>
-          {filteredItems.map((item) => (
-            <div key={item.id} className="game-modal-card shop-modal-card" style={styles.itemCard}>
+          {filteredItems.map((item) => {
+            const yieldImage = item.yieldImage
+              ?? (item.yieldItem === 'flour' ? '/assets/buildings/fabrik/muka.png' : undefined);
+            const factoryInput = item.factoryInputItemId ? items[item.factoryInputItemId] : undefined;
+            return (
+              <div key={item.id} className="game-modal-card shop-modal-card" style={styles.itemCard}>
               <div className="shop-modal-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.name)}px` }} title={item.name}>{item.name}</div>
               <div className="shop-modal-icon-box" style={styles.iconBox}>
                 {item.shopImage || item.growthImages?.at(-1) ? (
@@ -172,12 +199,23 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                 {item.yieldItem && (
                   <div className="shop-yield-pill" style={styles.yieldBadge} title={`${item.yieldName ?? item.name}${typeof item.sellPrice === 'number' ? ` · +${item.sellPrice} монет за продаж` : ''}`}>
                     <span className="shop-yield-icon" style={styles.yieldCircle}>
-                      {item.yieldImage ? <img src={item.yieldImage} alt="" style={styles.yieldImage} draggable={false} /> : <span>{item.yieldIcon ?? '📦'}</span>}
+                      {yieldImage ? <img src={yieldImage} alt="" style={styles.yieldImage} draggable={false} /> : <span>{item.yieldIcon ?? '📦'}</span>}
                     </span>
                     {typeof item.sellPrice === 'number' && (
                       <span className="shop-yield-price" style={styles.yieldPrice}>+{item.sellPrice}<img src="/assets/ui/coin.png" alt="" style={styles.yieldCoin} draggable={false} /></span>
                     )}
                   </div>
+                )}
+                {factoryInput && (
+                  <span
+                    className="shop-factory-input-badge"
+                    title={`Переробляє: ${factoryInput.yieldName ?? factoryInput.name}`}
+                    aria-label={`Переробляє: ${factoryInput.yieldName ?? factoryInput.name}`}
+                  >
+                    {factoryInput.yieldImage
+                      ? <img src={factoryInput.yieldImage} alt="" draggable={false} />
+                      : <span>{factoryInput.yieldIcon ?? factoryInput.shopIcon ?? '📦'}</span>}
+                  </span>
                 )}
               </div>
               <div className="shop-modal-stats" style={styles.statsContainer}>
@@ -205,8 +243,9 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                 <span>{purchasingItemId === item.id ? 'Купуємо…' : (user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Рівень ${item.requiredLevel ?? 1}` : `−${item.price.toLocaleString('uk-UA')}`}</span>
                 {purchasingItemId !== item.id && (user?.level ?? 1) >= (item.requiredLevel ?? 1) && <img src={item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png'} alt="" className="currency-small-icon" draggable={false} />}
               </button>
-            </div>
-          ))}
+              </div>
+            );
+          })}
           {loading && <p style={{color: 'white', gridColumn: '1 / -1', textAlign: 'center'}}>Завантаження каталогу...</p>}
           {error && <p style={{color: 'white', gridColumn: '1 / -1', textAlign: 'center'}}>{error}</p>}
           {!loading && !error && filteredItems.length === 0 && <p style={{color: 'white', gridColumn: '1 / -1', textAlign: 'center'}}>Тут поки порожньо...</p>}

@@ -72,6 +72,9 @@ const toTileMap = (tiles: FriendFarm['tiles']): Record<string, TileData> => {
       flipX: tile.flipX ?? false,
       placedAt: tile.placedAt,
       lastHarvestedAt: tile.lastHarvestedAt,
+      factoryQueuedUnits: tile.factoryQueuedUnits,
+      factoryStartedAt: tile.factoryStartedAt,
+      factoryInputItemId: tile.factoryInputItemId,
     };
   }
   return tileMap;
