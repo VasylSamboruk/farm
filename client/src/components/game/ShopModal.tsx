@@ -12,34 +12,42 @@ interface ShopModalProps {
   onClose: () => void;
 }
 
-const CATEGORIES: { type: GameItemType; label: string }[] = [
+type ShopCategory = GameItemType | 'HOUSING_BUILDING';
+
+const CATEGORIES: { type: ShopCategory; label: string }[] = [
   { type: 'TREE', label: '🌳 Дерева' },
   { type: 'CROP', label: '🌱 Рослини' },
   { type: 'ANIMAL', label: '🐮 Тварини' },
-  { type: 'BUILDING', label: '🏠 Декор' },
+  { type: 'BUILDING', label: '🪴 Декор' },
+  { type: 'HOUSING_BUILDING', label: '🏠 Будівлі' },
   { type: 'OTHER', label: '🧰 Інше' },
 ];
 
 const getTitleFontSize = (name: string) => Math.max(9, Math.min(13, (13 * 14) / name.length));
 
 export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
-  const [activeCategory, setActiveCategory] = useState<GameItemType>('TREE');
+  const [activeCategory, setActiveCategory] = useState<ShopCategory>('TREE');
   const [pendingExpansion, setPendingExpansion] = useState<GameItemConfig | null>(null);
   const [expanding, setExpanding] = useState(false);
+  const [purchasingItemId, setPurchasingItemId] = useState<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const { user } = useAuthStore();
   const { setActiveTool } = useToolStore();
   const notifyGameMessage = useFarmStore((state) => state.notifyGameMessage);
   const expandFarm = useFarmStore((state) => state.expandFarm);
+  const buyFertilizer = useFarmStore((state) => state.buyFertilizer);
   const { items, loading, error } = useGameConfigStore();
 
   if (!isOpen) return null;
 
   const filteredItems = Object.values(items).filter((item) =>
-    item.type === activeCategory && !item.disabled && (item.access !== 'admin' || user?.role === 'admin')
+    (activeCategory === 'HOUSING_BUILDING'
+      ? item.type === 'BUILDING' && Boolean(item.housing)
+      : item.type === activeCategory && (activeCategory !== 'BUILDING' || !item.housing)) &&
+    !item.disabled && (item.access !== 'admin' || user?.role === 'admin')
   ).sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0));
 
-  const handleBuy = (item: (typeof filteredItems)[number]) => {
+  const handleBuy = async (item: (typeof filteredItems)[number]) => {
     const requiredLevel = item.requiredLevel ?? 1;
     if ((user?.level ?? 1) < requiredLevel) {
       notifyGameMessage(`Цей товар доступний з ${requiredLevel} рівня.`);
@@ -54,6 +62,17 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
     }
     if (item.mechanic === 'expand_farm') {
       setPendingExpansion(item);
+      return;
+    }
+    if (item.mechanic === 'accelerate_growth') {
+      if (!user?.id || purchasingItemId) return;
+      setPurchasingItemId(item.id);
+      const purchased = await buyFertilizer(user.id, item.id);
+      setPurchasingItemId(null);
+      if (purchased) {
+        notifyGameMessage('Добриво куплено і поміщено на склад!');
+        onClose();
+      }
       return;
     }
     if (item.type === 'OTHER') {
@@ -71,7 +90,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
     const success = await expandFarm(user.id, pendingExpansion.id);
     setExpanding(false);
     if (success) {
-      notifyGameMessage('Ферму розширено! Додано по одному квадрату з кожного боку.');
+      notifyGameMessage('Ферму розширено вперед!');
       setPendingExpansion(null);
       onClose();
     }
@@ -165,7 +184,10 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
               <div className="shop-modal-stats" style={styles.statsContainer}>
                 <div style={styles.statRow}><span>Доступно з:</span><span className="shop-modal-level" style={styles.levelRequirement}>{item.requiredLevel ?? 1} рівня</span></div>
                 {item.type === 'OTHER' ? (
-                  <div style={styles.statRow}><span>Механіка:</span><span>{item.mechanic === 'expand_farm' ? '+1 квадрат по периметру' : 'Спеціальна дія'}</span></div>
+                  <div style={styles.statRow}>
+                    <span>{item.mechanic === 'accelerate_growth' ? 'Прискорює:' : 'Механіка:'}</span>
+                    <span>{item.mechanic === 'expand_farm' ? 'Розширення' : item.mechanic === 'accelerate_growth' && item.accelerationMs ? `на ${formatGameDuration(item.accelerationMs)}` : 'Спеціальна дія'}</span>
+                  </div>
                 ) : item.type !== 'BUILDING' && typeof item.productionTimeMs === 'number' && item.productionTimeMs > 0 && (
                   <div style={styles.statRow}>
                     <span>Готовність:</span>
@@ -177,12 +199,12 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
               <button
                 className="shop-modal-buy-button"
                 style={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? { ...styles.buyBtn, ...styles.lockedBuyBtn } : styles.buyBtn}
-                onClick={() => handleBuy(item)}
-                disabled={(user?.level ?? 1) < (item.requiredLevel ?? 1)}
+                onClick={() => void handleBuy(item)}
+                disabled={(user?.level ?? 1) < (item.requiredLevel ?? 1) || purchasingItemId === item.id}
                 title={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Доступно з ${item.requiredLevel ?? 1} рівня` : undefined}
               >
-                <span>{(user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Рівень ${item.requiredLevel ?? 1}` : `−${item.price.toLocaleString('uk-UA')}`}</span>
-                {(user?.level ?? 1) >= (item.requiredLevel ?? 1) && <img src={item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png'} alt="" className="currency-small-icon" draggable={false} />}
+                <span>{purchasingItemId === item.id ? 'Купуємо…' : (user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Рівень ${item.requiredLevel ?? 1}` : `−${item.price.toLocaleString('uk-UA')}`}</span>
+                {purchasingItemId !== item.id && (user?.level ?? 1) >= (item.requiredLevel ?? 1) && <img src={item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png'} alt="" className="currency-small-icon" draggable={false} />}
               </button>
             </div>
           ))}

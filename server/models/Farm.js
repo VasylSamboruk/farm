@@ -17,6 +17,16 @@ const tileSchema = new mongoose.Schema({
     lastHarvestedAt: { type: Date }
 }, { _id: false });
 
+const housedAnimalSchema = new mongoose.Schema({
+    itemId: { type: String, required: true },
+    placedAt: { type: Date, required: true },
+    lastHarvestedAt: { type: Date }
+});
+
+tileSchema.add({
+    housedAnimals: { type: [housedAnimalSchema], default: undefined }
+});
+
 const farmSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     size: { type: Number, default: 15, min: 15 },

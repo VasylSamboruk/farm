@@ -6,6 +6,7 @@ import { getLevelProgress } from '../config/progression.js';
 import { getGameItem, listGameItems } from '../services/gameCatalog.js';
 import { getTreeHarvestReadyAt } from '../services/treeMechanics.js';
 import { getMovedOccupiedCells, getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
+import { getFarmTilesWithOccupiedCells, getTileOccupiedCells } from '../services/farmTiles.js';
 
 const router = express.Router();
 
@@ -23,29 +24,12 @@ router.use(async (req, res, next) => {
     }
 });
 
-const getTileOccupiedCells = (tile) => {
-    const cells = getOccupiedCells(tile.x, tile.y, tile.quadrant, getGameItem(tile.itemId), tile.flipX ?? false);
-    if (!cells?.length) return [{ x: tile.x, y: tile.y, quadrant: tile.quadrant }];
-    const anchorIndex = cells.findIndex(cell =>
-        cell.x === tile.x && cell.y === tile.y && cell.quadrant === tile.quadrant
-    );
-    if (anchorIndex > 0) {
-        const [anchor] = cells.splice(anchorIndex, 1);
-        cells.unshift(anchor);
-    }
-    return cells;
-};
-
 router.get('/:userId', async (req, res) => {
     try {
         const farm = await Farm.findOne({ userId: req.params.userId });
         if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
         const responseFarm = farm.toObject();
-        responseFarm.tiles = responseFarm.tiles.map(tile => {
-            const item = getGameItem(tile.itemId);
-            const occupiedCells = item ? getTileOccupiedCells(tile) : null;
-            return occupiedCells ? { ...tile, occupiedCells } : tile;
-        });
+        responseFarm.tiles = getFarmTilesWithOccupiedCells(responseFarm.tiles);
         res.json(responseFarm);
     } catch (error) {
         res.status(500).json({ message: 'Помилка сервера', error: error.message });
@@ -75,17 +59,279 @@ router.post('/expand', async (req, res) => {
             );
         if (!user) return res.status(400).json({ message: fromInventory ? 'Цього предмета немає в інвентарі' : `Недостатньо ${currencyField === 'rubies' ? 'рубінів' : 'монет'}!` });
 
-        farm.tiles.forEach((tile) => { tile.x += 1; tile.y += 1; });
-        farm.size += 2;
+        farm.size += 1;
         await farm.save();
         return res.json({
             success: true,
             size: farm.size,
-            tiles: farm.tiles,
+            tiles: getFarmTilesWithOccupiedCells(farm.toObject().tiles),
             user: { coins: user.coins, rubies: user.rubies, itemInventory: Object.fromEntries(user.itemInventory ?? []) },
         });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося розширити ферму', error: error.message });
+    }
+});
+
+router.post('/buy-item', async (req, res) => {
+    try {
+        const { userId, itemId } = req.body;
+        const item = getGameItem(itemId);
+        if (!item || item.type !== 'OTHER' || item.mechanic !== 'accelerate_growth' || item.disabled) {
+            return res.status(400).json({ message: 'Це добриво зараз недоступне' });
+        }
+        const currentUser = await User.findById(userId);
+        if (!currentUser) return res.status(404).json({ message: 'Гравця не знайдено' });
+        if (getLevelProgress(currentUser.xp ?? 0).level < (item.requiredLevel ?? 1)) {
+            return res.status(403).json({ message: `Цей товар доступний з ${item.requiredLevel ?? 1} рівня` });
+        }
+        if (item.access === 'admin' && currentUser.role !== 'admin') {
+            return res.status(403).json({ message: 'Цей товар доступний лише адміністратору' });
+        }
+
+        const currencyField = item.priceCurrency === 'rubies' ? 'rubies' : 'coins';
+        const user = await User.findOneAndUpdate(
+            { _id: userId, [currencyField]: { $gte: item.price } },
+            { $inc: { [currencyField]: -item.price, [`itemInventory.${itemId}`]: 1 } },
+            { new: true }
+        );
+        if (!user) return res.status(400).json({ message: `Недостатньо ${currencyField === 'rubies' ? 'рубінів' : 'монет'}!` });
+        return res.json({
+            success: true,
+            user: {
+                coins: user.coins,
+                rubies: user.rubies,
+                itemInventory: Object.fromEntries(user.itemInventory ?? []),
+            },
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося купити добриво', error: error.message });
+    }
+});
+
+const findHousingBuilding = (farm, x, y, quadrant) => {
+    const tile = farm.tiles.find(t => !t.isDirt && t.x === x && t.y === y && t.quadrant === quadrant);
+    const item = tile ? getGameItem(tile.itemId) : null;
+    return item?.type === 'BUILDING' && item.housing ? { tile, item } : null;
+};
+
+const getFarmResponseTiles = (farm) => getFarmTilesWithOccupiedCells(farm.toObject().tiles);
+const isValidTilePosition = (x, y, quadrant, size) =>
+    Number.isSafeInteger(x) && Number.isSafeInteger(y) &&
+    Number.isSafeInteger(quadrant) && x >= 0 && x < size && y >= 0 && y < size &&
+    quadrant >= 0 && quadrant <= 3;
+
+router.post('/housing/store', async (req, res) => {
+    try {
+        const { userId, buildingX, buildingY, buildingQuadrant, animalX, animalY, animalQuadrant } = req.body;
+        const farm = await Farm.findOne({ userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        if (!isValidTilePosition(buildingX, buildingY, buildingQuadrant, farm.size) ||
+            !isValidTilePosition(animalX, animalY, animalQuadrant, farm.size)) {
+            return res.status(400).json({ message: 'Некоректне місце для будівлі або тварини' });
+        }
+
+        const housing = findHousingBuilding(farm, buildingX, buildingY, buildingQuadrant);
+        if (!housing) return res.status(404).json({ message: 'Будівлю для тварин не знайдено' });
+        const animals = housing.tile.housedAnimals ?? (housing.tile.housedAnimals = []);
+        if (animals.length >= housing.item.housing.capacity) {
+            return res.status(400).json({ message: 'У будівлі більше немає місця' });
+        }
+
+        const animalTile = farm.tiles.find(t =>
+            !t.isDirt && t.x === animalX && t.y === animalY && t.quadrant === animalQuadrant
+        );
+        const animalItem = animalTile ? getGameItem(animalTile.itemId) : null;
+        if (!animalTile || animalItem?.type !== 'ANIMAL') {
+            return res.status(404).json({ message: 'На вибраній клітинці немає тварини' });
+        }
+        if (!housing.item.housing.animalTypes.includes(animalTile.itemId)) {
+            return res.status(400).json({ message: 'Ця будівля не приймає таку тварину' });
+        }
+
+        animals.push({
+            itemId: animalTile.itemId,
+            placedAt: animalTile.placedAt ?? new Date(),
+            lastHarvestedAt: animalTile.lastHarvestedAt,
+        });
+        farm.tiles = farm.tiles.filter(t => t !== animalTile);
+        await farm.save();
+        return res.json({ success: true, size: farm.size, tiles: getFarmResponseTiles(farm) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося помістити тварину в будівлю', error: error.message });
+    }
+});
+
+router.post('/housing/release', async (req, res) => {
+    try {
+        const { userId, buildingX, buildingY, buildingQuadrant, animalId, x, y, quadrant } = req.body;
+        const farm = await Farm.findOne({ userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        if (!isValidTilePosition(buildingX, buildingY, buildingQuadrant, farm.size) ||
+            !isValidTilePosition(x, y, quadrant, farm.size) ||
+            typeof animalId !== 'string' || !mongoose.isValidObjectId(animalId)) {
+            return res.status(400).json({ message: 'Некоректне місце або тварина' });
+        }
+
+        const housing = findHousingBuilding(farm, buildingX, buildingY, buildingQuadrant);
+        if (!housing) return res.status(404).json({ message: 'Будівлю для тварин не знайдено' });
+        const animals = housing.tile.housedAnimals ?? [];
+        const animal = animals.find(entry => String(entry._id) === String(animalId));
+        if (!animal) return res.status(404).json({ message: 'Тварину в будівлі не знайдено' });
+        const item = getGameItem(animal.itemId);
+        if (!item || item.type !== 'ANIMAL' || !housing.item.housing.animalTypes.includes(animal.itemId)) {
+            return res.status(400).json({ message: 'Тварину не можна випустити з цієї будівлі' });
+        }
+
+        const occupiedCells = getOccupiedCells(x, y, quadrant, item, false);
+        if (!occupiedCells || occupiedCells.some(cell =>
+            cell.x < 0 || cell.x >= farm.size || cell.y < 0 || cell.y >= farm.size
+        )) return res.status(400).json({ message: 'Тварина не поміщається в це місце' });
+        if (farm.tiles.some(t => t.isDirt && occupiedCells.some(cell => cell.x === t.x && cell.y === t.y))) {
+            return res.status(400).json({ message: 'Тварин можна випускати лише на траву' });
+        }
+        if (farm.tiles.some(t => !t.isDirt && getTileOccupiedCells(t).some(existingCell =>
+            occupiedCells.some(cell => cell.x === existingCell.x && cell.y === existingCell.y && cell.quadrant === existingCell.quadrant)
+        ))) return res.status(400).json({ message: 'Місце зайняте!' });
+
+        farm.tiles.push({
+            x,
+            y,
+            quadrant,
+            occupiedQuadrants: getOccupiedQuadrants(quadrant, item) ?? [quadrant],
+            occupiedCells,
+            itemId: animal.itemId,
+            isDirt: false,
+            stage: 0,
+            placedAt: animal.placedAt,
+            lastHarvestedAt: animal.lastHarvestedAt,
+        });
+        housing.tile.housedAnimals = animals.filter(entry => String(entry._id) !== String(animalId));
+        await farm.save();
+        return res.json({ success: true, size: farm.size, tiles: getFarmResponseTiles(farm) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося випустити тварину', error: error.message });
+    }
+});
+
+router.post('/housing/collect', async (req, res) => {
+    try {
+        const { userId, buildingX, buildingY, buildingQuadrant } = req.body;
+        const [farm, user] = await Promise.all([
+            Farm.findOne({ userId }),
+            User.findById(userId),
+        ]);
+        if (!farm || !user) return res.status(404).json({ message: 'Ферму або гравця не знайдено' });
+
+        const housing = findHousingBuilding(farm, buildingX, buildingY, buildingQuadrant);
+        if (!housing) return res.status(404).json({ message: 'Будівлю для тварин не знайдено' });
+
+        const now = new Date();
+        const collectedByItem = new Map();
+        const readyAnimals = [];
+        for (const animal of housing.tile.housedAnimals ?? []) {
+            const item = getGameItem(animal.itemId);
+            if (!item?.yieldItem || !item.yieldAmount || now.getTime() < getTreeHarvestReadyAt(animal, item)) continue;
+            const current = collectedByItem.get(item.yieldItem) ?? { yieldItem: item.yieldItem, yieldName: item.yieldName ?? item.name, amount: 0 };
+            current.amount += item.yieldAmount;
+            collectedByItem.set(item.yieldItem, current);
+            readyAnimals.push(animal);
+        }
+        if (readyAnimals.length === 0) {
+            return res.json({ success: true, size: farm.size, tiles: getFarmResponseTiles(farm), collected: [] });
+        }
+
+        const inventory = user.inventory ?? new Map();
+        for (const product of collectedByItem.values()) {
+            inventory.set(product.yieldItem, Number(inventory.get(product.yieldItem) ?? 0) + product.amount);
+        }
+        user.inventory = inventory;
+        user.xp += readyAnimals.length;
+        user.level = getLevelProgress(user.xp).level;
+        for (const animal of readyAnimals) animal.lastHarvestedAt = now;
+        await Promise.all([farm.save(), user.save()]);
+
+        return res.json({
+            success: true,
+            size: farm.size,
+            tiles: getFarmResponseTiles(farm),
+            collected: [...collectedByItem.values()],
+            user: {
+                coins: user.coins,
+                rubies: user.rubies,
+                xp: user.xp,
+                level: user.level,
+                inventory: Object.fromEntries(user.inventory ?? []),
+            },
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося зібрати продукцію з будівлі', error: error.message });
+    }
+});
+
+router.post('/fertilize', async (req, res) => {
+    try {
+        const { userId, itemId, x, y, quadrant } = req.body;
+        const fertilizer = getGameItem(itemId);
+        if (!fertilizer || fertilizer.type !== 'OTHER' || fertilizer.mechanic !== 'accelerate_growth' ||
+            !Number.isSafeInteger(fertilizer.accelerationMs) || fertilizer.accelerationMs < 1000) {
+            return res.status(400).json({ message: 'Це добриво не налаштоване для прискорення' });
+        }
+        if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y) ||
+            !Number.isSafeInteger(quadrant) || x < 0 || y < 0 || quadrant < 0 || quadrant > 3) {
+            return res.status(400).json({ message: 'Некоректна ціль для добрива' });
+        }
+
+        const [farm, user] = await Promise.all([
+            Farm.findOne({ userId }),
+            User.findById(userId),
+        ]);
+        if (!farm || !user) return res.status(404).json({ message: 'Ферму або гравця не знайдено' });
+        if (x >= farm.size || y >= farm.size) return res.status(400).json({ message: 'Ціль поза межами ферми' });
+        const tile = farm.tiles.find(entry => !entry.isDirt && entry.x === x && entry.y === y && entry.quadrant === quadrant);
+        if (!tile) return res.status(404).json({ message: 'На вибраній клітинці немає об’єкта для добрива' });
+
+        const now = Date.now();
+        const target = tile;
+        const targetItem = getGameItem(tile.itemId);
+        if (!['TREE', 'CROP', 'ANIMAL'].includes(targetItem?.type) ||
+            !Number.isSafeInteger(targetItem.productionTimeMs) || targetItem.productionTimeMs < 1000) {
+            return res.status(400).json({ message: 'Добриво можна застосувати лише до рослини, дерева або тварини на фермі — не до будівлі' });
+        }
+
+        const readyAt = getTreeHarvestReadyAt(target, targetItem);
+        if (!Number.isFinite(readyAt) || readyAt <= now) {
+            return res.status(400).json({ message: 'Таймер уже завершився — добриво можна використати лише під час росту' });
+        }
+        const remaining = readyAt - now;
+        const updatedUser = await User.findOneAndUpdate(
+            { _id: userId, [`itemInventory.${itemId}`]: { $gte: 1 } },
+            { $inc: { [`itemInventory.${itemId}`]: -1 } },
+            { new: true }
+        );
+        if (!updatedUser) return res.status(400).json({ message: 'Цього добрива більше немає в інвентарі' });
+
+        const timerField = target.lastHarvestedAt ? 'lastHarvestedAt' : 'placedAt';
+        target[timerField] = new Date(new Date(target[timerField]).getTime() - fertilizer.accelerationMs);
+        try {
+            await farm.save();
+        } catch (error) {
+            await User.updateOne({ _id: userId }, { $inc: { [`itemInventory.${itemId}`]: 1 } });
+            throw error;
+        }
+
+        return res.json({
+            success: true,
+            acceleratedMs: Math.min(remaining, fertilizer.accelerationMs),
+            appliedTo: targetItem.name,
+            tiles: getFarmResponseTiles(farm),
+            user: {
+                coins: updatedUser.coins,
+                rubies: updatedUser.rubies,
+                itemInventory: Object.fromEntries(updatedUser.itemInventory ?? []),
+            },
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося застосувати добриво', error: error.message });
     }
 });
 
@@ -165,14 +411,19 @@ router.post('/remove', async (req, res) => {
         const farm = await Farm.findOne({ userId });
         if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
         let targetTile = farm.tiles.find(t => !t.isDirt && t.x === x && t.y === y && t.quadrant === quadrant);
-        if (!targetTile && quadrant === -1) {
-            targetTile = farm.tiles.find(t => !t.isDirt && t.x === x && t.y === y && getGameItem(t.itemId)?.type === 'CROP');
-        }
         const dirtTile = farm.tiles.find(t => t.isDirt && t.x === x && t.y === y);
         if (!targetTile && quadrant !== -1) {
             return res.status(404).json({ message: 'Предмет не знайдено' });
         }
         if (!targetTile && !dirtTile) return res.status(404).json({ message: 'Предмет не знайдено' });
+        if (targetTile && (targetTile.housedAnimals?.length ?? 0) > 0) {
+            return res.status(400).json({ message: 'Спочатку випусти тварин із цієї будівлі' });
+        }
+        if (!targetTile && farm.tiles.some(t =>
+            !t.isDirt && t.x === x && t.y === y && getGameItem(t.itemId)?.type === 'CROP'
+        )) {
+            return res.status(400).json({ message: 'Спочатку видали рослину з цієї грядки' });
+        }
 
         const item = targetTile ? getGameItem(targetTile.itemId) : null;
         const refundCurrency = item?.priceCurrency === 'rubies' ? 'rubies' : 'coins';
@@ -188,10 +439,6 @@ router.post('/remove', async (req, res) => {
         if (targetTile) {
             removedTiles.push({ x: targetTile.x, y: targetTile.y, quadrant: targetTile.quadrant });
             farm.tiles = farm.tiles.filter(t => t !== targetTile);
-            if (item?.type === 'CROP' && dirtTile) {
-                removedTiles.push({ x: dirtTile.x, y: dirtTile.y, quadrant: -1 });
-                farm.tiles = farm.tiles.filter(t => t !== dirtTile);
-            }
         } else {
             removedTiles.push({ x: dirtTile.x, y: dirtTile.y, quadrant: -1 });
             farm.tiles = farm.tiles.filter(t => t !== dirtTile);
@@ -249,6 +496,10 @@ router.post('/move', async (req, res) => {
         if (!tile) return res.status(404).json({ message: 'Предмет не знайдено' });
 
         if (tile.isDirt) {
+            const hasCrop = farm.tiles.some(t =>
+                !t.isDirt && t.x === tile.x && t.y === tile.y && getGameItem(t.itemId)?.type === 'CROP'
+            );
+            if (hasCrop) return res.status(400).json({ message: 'Грядку з культурою не можна переміщати' });
             const destinationOccupied = farm.tiles.some(t => t !== tile && t.x === x && t.y === y);
             if (quadrant !== -1 || x < 0 || x >= farm.size || y < 0 || y >= farm.size || destinationOccupied) {
                 return res.status(400).json({ message: 'Ця грядка не поміщається в це місце' });
@@ -260,11 +511,11 @@ router.post('/move', async (req, res) => {
         }
 
         const item = tile.isDirt ? null : getGameItem(tile.itemId);
-        if (item?.type === 'CROP' && farm.tiles.some(t => t.isDirt && t.x === tile.x && t.y === tile.y)) {
-            return res.status(400).json({ message: 'Грядку з культурою не можна переміщати' });
-        }
         if (!item) {
             if (!tile.isDirt) return res.status(400).json({ message: 'Товар не знайдено' });
+        }
+        if (item.type === 'CROP' && Date.now() < getTreeHarvestReadyAt(tile, item)) {
+            return res.status(400).json({ message: 'Культуру можна переміщати лише після дозрівання' });
         }
         const occupiedQuadrants = getOccupiedQuadrants(quadrant, item);
         const occupiedCells = getMovedOccupiedCells(
@@ -278,19 +529,14 @@ router.post('/move', async (req, res) => {
             return res.status(400).json({ message: 'Цей розмір предмета не поміщається в це місце' });
         }
 
-        const sourceDirt = item.type === 'CROP'
-            ? farm.tiles.find(t => t.isDirt && t.x === tile.x && t.y === tile.y)
-            : null;
-        const destinationHasTile = farm.tiles.some(t =>
-            t !== tile && t !== sourceDirt && t.x === x && t.y === y
-        );
-        if (sourceDirt && destinationHasTile) {
-            return res.status(400).json({ message: 'Місце зайняте!' });
-        }
-
         const occupiedDirtTiles = farm.tiles.filter(t => t.isDirt && occupiedCells.some(cell => cell.x === t.x && cell.y === t.y));
-        if (!sourceDirt && item.placementSurface === 'soil' && occupiedDirtTiles.length !== new Set(occupiedCells.map(cell => `${cell.x},${cell.y}`)).size) {
+        if (item.placementSurface === 'soil' && occupiedDirtTiles.length !== new Set(occupiedCells.map(cell => `${cell.x},${cell.y}`)).size) {
             return res.status(400).json({ message: 'Цей товар можна ставити лише на грядку' });
+        }
+        if (item.type === 'CROP' && farm.tiles.some(t =>
+            !t.isDirt && t !== tile && t.x === x && t.y === y && getGameItem(t.itemId)?.type === 'CROP'
+        )) {
+            return res.status(400).json({ message: 'На цій грядці вже росте культура' });
         }
         if (item.placementSurface === 'grass' && occupiedDirtTiles.length) {
             return res.status(400).json({ message: 'Цей товар можна ставити лише на траву' });
@@ -308,10 +554,6 @@ router.post('/move', async (req, res) => {
         tile.quadrant = quadrant;
         tile.occupiedQuadrants = occupiedQuadrants ?? [quadrant];
         tile.occupiedCells = occupiedCells;
-        if (sourceDirt) {
-            sourceDirt.x = x;
-            sourceDirt.y = y;
-        }
         await farm.save();
         res.json({ success: true, tile });
     } catch (error) {
@@ -425,6 +667,9 @@ router.post('/sell-item', async (req, res) => {
         }
         const item = getGameItem(itemId);
         if (!item) return res.status(400).json({ message: 'Цей предмет не можна продати' });
+        if (item.mechanic === 'accelerate_growth') {
+            return res.status(400).json({ message: 'Добриво не можна продати' });
+        }
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
         const itemInventory = user.itemInventory ?? new Map();
@@ -467,6 +712,28 @@ router.post('/save', async (req, res) => {
             playerLevel < (item.requiredLevel ?? 1)
         );
         const existingFarm = await Farm.findOne({ userId }).select('tiles');
+        const existingHousing = new Map();
+        const submittedTileKeys = new Set(tiles
+            .filter(tile => !tile.isDirt)
+            .map(tile => `${tile.x},${tile.y},${tile.quadrant},${tile.itemId}`));
+        for (const tile of existingFarm?.tiles ?? []) {
+            if (!tile.isDirt && tile.housedAnimals?.length) {
+                const key = `${tile.x},${tile.y},${tile.quadrant},${tile.itemId}`;
+                if (!submittedTileKeys.has(key)) {
+                    return res.status(400).json({ message: 'Спочатку випусти тварин із цієї будівлі' });
+                }
+                existingHousing.set(key, tile.housedAnimals);
+            }
+        }
+        const tilesToSave = tiles.map((tile) => {
+            const normalizedTile = { ...tile };
+            delete normalizedTile.housedAnimals;
+            if (!tile.isDirt) {
+                const housedAnimals = existingHousing.get(`${tile.x},${tile.y},${tile.quadrant},${tile.itemId}`);
+                if (housedAnimals) normalizedTile.housedAnimals = housedAnimals;
+            }
+            return normalizedTile;
+        });
         const existingLockedCounts = new Map();
         for (const tile of existingFarm?.tiles ?? []) {
             const item = tile.isDirt ? null : getGameItem(tile.itemId);
@@ -490,7 +757,7 @@ router.post('/save', async (req, res) => {
         }
         const updatedFarm = await Farm.findOneAndUpdate(
             { userId },
-            { $set: { tiles } },
+            { $set: { tiles: tilesToSave } },
             { new: true, upsert: true }
         );
         res.json({ success: true, farm: updatedFarm });

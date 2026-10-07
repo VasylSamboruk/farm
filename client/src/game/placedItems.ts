@@ -1,6 +1,6 @@
 import type { GameItemConfig } from '../types/game';
 import { drawYieldBadge, drawTreeTimer, getTreeHarvestReadyAt } from './trees';
-import { drawGameSprite, getGameSpriteSize, getLoadedGameImage, getPlacedItemImage } from './sprites';
+import { drawGameSprite, getGameSpriteSize, getLoadedGameImage, getPlacedItemImage, isPointOnSprite } from './sprites';
 import type { TreeTileTiming } from './trees';
 
 const getYieldBadgePosition = (
@@ -121,14 +121,24 @@ export const isPointOnReadyPlacedItem = (
     const image = getPlacedItemImage(item, tile, now);
     if (image) {
       const { width, height } = getGameSpriteSize(image, item);
-      const padding = 12;
-      const isOnSprite = worldX >= centerX - width / 2 - padding &&
-        worldX <= centerX + width / 2 + padding &&
-        worldY >= groundY - height - padding &&
-        worldY <= groundY + padding;
+      const spriteX = tile.flipX ? centerX - (worldX - centerX) : worldX;
+      const isOnSprite = isPointOnSprite(
+        spriteX,
+        worldY,
+        image,
+        centerX - width / 2,
+        groundY - height,
+        width,
+        height
+      );
       if (isOnSprite) return true;
       if (item.type === 'CROP' || item.type === 'BUILDING') return false;
     }
+  }
+
+  if (item.type === 'BUILDING') {
+    return worldX >= centerX - 44 && worldX <= centerX + 44 &&
+      worldY >= groundY - 58 && worldY <= groundY + 10;
   }
 
   if (!item.yieldIcon && !item.yieldImage) return false;

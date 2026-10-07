@@ -12,6 +12,7 @@ import {
 import {
   drawTree,
   drawTreePreview,
+  drawYieldBadge,
   getTreeRenderHeight,
   getTreeGrowthStage,
   getTreeHarvestReadyAt,
@@ -21,6 +22,8 @@ import {
 } from '../../game/trees';
 import { getLoadedGameImage, preloadGameImages } from '../../game/sprites';
 import type { TileData } from '../../store/useFarmStore';
+import type { GameItemConfig } from '../../types/game';
+import { HousingModal } from './HousingModal';
 
 // Тип для вилітаючих текстів
 interface FloatingText {
@@ -38,6 +41,11 @@ type FloatingTarget = 'inventory' | 'level';
 const GRID_TILE_SIZE = { tileWidth: 200, tileHeight: 100 };
 const getPlacementItemId = (tool: string) => tool.replace(/^place_(?:inventory_)?/, '');
 const isInventoryPlacement = (tool: string) => tool.startsWith('place_inventory_');
+const getReadyHousedAnimals = (tile: TileData, items: Record<string, GameItemConfig>, now: number) =>
+  (tile.housedAnimals ?? []).filter((animal) => {
+    const item = items[animal.itemId];
+    return Boolean(item?.yieldItem && item.productionTimeMs && now >= getTreeHarvestReadyAt(animal, item));
+  });
 
 interface FarmCanvasProps {
   readOnly?: boolean;
@@ -68,10 +76,14 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     moveTile,
     enqueueHarvest,
     notifyGameMessage,
+    houseAnimal,
+    releaseHousedAnimal,
+    collectHousedAnimals,
+    fertilizeItem,
     harvestQueue,
     activeHarvestStartedAt,
   } = useFarmStore();
-  const { activeTool, setActiveTool } = useToolStore();
+  const { activeTool, setActiveTool, cancelInteraction } = useToolStore();
   const { user } = useAuthStore();
   const gameItems = useGameConfigStore((state) => state.items);
   const displayedTiles = previewTiles ?? tiles;
@@ -95,6 +107,15 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
   const harvestQueueRef = useRef(harvestQueue);
   const activeHarvestStartedAtRef = useRef(activeHarvestStartedAt);
   const movingItemRef = useRef<{ row: number; col: number; quadrant: number; isDirt?: boolean } | null>(null);
+  const hoveredTrashItemRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
+  const hoveredHousingItemRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
+  const [housingPosition, setHousingPosition] = useState<{ row: number; col: number; quadrant: number } | null>(null);
+  const [housingOpen, setHousingOpen] = useState(false);
+  const [housingMode, setHousingMode] = useState<'store' | 'release' | null>(null);
+  const [releaseAnimalId, setReleaseAnimalId] = useState<string | null>(null);
+  const housingModeRef = useRef<'store' | 'release' | null>(null);
+  const housingPositionRef = useRef(housingPosition);
+  const releaseAnimalIdRef = useRef(releaseAnimalId);
 
   useEffect(() => {
     activeToolRef.current = activeTool;
@@ -104,6 +125,12 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     harvestQueueRef.current = harvestQueue;
     activeHarvestStartedAtRef.current = activeHarvestStartedAt;
   }, [activeTool, displayedTiles, user, gameItems, harvestQueue, activeHarvestStartedAt]);
+
+  useEffect(() => {
+    housingModeRef.current = housingMode;
+    housingPositionRef.current = housingPosition;
+    releaseAnimalIdRef.current = releaseAnimalId;
+  }, [housingMode, housingPosition, releaseAnimalId]);
 
   useEffect(() => {
     if (activeTool !== 'move') movingItemRef.current = null;
@@ -118,6 +145,14 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
   // Масив для збереження анімацій тексту
   const floatingTextsRef = useRef<FloatingText[]>([]);
   const floatingIdCounter = useRef(0);
+  const fertilizerEffectsRef = useRef<{
+    row: number;
+    col: number;
+    quadrant: number;
+    itemId: string;
+    acceleratedMs: number;
+    createdAt: number;
+  }[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -303,10 +338,23 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       const footprintCellKeys = new Set<string>();
       const hovered = hoveredTile.current;
       const activeGridTool = readOnly ? null : activeToolRef.current;
-      if (hovered && activeGridTool) {
+      const housingReleasePosition = housingPositionRef.current;
+      const housingReleaseTile = housingReleasePosition
+        ? tilesRef.current[`${housingReleasePosition.row},${housingReleasePosition.col},${housingReleasePosition.quadrant}`]
+        : undefined;
+      const housingReleaseAnimal = housingReleaseTile?.housedAnimals?.find(
+        (animal) => animal.id === releaseAnimalIdRef.current
+      );
+      const housingReleaseItem = housingReleaseAnimal
+        ? gameItemsRef.current[housingReleaseAnimal.itemId]
+        : undefined;
+      const isHousingReleasePreview = !readOnly && housingModeRef.current === 'release' && Boolean(housingReleaseItem);
+      if (hovered && (activeGridTool || isHousingReleasePreview)) {
         let gridCells = [{ row: hovered.row, col: hovered.col }];
-        if (activeGridTool.startsWith('place_')) {
-          const previewItem = gameItemsRef.current[getPlacementItemId(activeGridTool)];
+        if (activeGridTool?.startsWith('place_') || isHousingReleasePreview) {
+          const previewItem = activeGridTool?.startsWith('place_')
+            ? gameItemsRef.current[getPlacementItemId(activeGridTool)]
+            : housingReleaseItem;
           const footprintCells = previewItem
             ? getOccupiedCells(hovered.row, hovered.col, hovered.quadrant, previewItem)
             : null;
@@ -471,18 +519,16 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           }
 
           // 4. Підсвітка при наведенні
-          if (hoveredTile.current && hoveredTile.current.row === r && hoveredTile.current.col === c && activeToolRef.current) {
+          if (hoveredTile.current && hoveredTile.current.row === r && hoveredTile.current.col === c &&
+            (activeToolRef.current || isHousingReleasePreview)) {
             const isMovePreview = activeToolRef.current === 'move' && movingItemRef.current;
             const movingTile = isMovePreview
               ? tilesRef.current[`${movingItemRef.current!.row},${movingItemRef.current!.col},${movingItemRef.current!.quadrant}`]
               : undefined;
-            const previewItemId = activeToolRef.current.startsWith('place_')
+            const previewItemId = activeToolRef.current?.startsWith('place_')
               ? getPlacementItemId(activeToolRef.current)
-              : movingTile?.itemId;
+              : movingTile?.itemId ?? housingReleaseItem?.id;
             const previewItem = previewItemId ? gameItemsRef.current[previewItemId] : undefined;
-            const movingSourceDirt = isMovePreview && movingItemRef.current
-              ? tilesRef.current[`${movingItemRef.current.row},${movingItemRef.current.col},-1`]
-              : undefined;
 
             if (isMovePreview && movingTile?.type === 'dirt') {
               const destinationHasTile = Object.entries(tilesRef.current).some(([key]) => {
@@ -497,7 +543,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
               ctx.strokeStyle = isValidDirtMove ? '#9be7a0' : '#f44336';
               ctx.lineWidth = 2;
               ctx.stroke();
-            } else if (previewItem && (activeToolRef.current.startsWith('place_') || isMovePreview)) {
+            } else if (previewItem && (activeToolRef.current?.startsWith('place_') || isMovePreview || isHousingReleasePreview)) {
               const calculatedPreviewCells = (isMovePreview && movingTile
                 ? getMovedOccupiedCells(
                   movingTile.occupiedCells ?? [],
@@ -519,33 +565,25 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
                 cell.row >= 0 && cell.row < rows && cell.col >= 0 && cell.col < cols
               );
               const previewSurfaceCells = previewCells.map((cell) => tilesRef.current[`${cell.row},${cell.col},-1`]);
-              const movingCropWithBed = Boolean(isMovePreview && previewItem.type === 'CROP' && movingSourceDirt?.type === 'dirt');
-              const isSameBedCell = movingItemRef.current?.row === r && movingItemRef.current.col === c;
-              const surfaceIsValid = movingCropWithBed
-                ? (!tilesRef.current[`${r},${c},-1`] || isSameBedCell)
-                : previewItem.placementSurface === 'soil'
-                  ? previewCells.every((_, index) => Boolean(previewSurfaceCells[index]))
-                  : previewCells.every((cell) => !tilesRef.current[`${cell.row},${cell.col},-1`]);
+              const surfaceIsValid = previewItem.placementSurface === 'soil'
+                ? previewCells.every((_, index) => Boolean(previewSurfaceCells[index]))
+                : previewCells.every((cell) => !tilesRef.current[`${cell.row},${cell.col},-1`]);
+              const cropBedIsFree = previewItem.type !== 'CROP' || previewCells.every((cell) =>
+                !Object.entries(tilesRef.current).some(([key, placedTile]) => {
+                  if (placedTile.type !== 'item' || !placedTile.itemId) return false;
+                  const [placedRow, placedCol] = key.split(',').map(Number);
+                  return placedRow === cell.row && placedCol === cell.col &&
+                    key !== `${movingItemRef.current?.row},${movingItemRef.current?.col},${movingItemRef.current?.quadrant}` &&
+                    gameItemsRef.current[placedTile.itemId]?.type === 'CROP';
+                })
+              );
               const footprintIsFree = previewCells.every((cell) => {
                 const placed = findPlacedItemAtQuadrant(tilesRef.current, cell.row, cell.col, cell.quadrant);
                 if (!placed) return true;
                 return Boolean(isMovePreview &&
                   placed.key === `${movingItemRef.current!.row},${movingItemRef.current!.col},${movingItemRef.current!.quadrant}`);
               });
-              const isValidPlacement = hasValidFootprint && cellsAreInsideGrid && surfaceIsValid && footprintIsFree;
-
-              if (isMovePreview && previewItem.type === 'CROP' && movingSourceDirt?.type === 'dirt') {
-                ctx.save();
-                ctx.globalAlpha = isValidPlacement ? 0.58 : 0.34;
-                if (dirtImage?.complete && dirtImage.naturalWidth !== 0) {
-                  ctx.drawImage(dirtImage, isoX - halfW, isoY, tileWidth, tileHeight);
-                } else {
-                  drawIsometricDiamond(isoX, isoY, halfW, halfH);
-                  ctx.fillStyle = '#6d4c41';
-                  ctx.fill();
-                }
-                ctx.restore();
-              }
+              const isValidPlacement = hasValidFootprint && cellsAreInsideGrid && surfaceIsValid && cropBedIsFree && footprintIsFree;
 
               for (const cell of previewCells) {
                 const cellIsoX = (cell.col - cell.row) * halfW;
@@ -630,11 +668,19 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
 
       const drawPlacedObject = (placed: (typeof placedItems)[number], drawIndicators: boolean) => {
         const { row, col, quadrant, tile, item, occupiedCells, centerX, groundY } = placed;
-        const isHovered = Boolean(hoveredTile.current && occupiedCells.some((cell) =>
-          cell.row === hoveredTile.current?.row &&
-          cell.col === hoveredTile.current?.col &&
-          cell.quadrant === hoveredTile.current?.quadrant
-        ));
+        const isHovered = activeToolRef.current === 'trash'
+          ? hoveredTrashItemRef.current?.row === row &&
+            hoveredTrashItemRef.current.col === col &&
+            hoveredTrashItemRef.current.quadrant === quadrant
+          : Boolean(hoveredTile.current && occupiedCells.some((cell) =>
+            cell.row === hoveredTile.current?.row &&
+            cell.col === hoveredTile.current?.col &&
+            cell.quadrant === hoveredTile.current?.quadrant
+          )) || Boolean(
+            hoveredHousingItemRef.current?.row === row &&
+            hoveredHousingItemRef.current.col === col &&
+            hoveredHousingItemRef.current.quadrant === quadrant
+          );
         const queueIndex = harvestQueueRef.current.findIndex((entry) =>
           entry.row === row && entry.col === col && entry.quadrant === quadrant
         );
@@ -649,7 +695,69 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           : drawPlacedItem(ctx, item, tile, centerX, groundY, now, isHovered);
         ctx.restore();
 
+        if (drawIndicators && item.housing && housingPositionRef.current?.row === row &&
+          housingPositionRef.current.col === col && housingPositionRef.current.quadrant === quadrant &&
+          !activeToolRef.current && !housingModeRef.current) {
+          const badgeY = groundY - 92;
+          const chicken = item.housing.animalTypes
+            .map((animalId) => gameItemsRef.current[animalId])
+            .find((animalItem) => animalItem?.type === 'ANIMAL');
+          const chickenImage = chicken
+            ? getLoadedGameImage(chicken.growthImages?.[0] ?? chicken.shopImage)
+            : undefined;
+          ctx.save();
+          ctx.translate(centerX, badgeY);
+          ctx.scale(1 / cameraRef.current.zoom, 1 / cameraRef.current.zoom);
+          ctx.fillStyle = 'rgba(27, 39, 28, 0.94)';
+          ctx.beginPath();
+          ctx.arc(0, 0, 19, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(0, 0, 14, 0, Math.PI * 2);
+          ctx.clip();
+          if (chickenImage) {
+            const scale = Math.min(26 / chickenImage.naturalWidth, 26 / chickenImage.naturalHeight);
+            const width = chickenImage.naturalWidth * scale;
+            const height = chickenImage.naturalHeight * scale;
+            ctx.drawImage(chickenImage, -width / 2, -height / 2, width, height);
+          }
+          ctx.restore();
+          ctx.strokeStyle = 'rgba(255, 239, 188, 0.95)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, 19, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.font = "800 11px 'FarmBody', sans-serif";
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          const countText = `${tile.housedAnimals?.length ?? 0}/${item.housing.capacity}`;
+          ctx.fillStyle = 'rgba(27, 39, 28, 0.96)';
+          ctx.beginPath();
+          ctx.roundRect(-23, 20, 46, 17, 8);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(countText, 0, 28.5);
+          ctx.restore();
+        }
+
         if (!drawIndicators) return;
+        const readyHousedAnimals = item.housing ? getReadyHousedAnimals(tile, gameItemsRef.current, now) : [];
+        const readyAnimalItem = readyHousedAnimals[0]
+          ? gameItemsRef.current[readyHousedAnimals[0].itemId]
+          : undefined;
+        if (readyAnimalItem?.yieldItem) {
+          drawYieldBadge(
+            ctx,
+            centerX,
+            groundY - 148,
+            readyAnimalItem.yieldIcon ?? '📦',
+            now,
+            1,
+            getLoadedGameImage(readyAnimalItem.yieldImage)
+          );
+        }
 
         if (queueIndex === 0 && activeHarvestStartedAtRef.current !== null) {
           const progress = Math.min(
@@ -704,6 +812,88 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           }
         }
       }
+
+      fertilizerEffectsRef.current = fertilizerEffectsRef.current.filter((effect) => {
+        const age = now - effect.createdAt;
+        const lifeTime = 2100;
+        if (age >= lifeTime) return false;
+        const target = placedItems.find((placed) =>
+          placed.row === effect.row &&
+          placed.col === effect.col &&
+          placed.quadrant === effect.quadrant &&
+          placed.tile.itemId === effect.itemId
+        );
+        if (!target) return false;
+
+        const progress = age / lifeTime;
+        const fade = Math.min(1, age / 220) * Math.min(1, (lifeTime - age) / 520);
+        const objectHeight = target.item.type === 'TREE' ? getTreeRenderHeight(target.item) : 82;
+        const topY = target.groundY - objectHeight * 0.9;
+        const centerY = target.groundY - objectHeight * 0.48;
+        const glowRadius = Math.max(48, objectHeight * 0.55);
+        ctx.save();
+        ctx.globalAlpha = fade;
+        const glowPulse = 0.94 + Math.sin(age / 135) * 0.06;
+        const glow = ctx.createRadialGradient(target.centerX, centerY, 2, target.centerX, centerY, glowRadius * glowPulse);
+        glow.addColorStop(0, 'rgba(255, 249, 191, 0.3)');
+        glow.addColorStop(0.48, 'rgba(255, 221, 112, 0.16)');
+        glow.addColorStop(1, 'rgba(255, 211, 79, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.ellipse(target.centerX, centerY, glowRadius * glowPulse, objectHeight * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (let index = 0; index < 9; index++) {
+          const seed = index * 12.9898;
+          const fallProgress = (progress * 1.55 + index / 9) % 1;
+          const startX = target.centerX + Math.sin(seed) * glowRadius * 0.62;
+          const x = startX + Math.sin(age / 260 + seed) * 5;
+          const y = topY + (target.groundY - topY) * fallProgress;
+          const particleFade = Math.min(1, fallProgress * 5, (1 - fallProgress) * 3) * fade;
+          const size = 1.8 + ((index * 7) % 4) * 0.45;
+          ctx.globalAlpha = particleFade;
+          ctx.strokeStyle = 'rgba(255, 241, 166, 0.72)';
+          ctx.lineWidth = size * 0.8;
+          ctx.shadowColor = 'rgba(255, 220, 105, 0.9)';
+          ctx.shadowBlur = 9;
+          ctx.beginPath();
+          ctx.moveTo(x, y - 5);
+          ctx.lineTo(x, y - 1);
+          ctx.stroke();
+          ctx.fillStyle = index % 3 === 0 ? '#fffbe2' : '#ffdf7c';
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const labelProgress = Math.min(1, age / 180);
+        const labelAlpha = Math.min(1, (1 - progress) * 3.2);
+        const labelY = topY - 18 - labelProgress * 24;
+        const label = `-${formatGameDuration(effect.acceleratedMs)}`;
+        ctx.save();
+        ctx.translate(target.centerX, labelY);
+        ctx.scale(1 / cameraRef.current.zoom, 1 / cameraRef.current.zoom);
+        ctx.globalAlpha = labelAlpha;
+        ctx.font = "900 12px 'FarmBody', 'Trebuchet MS', sans-serif";
+        const labelWidth = ctx.measureText(label).width + 18;
+        ctx.shadowColor = 'rgba(255, 215, 92, 0.72)';
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = 'rgba(45, 57, 39, 0.94)';
+        ctx.strokeStyle = 'rgba(255, 229, 139, 0.95)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(-labelWidth / 2, -12, labelWidth, 24, 12);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff6cb';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, 0, 0);
+        ctx.restore();
+        ctx.restore();
+        return true;
+      });
 
       // 5. ВІДМАЛЬОВКА ВИЛІТАЮЧИХ ТЕКСТІВ
       floatingTextsRef.current = floatingTextsRef.current.filter(ft => {
@@ -885,6 +1075,62 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       return topmostHit;
     };
 
+    const getHousingOverlayHitAtScreen = (screenX: number, screenY: number) => {
+      const worldX = (screenX - cameraRef.current.x) / cameraRef.current.zoom;
+      const worldY = (screenY - cameraRef.current.y) / cameraRef.current.zoom;
+      const hitRadius = 22 / cameraRef.current.zoom;
+      const halfW = gridConfig.tileWidth / 2;
+      const halfH = gridConfig.tileHeight / 2;
+      let closestHit: {
+        kind: 'button' | 'egg';
+        position: { row: number; col: number; quadrant: number };
+        distance: number;
+      } | null = null;
+
+      for (const [key, tile] of Object.entries(tilesRef.current)) {
+        if (tile.type !== 'item' || !tile.itemId) continue;
+        const item = gameItemsRef.current[tile.itemId];
+        if (!item?.housing) continue;
+        const [row, col, quadrant] = key.split(',').map(Number);
+        const position = { row, col, quadrant };
+        const isSelected = housingPositionRef.current?.row === row &&
+          housingPositionRef.current.col === col &&
+          housingPositionRef.current.quadrant === quadrant;
+        const occupiedCells = tile.occupiedCells?.length
+          ? tile.occupiedCells
+          : getOccupiedCells(row, col, quadrant, item) ?? [{ row, col, quadrant }];
+        const positions = occupiedCells.map((cell) => {
+          const cellIsoX = (cell.col - cell.row) * halfW;
+          const cellIsoY = (cell.col + cell.row) * halfH;
+          const offset = getQuadrantOffset(cell.quadrant, halfW, halfH);
+          return { x: cellIsoX + offset.dx, groundY: cellIsoY + halfH + offset.dy };
+        });
+        const centerX = positions.reduce((sum, entry) => sum + entry.x, 0) / positions.length;
+        const groundY = Math.max(...positions.map((entry) => entry.groundY));
+        const overlays: { kind: 'button' | 'egg'; y: number }[] = [];
+        if (isSelected && !activeToolRef.current && !housingModeRef.current) {
+          overlays.push({ kind: 'button', y: groundY - 92 });
+        }
+        if (getReadyHousedAnimals(tile, gameItemsRef.current, Date.now()).length > 0) {
+          overlays.push({ kind: 'egg', y: groundY - 148 });
+        }
+
+        for (const overlay of overlays) {
+          const dx = worldX - centerX;
+          const dy = worldY - overlay.y;
+          const distance = Math.hypot(dx, dy);
+          const hit = overlay.kind === 'button'
+            ? distance <= hitRadius || (Math.abs(dx) <= 25 / cameraRef.current.zoom &&
+              dy >= 17 / cameraRef.current.zoom && dy <= 38 / cameraRef.current.zoom)
+            : distance <= hitRadius;
+          if (hit && (!closestHit || distance < closestHit.distance)) {
+            closestHit = { kind: overlay.kind, position, distance };
+          }
+        }
+      }
+      return closestHit;
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
       if (e.target !== canvas || e.button !== 0) return;
       pointerDownOnCanvas.current = true;
@@ -897,12 +1143,20 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       if (!isDragging.current) {
         const activeTool = activeToolRef.current;
         const isGridOnlyTool = activeTool?.startsWith('place_') || activeTool === 'shovel';
+        const housingOverlayHit = getHousingOverlayHitAtScreen(e.clientX, e.clientY);
+        hoveredHousingItemRef.current = housingOverlayHit?.position ?? null;
+        const hitItem = isGridOnlyTool || (activeTool === 'move' && movingItemRef.current)
+          ? null
+          : getReadyItemAtScreen(e.clientX, e.clientY, false);
+        hoveredTrashItemRef.current = activeTool === 'trash' ? hitItem : null;
         hoveredTile.current = isGridOnlyTool || (activeTool === 'move' && movingItemRef.current)
           ? getGridTileFromScreen(e.clientX, e.clientY)
-          : getReadyItemAtScreen(e.clientX, e.clientY, false) ?? getGridTileFromScreen(e.clientX, e.clientY);
+          : hitItem ?? getGridTileFromScreen(e.clientX, e.clientY);
         return;
       }
       hoveredTile.current = null;
+      hoveredTrashItemRef.current = null;
+      hoveredHousingItemRef.current = null;
       cameraRef.current.x = e.clientX - startPan.current.x;
       cameraRef.current.y = e.clientY - startPan.current.y;
     };
@@ -920,18 +1174,83 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       if (readOnly) return;
 
       if (wasPointerDown && !wasDragging) {
+        const housingOverlayHit = activeToolRef.current === null
+          ? getHousingOverlayHitAtScreen(e.clientX, e.clientY)
+          : null;
         const yieldIconTile = activeToolRef.current === null
           ? getReadyItemAtScreen(e.clientX, e.clientY)
           : null;
         const tool = activeToolRef.current;
         const isMoving = tool === 'move' && movingItemRef.current;
-        const canSelectExistingItem = tool === 'move' || tool === 'rotate' || tool === 'trash';
+        const housingMode = housingModeRef.current;
+        const isFertilizing = Boolean(tool?.startsWith('fertilize_'));
+        const canSelectExistingItem = tool === 'move' || tool === 'rotate' || tool === 'trash' || isFertilizing || housingMode !== null;
         const selectedItemTile = isMoving || !canSelectExistingItem
           ? null
           : getReadyItemAtScreen(e.clientX, e.clientY, false);
+        if (tool === 'trash') hoveredTrashItemRef.current = selectedItemTile;
         const tile = yieldIconTile ?? selectedItemTile ?? getGridTileFromScreen(e.clientX, e.clientY);
-        if (tile && userRef.current?.id) {
-          if (tool === 'rotate') {
+        if (housingOverlayHit?.kind === 'egg' && userRef.current?.id) {
+          const collected = await collectHousedAnimals(userRef.current.id, housingOverlayHit.position);
+          if (collected?.items.length) {
+            notifyGameMessage(`Зібрано з курятника: ${collected.items.map((entry) =>
+              `${entry.yieldName} ×${entry.amount}`
+            ).join(', ')}`);
+          }
+        } else if (housingOverlayHit?.kind === 'button' && userRef.current?.id) {
+          setHousingPosition(housingOverlayHit.position);
+          setHousingOpen(true);
+          setHousingMode(null);
+          setReleaseAnimalId(null);
+        } else if (tile && userRef.current?.id) {
+          if (housingMode === 'store') {
+            const selected = selectedItemTile
+              ? tilesRef.current[`${selectedItemTile.row},${selectedItemTile.col},${selectedItemTile.quadrant}`]
+              : undefined;
+            const selectedItem = selected?.itemId ? gameItemsRef.current[selected.itemId] : undefined;
+            if (selectedItemTile && selectedItem?.type === 'ANIMAL' && housingPositionRef.current) {
+              await houseAnimal(userRef.current.id, housingPositionRef.current, selectedItemTile);
+            } else {
+              notifyGameMessage('Клацни по тварині, яку хочеш помістити в будівлю.');
+            }
+          } else if (housingMode === 'release') {
+            if (selectedItemTile) {
+              notifyGameMessage('Для випуску обери вільну клітинку трави.');
+            } else if (housingPositionRef.current && releaseAnimalIdRef.current) {
+              const released = await releaseHousedAnimal(
+                userRef.current.id,
+                housingPositionRef.current,
+                releaseAnimalIdRef.current,
+                tile
+              );
+              if (released) {
+                setHousingMode(null);
+                setReleaseAnimalId(null);
+                setHousingPosition(null);
+                setHousingOpen(false);
+              }
+            }
+          } else if (tool?.startsWith('fertilize_')) {
+            if (!selectedItemTile) return;
+            const fertilizerId = tool.slice('fertilize_'.length);
+            const result = await fertilizeItem(userRef.current.id, fertilizerId, selectedItemTile);
+            if (result) {
+              const targetTile = tilesRef.current[
+                `${selectedItemTile.row},${selectedItemTile.col},${selectedItemTile.quadrant}`
+              ];
+              if (targetTile?.itemId) {
+                fertilizerEffectsRef.current.push({
+                  row: selectedItemTile.row,
+                  col: selectedItemTile.col,
+                  quadrant: selectedItemTile.quadrant,
+                  itemId: targetTile.itemId,
+                  acceleratedMs: result.acceleratedMs,
+                  createdAt: Date.now(),
+                });
+              }
+              setActiveTool(null);
+            }
+          } else if (tool === 'rotate') {
             const target = selectedItemTile;
             const targetData = target?.row !== undefined
               ? tilesRef.current[`${target.row},${target.col},${target.quadrant}`]
@@ -950,16 +1269,24 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
               if (target) {
                 const targetData = tilesRef.current[`${target.row},${target.col},${target.quadrant}`];
                 const targetItem = targetData?.itemId ? gameItemsRef.current[targetData.itemId] : undefined;
-                const hasCropBed = targetItem?.type === 'CROP' &&
-                  tilesRef.current[`${target.row},${target.col},-1`]?.type === 'dirt';
-                if (hasCropBed) {
-                  notifyGameMessage('Грядку з культурою не можна переміщати');
+                if (targetItem?.type === 'CROP' && targetData && Date.now() < getTreeHarvestReadyAt(targetData, targetItem)) {
+                  notifyGameMessage('Культуру можна переміщати лише після дозрівання');
                   return;
                 }
                 movingItemRef.current = target;
               } else {
                 const dirt = tilesRef.current[`${tile.row},${tile.col},-1`];
                 if (dirt?.type === 'dirt') {
+                  const hasCrop = Object.entries(tilesRef.current).some(([key, placedTile]) => {
+                    if (placedTile.type !== 'item' || !placedTile.itemId) return false;
+                    const [cropRow, cropCol] = key.split(',').map(Number);
+                    return cropRow === tile.row && cropCol === tile.col &&
+                      gameItemsRef.current[placedTile.itemId]?.type === 'CROP';
+                  });
+                  if (hasCrop) {
+                    notifyGameMessage('Грядку з культурою не можна переміщати');
+                    return;
+                  }
                   movingItemRef.current = { row: tile.row, col: tile.col, quadrant: -1, isDirt: true };
                 }
               }
@@ -985,15 +1312,18 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
               digTile(tile.row, tile.col, userRef.current.id);
             }
           } else if (tool === 'trash') {
-            const placedItem = findPlacedItemAtQuadrant(tilesRef.current, tile.row, tile.col, tile.quadrant);
-            if (placedItem) {
-              const [row, col] = placedItem.key.split(',').map(Number);
-              const item = placedItem.tile.itemId ? gameItemsRef.current[placedItem.tile.itemId] : undefined;
+            const selectedItem = selectedItemTile
+              ? tilesRef.current[`${selectedItemTile.row},${selectedItemTile.col},${selectedItemTile.quadrant}`]
+              : undefined;
+            if (selectedItemTile && selectedItem?.type === 'item') {
+              const row = selectedItemTile.row;
+              const col = selectedItemTile.col;
+              const item = selectedItem.itemId ? gameItemsRef.current[selectedItem.itemId] : undefined;
               if (item) {
                 setPendingSale({
                   row,
                   col,
-                  quadrant: placedItem.quadrant,
+                  quadrant: selectedItemTile.quadrant,
                   name: item.name,
                   image: item.shopImage ?? item.growthImages?.at(-1),
                   icon: item.shopIcon ?? item.yieldIcon ?? '📦',
@@ -1024,6 +1354,17 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
             const treeData = placedItem?.tile;
             const item = treeData?.itemId ? gameItemsRef.current[treeData.itemId] : undefined;
 
+            if (placedItem && item?.type === 'BUILDING' && item.housing) {
+              const [row, col] = placedItem.key.split(',').map(Number);
+              setHousingPosition({ row, col, quadrant: placedItem.quadrant });
+              setHousingOpen(false);
+              setHousingMode(null);
+              setReleaseAnimalId(null);
+              return;
+            }
+
+            setHousingPosition(null);
+            setHousingOpen(false);
             if (
               placedItem &&
               treeData?.type === 'item' &&
@@ -1083,6 +1424,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       const touch = e.touches[0];
       if (!touch) return;
       const touchedItem = getReadyItemAtScreen(touch.clientX, touch.clientY, false);
+      hoveredTrashItemRef.current = activeToolRef.current === 'trash' ? touchedItem : null;
       hoveredTile.current = touchedItem ?? (activeToolRef.current ? getGridTileFromScreen(touch.clientX, touch.clientY) : null);
       pointerDownOnCanvas.current = true;
       isDragging.current = true;
@@ -1136,6 +1478,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       );
       if (panDistance < 8) return;
       hoveredTile.current = null;
+      hoveredTrashItemRef.current = null;
       cameraRef.current.x = touch.clientX - startPan.current.x;
       cameraRef.current.y = touch.clientY - startPan.current.y;
     };
@@ -1193,7 +1536,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [digTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, readOnly, gridConfig, setActiveTool]);
+  }, [digTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, houseAnimal, releaseHousedAnimal, collectHousedAnimals, fertilizeItem, readOnly, gridConfig, setActiveTool]);
 
   const canvas = (
     <canvas
@@ -1209,6 +1552,18 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
 
   if (readOnly) return <div className="friend-canvas-layer">{canvas}</div>;
 
+  const housingTile = housingPosition
+    ? displayedTiles[`${housingPosition.row},${housingPosition.col},${housingPosition.quadrant}`]
+    : undefined;
+  const housingBuilding = housingTile?.itemId ? gameItems[housingTile.itemId] : undefined;
+  const stopHousingInteraction = () => {
+    setHousingMode(null);
+    setReleaseAnimalId(null);
+    setHousingPosition(null);
+    setHousingOpen(false);
+    cancelInteraction();
+  };
+
   const confirmSale = async () => {
     if (!pendingSale || !user) return;
     const success = await removeTile(pendingSale.row, pendingSale.col, pendingSale.quadrant, user.id);
@@ -1218,6 +1573,34 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
   return (
     <>
       {canvas}
+      {housingMode && (
+        <div className="housing-interaction-banner" role="status">
+          <span>{housingMode === 'store' ? 'Обери тварин на фермі, щоб помістити в будівлю' : 'Обери вільну клітинку трави для випуску тварини'}</span>
+          <button type="button" onClick={stopHousingInteraction}>Скасувати</button>
+        </div>
+      )}
+      {housingOpen && housingPosition && housingTile && housingBuilding?.housing && (
+        <HousingModal
+          building={housingBuilding}
+          position={housingPosition}
+          animals={housingTile.housedAnimals ?? []}
+          onClose={() => setHousingOpen(false)}
+          onStartHousing={() => {
+            cancelInteraction();
+            housingModeRef.current = 'store';
+            setHousingMode('store');
+            setHousingOpen(false);
+          }}
+          onRelease={(animalId) => {
+            cancelInteraction();
+            housingModeRef.current = 'release';
+            releaseAnimalIdRef.current = animalId;
+            setHousingMode('release');
+            setReleaseAnimalId(animalId);
+            setHousingOpen(false);
+          }}
+        />
+      )}
       {pendingSale && (
         <div style={styles.saleOverlay} onClick={() => setPendingSale(null)}>
           <section className="sale-confirm-dialog" style={styles.saleDialog} role="dialog" aria-modal="true" aria-labelledby="sale-dialog-title" onClick={(event) => event.stopPropagation()}>

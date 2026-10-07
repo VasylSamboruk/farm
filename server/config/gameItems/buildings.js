@@ -1,5 +1,23 @@
 export const buildings = [
 	{
+		id: 'chicken_coop',
+		name: 'Курятник',
+		type: 'BUILDING',
+		footprint: { width: 2, height: 2 },
+		largeFootprint: { width: 2, height: 3 },
+		spriteScale: 2.5,
+		canFlip: true,
+		price: 400000,
+		plantingXp: 4000,
+		requiredLevel: 50,
+		sortOrder: 1,
+		shopIcon: '🐔',
+		shopImage: '/assets/buildings/chicken_coop.png',
+		growthImages: ['/assets/buildings/chicken_coop.png'],
+		placementSurface: 'grass',
+		housing: { capacity: 30, animalTypes: ['chicken'] },
+	},
+	{
 		id: 'barn',
 		name: 'Амбар',
 		type: 'BUILDING',

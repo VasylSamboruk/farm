@@ -93,6 +93,8 @@ const serializeCatalogItem = (item) => ({
     requiredLevel: item.requiredLevel ?? 1,
     sortOrder: item.sortOrder,
     productionTimeMs: item.productionTimeMs,
+    mechanic: item.mechanic,
+    accelerationMs: item.accelerationMs,
     yieldAmount: item.yieldAmount,
     canFlip: item.canFlip,
     flipX: item.flipX,
@@ -101,6 +103,7 @@ const serializeCatalogItem = (item) => ({
     growthImages: item.growthImages ?? [],
     footprint: item.footprint,
     largeFootprint: item.largeFootprint,
+    housing: item.housing,
     access: item.access ?? 'all',
     custom: Boolean(item.custom),
     disabled: Boolean(item.disabled),
@@ -200,8 +203,8 @@ router.put('/level-rewards/:level', async (req, res) => {
 router.post('/catalog', async (req, res) => {
     const body = req.body ?? {};
     const { id, name, type, price, priceCurrency = 'coins', plantingXp, requiredLevel, productionTimeMs, yieldItem, yieldName,
-        yieldIcon, yieldAmount, sellPrice, placementSurface, spriteScale, shopImage, shopIcon,
-        yieldImage, growthImages, footprint, largeFootprint, canFlip, access } = body;
+        yieldIcon, yieldAmount, sellPrice, placementSurface, spriteScale, shopImage, shopIcon, housing,
+        yieldImage, growthImages, footprint, largeFootprint, canFlip, access, mechanic, accelerationMs } = body;
     const allowedTypes = ['TREE', 'CROP', 'ANIMAL', 'BUILDING', 'OTHER'];
     const producesItems = ['TREE', 'CROP', 'ANIMAL'].includes(type);
     const validId = typeof id === 'string' && /^[a-z][a-z0-9_]{1,47}$/.test(id);
@@ -225,6 +228,16 @@ router.post('/catalog', async (req, res) => {
         (yieldImage !== null && yieldImage !== undefined && yieldImage !== '' && !isImageSource(yieldImage)) ||
         !validImageList ||
         (shopIcon !== undefined && (typeof shopIcon !== 'string' || shopIcon.length > 16)) ||
+        (housing !== undefined && (
+            type !== 'BUILDING' ||
+            !Number.isSafeInteger(housing?.capacity) || housing.capacity < 1 || housing.capacity > 1000 ||
+            !Array.isArray(housing?.animalTypes) || housing.animalTypes.length < 1 || housing.animalTypes.length > 20 ||
+            new Set(housing.animalTypes).size !== housing.animalTypes.length ||
+            housing.animalTypes.some((animalId) => getGameItem(animalId)?.type !== 'ANIMAL')
+        )) ||
+        (type === 'OTHER' && mechanic !== undefined && !['expand_farm', 'accelerate_growth'].includes(mechanic)) ||
+        (mechanic === 'accelerate_growth' && (type !== 'OTHER' || !Number.isSafeInteger(accelerationMs) || accelerationMs < 1000 || accelerationMs > 2_592_000_000)) ||
+        (accelerationMs !== undefined && mechanic !== 'accelerate_growth') ||
         typeof canFlip !== 'boolean' || !['all', 'admin'].includes(access) ||
         (!shopImage && !growthImages.length && !shopIcon)) {
         return res.status(400).json({ message: 'Перевір обов’язкові поля, розміри та посилання на зображення.' });
@@ -255,6 +268,9 @@ router.post('/catalog', async (req, res) => {
             growthImages: growthImages.map((source) => normalizeImage(source)),
             footprint,
             largeFootprint: largeFootprint || undefined,
+            ...(housing ? { housing: { capacity: housing.capacity, animalTypes: housing.animalTypes } } : {}),
+            ...(type === 'OTHER' && mechanic ? { mechanic } : {}),
+            ...(mechanic === 'accelerate_growth' ? { accelerationMs } : {}),
             canFlip,
             access,
         });
@@ -274,6 +290,8 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             'name', 'price', 'priceCurrency', 'sellPrice', 'plantingXp', 'productionTimeMs', 'yieldItem', 'yieldName',
             'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'canFlip', 'footprint',
             'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX', 'access', 'requiredLevel', 'sortOrder', 'disabled',
+            'housing',
+            'mechanic', 'accelerationMs',
         ]);
         const updates = {};
 
@@ -313,6 +331,22 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 updates[field] = parsed;
                 continue;
             }
+            if (field === 'mechanic') {
+                if (item.type !== 'OTHER' || (value !== null && !['expand_farm', 'accelerate_growth'].includes(value))) {
+                    return res.status(400).json({ message: 'Механіка може бути розширенням або прискоренням часу для товару «Інше»' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'accelerationMs') {
+                if (item.type !== 'OTHER') return res.status(400).json({ message: 'Час прискорення доступний лише для товару «Інше»' });
+                if (value === null) { updates[field] = null; continue; }
+                if (!Number.isSafeInteger(value) || value < 1000 || value > 2_592_000_000) {
+                    return res.status(400).json({ message: 'Час прискорення має бути від 1 секунди до 30 днів' });
+                }
+                updates[field] = value;
+                continue;
+            }
             if (field === 'spriteScale') {
                 const parsed = Number(value);
                 if (!Number.isFinite(parsed) || parsed < 0.1 || parsed > 5) return res.status(400).json({ message: 'spriteScale має бути від 0.1 до 5' });
@@ -336,6 +370,18 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                     return res.status(400).json({ message: `${field} має містити width/height від 1 до ${maxSize}` });
                 }
                 updates[field] = { width: value.width, height: value.height };
+                continue;
+            }
+            if (field === 'housing') {
+                if (value === null) { updates[field] = null; continue; }
+                if (item.type !== 'BUILDING' || !value || !Number.isSafeInteger(value.capacity) ||
+                    value.capacity < 1 || value.capacity > 1000 ||
+                    !Array.isArray(value.animalTypes) || value.animalTypes.length < 1 || value.animalTypes.length > 20 ||
+                    new Set(value.animalTypes).size !== value.animalTypes.length ||
+                    value.animalTypes.some((animalId) => getGameItem(animalId)?.type !== 'ANIMAL')) {
+                    return res.status(400).json({ message: 'Вкажи місткість 1–1000 та список тварин із каталогу' });
+                }
+                updates[field] = { capacity: value.capacity, animalTypes: value.animalTypes };
                 continue;
             }
             if (field === 'growthImages') {
@@ -363,6 +409,12 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         }
 
         if (!Object.keys(updates).length) return res.status(400).json({ message: 'Не передано змін конфігурації' });
+        const resultingMechanic = updates.mechanic === undefined ? item.mechanic : updates.mechanic;
+        const resultingAcceleration = updates.accelerationMs === undefined ? item.accelerationMs : updates.accelerationMs;
+        if (resultingMechanic === 'accelerate_growth' &&
+            (!Number.isSafeInteger(resultingAcceleration) || resultingAcceleration < 1000 || resultingAcceleration > 2_592_000_000)) {
+            return res.status(400).json({ message: 'Для добрива задай прискорення від 1 секунди до 30 днів' });
+        }
         const mediaSettings = await getMediaSettings();
         if (updates.growthImages) updates.growthImages = updates.growthImages.map((source) => normalizeAssetSource(source, mediaSettings));
         for (const field of ['shopImage', 'yieldImage']) {

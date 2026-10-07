@@ -18,7 +18,7 @@ const itemTypes: { type: ItemType; label: string; icon: React.ReactNode; iconTex
   { type: 'TREE', label: 'Дерево', icon: <TreePine size={18} />, iconText: '🌳' },
   { type: 'CROP', label: 'Рослина', icon: <Sprout size={18} />, iconText: '🌱' },
   { type: 'ANIMAL', label: 'Тварина', icon: <PawPrint size={18} />, iconText: '🐮' },
-  { type: 'BUILDING', label: 'Декор', icon: <Warehouse size={18} />, iconText: '🏠' },
+  { type: 'BUILDING', label: 'Будівля', icon: <Warehouse size={18} />, iconText: '🏠' },
   { type: 'OTHER', label: 'Інше', icon: <Package size={18} />, iconText: '🧰' },
 ];
 
@@ -103,6 +103,7 @@ const AdminPreviewSprite: React.FC<AdminPreviewSpriteProps> = ({ type, image, ic
 export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCreated }) => {
   const showToast = useAdminToast();
   const [assetBaseUrl, setAssetBaseUrl] = useState('');
+  const [availableAnimals, setAvailableAnimals] = useState<AdminCatalogItem[]>([]);
   const [type, setType] = useState<ItemType>('TREE');
   const [name, setName] = useState('');
   const [id, setId] = useState('');
@@ -112,6 +113,8 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [plantingXp, setPlantingXp] = useState('10');
   const [requiredLevel, setRequiredLevel] = useState('1');
   const [productionTimeParts, setProductionTimeParts] = useState<DurationParts>({ hours: '00', minutes: '01', seconds: '00' });
+  const [otherMechanic, setOtherMechanic] = useState<'accelerate_growth' | 'expand_farm' | 'none'>('accelerate_growth');
+  const [accelerationParts, setAccelerationParts] = useState<DurationParts>({ hours: '00', minutes: '30', seconds: '00' });
   const [yieldItem, setYieldItem] = useState('');
   const [yieldName, setYieldName] = useState('');
   const [yieldIcon, setYieldIcon] = useState('');
@@ -121,6 +124,9 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [spriteScale, setSpriteScale] = useState('1');
   const [canFlip, setCanFlip] = useState(true);
   const [access, setAccess] = useState<'all' | 'admin'>('all');
+  const [housingEnabled, setHousingEnabled] = useState(false);
+  const [housingCapacity, setHousingCapacity] = useState('40');
+  const [housingAnimalTypes, setHousingAnimalTypes] = useState<string[]>([]);
   const [shopImage, setShopImage] = useState('');
   const [shopIcon, setShopIcon] = useState('');
   const [growthImageSources, setGrowthImageSources] = useState<string[]>([]);
@@ -134,11 +140,17 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
 
   useEffect(() => {
     let active = true;
-    void adminApi.getMediaSettings()
-      .then((settings) => { if (active) setAssetBaseUrl(settings.assetBaseUrl); })
-      .catch(() => undefined);
+    void Promise.all([adminApi.getMediaSettings(), adminApi.getCatalog()])
+      .then(([settings, catalog]) => {
+        if (!active) return;
+        setAssetBaseUrl(settings.assetBaseUrl);
+        setAvailableAnimals(catalog.filter((item) => item.type === 'ANIMAL'));
+      })
+      .catch((loadError: unknown) => {
+        if (active) showToast('error', getErrorMessage(loadError));
+      });
     return () => { active = false; };
-  }, []);
+  }, [showToast]);
 
   const growthImages = growthImageSources.map((source) => source.trim()).filter(Boolean);
   const productionTimeMs = durationPartsToMilliseconds(productionTimeParts);
@@ -279,7 +291,9 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
     const selectedRectangle = footprintMode === 'mini' ? miniRectangle : largeRectangle;
     const parsedSellPrice = sellPrice.trim() ? Number(sellPrice) : undefined;
     const parsedProductionTime = productionTimeMs ?? undefined;
+    const accelerationMs = durationPartsToMilliseconds(accelerationParts);
     const hasIncompleteStage = growthImageSources.some((source) => !source.trim());
+    const parsedHousingCapacity = Number(housingCapacity);
 
     if (!/^[a-z][a-z0-9_]{1,47}$/.test(normalizedId)) {
       setError('ID має починатися з латинської літери та містити лише латинські літери, цифри й _.');
@@ -300,6 +314,24 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
       (parsedSellPrice !== undefined && (!Number.isSafeInteger(parsedSellPrice) || parsedSellPrice < 0)))) {
       setError('Для дерева, рослини чи тварини заповни дані врожаю та час виробництва.');
       showToast('error', 'Заповни всі обов’язкові параметри виробництва.');
+      return;
+    }
+    if (type === 'ANIMAL' && ((!growthImages[0] && !shopImage.trim()) || !yieldImage.trim())) {
+      setError('Для тварини додай її зображення та окреме зображення продукції (яйце, молоко тощо).');
+      showToast('error', 'Тварині потрібні окремі зображення тварини й продукції.');
+      return;
+    }
+    if (type === 'BUILDING' && housingEnabled &&
+      (!Number.isSafeInteger(parsedHousingCapacity) || parsedHousingCapacity < 1 || parsedHousingCapacity > 1000 ||
+        housingAnimalTypes.length === 0 || housingAnimalTypes.some((animalId) => !availableAnimals.some((animal) => animal.id === animalId)))) {
+      setError('Для тваринницької будівлі вкажи місткість від 1 до 1000 та обери дозволених тварин.');
+      showToast('error', 'Перевір налаштування приміщення для тварин.');
+      return;
+    }
+    if (type === 'OTHER' && otherMechanic === 'accelerate_growth' &&
+      (!Number.isSafeInteger(accelerationMs) || (accelerationMs ?? 0) < 1000 || (accelerationMs ?? 0) > 2_592_000_000)) {
+      setError('Для добрива задай прискорення від 1 секунди до 30 днів.');
+      showToast('error', 'Перевір тривалість прискорення добрива.');
       return;
     }
 
@@ -323,6 +355,13 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
         access,
         footprint,
         ...(largeFootprint ? { largeFootprint } : {}),
+        ...(type === 'BUILDING' && housingEnabled
+          ? { housing: { capacity: parsedHousingCapacity, animalTypes: housingAnimalTypes } }
+          : {}),
+        ...(type === 'OTHER' && otherMechanic !== 'none' ? {
+          mechanic: otherMechanic,
+          ...(otherMechanic === 'accelerate_growth' ? { accelerationMs } : {}),
+        } : {}),
         placementSurface,
         spriteScale: parsedScale,
         canFlip,
@@ -438,26 +477,68 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
             </div>
           </section>
 
+          {type === 'BUILDING' && <section className="admin-create-section">
+            <div className="admin-create-section-heading"><span>03</span><div><h2>Приміщення для тварин</h2><p>Необов’язково: увімкни зберігання та виробництво тварин усередині</p></div></div>
+            <label className="admin-create-check"><input type="checkbox" checked={housingEnabled} onChange={(event) => setHousingEnabled(event.target.checked)} />Ця будівля може утримувати тварин</label>
+            {housingEnabled && <>
+              <div className="admin-create-fields admin-create-fields-two">
+                <label>Місткість<input type="number" min="1" max="1000" step="1" value={housingCapacity} onChange={(event) => setHousingCapacity(event.target.value)} /></label>
+              </div>
+              <fieldset className="admin-choice-field">
+                <legend>Дозволені тварини</legend>
+                {availableAnimals.length === 0 ? <p>У каталозі ще немає тварин.</p> : (
+                  <div className="admin-create-fields admin-create-fields-two">
+                    {availableAnimals.map((animal) => (
+                      <label className="admin-create-check" key={animal.id}>
+                        <input
+                          type="checkbox"
+                          checked={housingAnimalTypes.includes(animal.id)}
+                          onChange={(event) => setHousingAnimalTypes((current) => event.target.checked
+                            ? [...current, animal.id]
+                            : current.filter((animalId) => animalId !== animal.id))}
+                        />
+                        {animal.name} ({animal.id})
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </fieldset>
+            </>}
+          </section>}
+
+          {type === 'OTHER' && <section className="admin-create-section">
+            <div className="admin-create-section-heading"><span>03</span><div><h2>Дія предмета</h2><p>Налаштуй поведінку товару категорії «Інше»</p></div></div>
+            <div className="admin-create-fields admin-create-fields-two">
+              <label>Механіка<select value={otherMechanic} onChange={(event) => setOtherMechanic(event.target.value as typeof otherMechanic)}>
+                <option value="accelerate_growth">Добриво — прискорення таймера</option>
+                <option value="expand_farm">Розширення ферми вперед</option>
+                <option value="none">Без активної механіки</option>
+              </select></label>
+              {otherMechanic === 'accelerate_growth' && <div className="admin-duration-form-field"><span>На скільки прискорює</span><AdminDurationInput label="Тривалість прискорення добрива" value={accelerationParts} onChange={setAccelerationParts} /></div>}
+            </div>
+          </section>}
+
           {!isBuilding && <section className="admin-create-section">
             <div className="admin-create-section-heading"><span>03</span><div><h2>Виробництво</h2><p>Урожай і винагороди</p></div></div>
             <div className="admin-create-fields admin-create-fields-three">
+              {type === 'ANIMAL' && <p className="admin-product-fields-note">Зображення тварини використовується на фермі та в курнику. Зображення продукції — для готового врожаю та збору.</p>}
               <div className="admin-duration-form-field"><span>Час до врожаю</span><AdminDurationInput label="Час до врожаю" value={productionTimeParts} onChange={(value) => { setProductionTimeParts(value); restartPreviewCycle(); }} /></div>
               <label>Кількість за збір<input type="number" min="1" step="1" value={yieldAmount} onChange={(event) => setYieldAmount(event.target.value)} required /></label>
               <label>Ціна продажу<input type="number" min="0" step="1" value={sellPrice} onChange={(event) => setSellPrice(event.target.value)} placeholder="Не продається" /></label>
               <label>ID врожаю<input value={yieldItem} maxLength={64} onChange={(event) => setYieldItem(event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))} placeholder="peach" required /></label>
               <label>Назва врожаю<input value={yieldName} maxLength={120} onChange={(event) => setYieldName(event.target.value)} placeholder="Персик" required /></label>
-              <label>Іконка врожаю<input value={yieldIcon} maxLength={16} onChange={(event) => setYieldIcon(event.target.value)} placeholder="🍑" /></label>
-              <AdminImageUrlInput key={`yield-${assetBaseUrl}`} className="admin-create-field-wide" label="Зображення врожаю" value={yieldImage} assetBaseUrl={assetBaseUrl} onChange={setYieldImage} />
+              <label>{type === 'ANIMAL' ? 'Запасна іконка продукції' : 'Іконка врожаю'}<input value={yieldIcon} maxLength={16} onChange={(event) => setYieldIcon(event.target.value)} placeholder={type === 'ANIMAL' ? '🥚' : '🍑'} /></label>
+              <AdminImageUrlInput key={`yield-${assetBaseUrl}`} className="admin-create-field-wide" label={type === 'ANIMAL' ? 'Зображення продукції (яйце, молоко тощо)' : 'Зображення врожаю'} value={yieldImage} assetBaseUrl={assetBaseUrl} onChange={setYieldImage} />
             </div>
           </section>}
 
           <section className="admin-create-section">
             <div className="admin-create-section-heading"><span>{isBuilding ? '03' : '04'}</span><div><h2>Зображення</h2><p>Картинки товару та стадій росту</p></div></div>
             <div className="admin-create-fields admin-create-fields-two">
-              <AdminImageUrlInput key={`shop-${assetBaseUrl}`} label="Зображення магазину" value={shopImage} assetBaseUrl={assetBaseUrl} onChange={setShopImage} />
-              <label>Іконка-запасний варіант<input value={shopIcon} maxLength={16} onChange={(event) => setShopIcon(event.target.value)} placeholder={selectedIcon} /></label>
+              <AdminImageUrlInput key={`shop-${assetBaseUrl}`} label={type === 'ANIMAL' ? 'Зображення тварини в магазині' : 'Зображення магазину'} value={shopImage} assetBaseUrl={assetBaseUrl} onChange={setShopImage} />
+              <label>{type === 'ANIMAL' ? 'Запасна іконка тварини' : 'Іконка-запасний варіант'}<input value={shopIcon} maxLength={16} onChange={(event) => setShopIcon(event.target.value)} placeholder={selectedIcon} /></label>
               <div className="admin-create-field-wide admin-new-stage-editor">
-                <div className="admin-new-stage-heading"><div><strong>Стадії зображення на полі</strong><small>Вибери тип джерела й укажи шлях або URL</small></div><button type="button" onClick={() => { setGrowthImageSources((current) => [...current, '']); restartPreviewCycle(); }}>Додати стадію</button></div>
+                <div className="admin-new-stage-heading"><div><strong>{type === 'ANIMAL' ? 'Зображення тварини на фермі та в курнику' : 'Стадії зображення на полі'}</strong><small>Вибери тип джерела й укажи шлях або URL</small></div><button type="button" onClick={() => { setGrowthImageSources((current) => [...current, '']); restartPreviewCycle(); }}>Додати стадію</button></div>
                 {growthImageSources.map((source, index) => (
                   <div className="admin-new-stage-row" key={`new-stage-${index}`}>
                     <div className="admin-new-stage-identity"><span>{index + 1}</span><div>{source.trim() ? <img src={resolveImageUrl(source, assetBaseUrl)} alt={`Стадія ${index + 1}`} /> : 'PNG'}</div></div>

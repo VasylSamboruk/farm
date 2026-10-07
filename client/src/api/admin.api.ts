@@ -56,12 +56,15 @@ export interface AdminCatalogItem {
   requiredLevel: number;
   sortOrder: number;
   productionTimeMs?: number | null;
+  mechanic?: 'expand_farm' | 'accelerate_growth' | null;
+  accelerationMs?: number | null;
   canFlip?: boolean;
   flipX?: boolean;
   spriteScale?: number;
   growthImages?: string[];
   footprint?: { width: number; height: number };
   largeFootprint?: { width: number; height: number } | null;
+  housing?: { capacity: number; animalTypes: string[] } | null;
   access: 'all' | 'admin';
   custom?: boolean;
   disabled?: boolean;

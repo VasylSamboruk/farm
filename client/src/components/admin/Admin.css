@@ -199,10 +199,36 @@
 .admin-product-title strong { overflow: hidden; color: var(--admin-ink); text-overflow: ellipsis; white-space: nowrap; font: 700 16px Georgia, serif; }
 .admin-product-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; min-width: 0; gap: 9px; }
 .admin-product-fields label { display: grid; align-content: start; gap: 5px; width: 100%; max-width: 100%; min-width: 0; color: #596b5c; font-size: 10px; font-weight: 700; }
+.admin-product-fields-note { grid-column: 1 / -1; margin: 0; padding: 8px 10px; border: 1px solid #d7e5d8; border-radius: 5px; color: #48694e; background: #f0f6ed; font-size: 10px; line-height: 1.45; }
 .admin-product-fields input:not([type='checkbox']),
 .admin-product-fields select { width: 100%; min-width: 0; height: 35px; padding: 0 8px; border: 1px solid #d4dfd4; border-radius: 5px; outline-color: #579071; color: var(--admin-ink); background: #fff; font-size: 11px; }
 .admin-product-fields .admin-check-field { display: flex; align-items: center; gap: 7px; min-height: 35px; }
 .admin-product-fields .admin-check-field input { width: 15px; height: 15px; accent-color: var(--admin-green); }
+.admin-product-duration { grid-column: 1 / -1; width: min(100%, 470px); }
+.admin-product-duration .admin-duration-input { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 9px; }
+.admin-product-duration .admin-duration-segment { grid-template-columns: minmax(0, 1fr) auto; min-height: 46px; height: 46px; padding: 0 11px; font-size: 11px; }
+.admin-product-duration .admin-duration-segment input { height: 40px; font-size: 16px; }
+.admin-product-duration .admin-duration-separator { font-size: 20px; }
+.admin-product-footprint-editor { display: grid; grid-column: 1 / -1; gap: 10px; min-width: 0; padding: 11px; border: 1px solid #dce6da; border-radius: 6px; background: #f7faf5; }
+.admin-product-footprint-heading,
+.admin-product-footprint-subheading { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 9px; }
+.admin-product-footprint-heading { justify-content: space-between; }
+.admin-product-footprint-heading strong,
+.admin-product-footprint-subheading strong { color: #405d47; font-size: 10px; }
+.admin-product-footprint-heading span { color: #7b897c; font-size: 9px; }
+.admin-product-footprint-groups { display: grid; grid-template-columns: minmax(88px, 0.25fr) minmax(0, 1fr); align-items: start; gap: 14px; }
+.admin-product-footprint-group { display: grid; align-content: start; gap: 7px; min-width: 0; }
+.admin-product-footprint-subheading { justify-content: space-between; min-height: 20px; }
+.admin-product-footprint-subheading span { color: #4b7856; font-size: 9px; font-weight: 800; }
+.admin-product-footprint-subheading button { min-height: 23px; padding: 0 7px; border: 1px solid #d4dfd4; border-radius: 4px; color: #586e5c; background: #fff; font-size: 9px; font-weight: 700; cursor: pointer; }
+.admin-product-footprint-mini-grid { display: grid; grid-template-columns: repeat(2, 32px); gap: 3px; }
+.admin-product-footprint-large-grid { display: grid; grid-template-columns: repeat(8, minmax(17px, 1fr)); gap: 3px; width: min(100%, 250px); }
+.admin-product-footprint-mini-grid button,
+.admin-product-footprint-large-grid button { aspect-ratio: 1; min-width: 0; padding: 0; border: 1px solid #cbd8c9; border-radius: 3px; background: repeating-linear-gradient(45deg, #edf3e9 0 4px, #e4ece0 4px 8px); cursor: pointer; }
+.admin-product-footprint-mini-grid button.is-selected,
+.admin-product-footprint-large-grid button.is-selected { border-color: #a58b36; background: repeating-linear-gradient(45deg, #e6cd70 0 4px, #d8ba51 4px 8px); }
+.admin-product-footprint-mini-grid button:focus-visible,
+.admin-product-footprint-large-grid button:focus-visible { outline: 2px solid #327955; outline-offset: 1px; }
 .admin-product-advanced { padding-top: 1px; border-top: 1px solid #e4eae3; }
 .admin-product-advanced summary { padding: 8px 0 1px; color: #4b7255; font-size: 11px; font-weight: 800; cursor: pointer; }
 .admin-product-advanced .admin-product-fields { padding-top: 10px; }

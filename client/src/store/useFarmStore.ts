@@ -13,6 +13,14 @@ export interface TileData {
   flipX?: boolean;
   placedAt?: string;
   lastHarvestedAt?: string;
+  housedAnimals?: HousedAnimal[];
+}
+
+export interface HousedAnimal {
+  id: string;
+  itemId: string;
+  placedAt: string;
+  lastHarvestedAt?: string;
 }
 
 export interface HarvestQueueEntry {
@@ -37,6 +45,7 @@ interface FarmTileResponse {
   flipX?: boolean;
   placedAt?: string;
   lastHarvestedAt?: string;
+  housedAnimals?: HousedAnimal[];
 }
 
 interface FarmResponse {
@@ -55,6 +64,11 @@ interface FarmState {
   dismissGameMessage: () => void;
   loadFarm: (userId: string) => Promise<void>;
   expandFarm: (userId: string, itemId: string, fromInventory?: boolean) => Promise<boolean>;
+  houseAnimal: (userId: string, building: { row: number; col: number; quadrant: number }, animal: { row: number; col: number; quadrant: number }) => Promise<boolean>;
+  releaseHousedAnimal: (userId: string, building: { row: number; col: number; quadrant: number }, animalId: string, destination: { row: number; col: number; quadrant: number }) => Promise<boolean>;
+  collectHousedAnimals: (userId: string, building: { row: number; col: number; quadrant: number }) => Promise<{ items: { yieldItem: string; yieldName: string; amount: number }[] } | null>;
+  buyFertilizer: (userId: string, itemId: string) => Promise<boolean>;
+  fertilizeItem: (userId: string, itemId: string, target: { row: number; col: number; quadrant: number }) => Promise<{ appliedTo: string; acceleratedMs: number } | null>;
   digTile: (row: number, col: number, userId: string) => void;
   removeTile: (row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
   placeItem: (row: number, col: number, quadrant: number, itemId: string, userId: string, fromInventory?: boolean) => Promise<boolean>;
@@ -78,9 +92,30 @@ const convertToDbArray = (tiles: Record<string, TileData>) => {
       flipX: data.flipX ?? false,
       stage: data.stage || 0,
       placedAt: data.placedAt,
-      lastHarvestedAt: data.lastHarvestedAt
+      lastHarvestedAt: data.lastHarvestedAt,
+      housedAnimals: data.housedAnimals?.map(({ id, ...animal }) => ({ _id: id, ...animal })),
     };
   });
+};
+
+const toFarmTileMap = (tiles: FarmTileResponse[]) => {
+  const tileMap: Record<string, TileData> = {};
+  for (const tile of tiles) {
+    const key = `${tile.y},${tile.x},${tile.isDirt ? -1 : tile.quadrant}`;
+    tileMap[key] = tile.isDirt ? { type: 'dirt', flipX: tile.flipX ?? false } : {
+      type: 'item',
+      itemId: tile.itemId,
+      stage: tile.stage,
+      quadrant: tile.quadrant,
+      occupiedQuadrants: tile.occupiedQuadrants?.length ? tile.occupiedQuadrants : [tile.quadrant],
+      occupiedCells: tile.occupiedCells?.map((cell) => ({ row: cell.y, col: cell.x, quadrant: cell.quadrant })),
+      flipX: tile.flipX ?? false,
+      placedAt: tile.placedAt,
+      lastHarvestedAt: tile.lastHarvestedAt,
+      housedAnimals: tile.housedAnimals,
+    };
+  }
+  return tileMap;
 };
 
 export const useFarmStore = create<FarmState>((set, get) => {
@@ -141,26 +176,7 @@ export const useFarmStore = create<FarmState>((set, get) => {
       const response = await fetch(`${API_BASE_URL}/farm/${userId}`);
       if (!response.ok) throw new Error(`Не вдалося завантажити ферму (${response.status})`);
       const data = await response.json() as FarmResponse;
-      const loadedTiles: Record<string, TileData> = {};
-        
-      data.tiles.forEach((t) => {
-          if (t.isDirt) {
-            loadedTiles[`${t.y},${t.x},-1`] = { type: 'dirt', flipX: t.flipX ?? false };
-          } else {
-            loadedTiles[`${t.y},${t.x},${t.quadrant}`] = {
-              type: 'item',
-              itemId: t.itemId,
-              stage: t.stage,
-              quadrant: t.quadrant,
-              occupiedQuadrants: t.occupiedQuadrants?.length ? t.occupiedQuadrants : [t.quadrant],
-              occupiedCells: t.occupiedCells?.map((cell) => ({ row: cell.y, col: cell.x, quadrant: cell.quadrant })),
-              flipX: t.flipX ?? false,
-              placedAt: t.placedAt,
-              lastHarvestedAt: t.lastHarvestedAt
-            };
-          }
-      });
-      set({ tiles: loadedTiles, farmSize: data.size ?? 15 });
+      set({ tiles: toFarmTileMap(data.tiles), farmSize: data.size ?? 15 });
     } catch (error) {
       console.error('Не вдалося завантажити ферму:', error);
       throw error;
@@ -179,28 +195,164 @@ export const useFarmStore = create<FarmState>((set, get) => {
         set({ gameMessage: data.message || 'Не вдалося розширити ферму' });
         return false;
       }
-      const expandedTiles: Record<string, TileData> = {};
-      (data.tiles as FarmTileResponse[]).forEach((tile) => {
-        const key = `${tile.y},${tile.x},${tile.isDirt ? -1 : tile.quadrant}`;
-        expandedTiles[key] = tile.isDirt ? { type: 'dirt' } : {
-          type: 'item',
-          itemId: tile.itemId,
-          stage: tile.stage,
-          quadrant: tile.quadrant,
-          occupiedQuadrants: tile.occupiedQuadrants?.length ? tile.occupiedQuadrants : [tile.quadrant],
-          occupiedCells: tile.occupiedCells?.map((cell) => ({ row: cell.y, col: cell.x, quadrant: cell.quadrant })),
-          flipX: tile.flipX ?? false,
-          placedAt: tile.placedAt,
-          lastHarvestedAt: tile.lastHarvestedAt,
-        };
-      });
-      set({ tiles: expandedTiles, farmSize: data.size });
+      set({ tiles: toFarmTileMap(data.tiles as FarmTileResponse[]), farmSize: data.size });
       useAuthStore.getState().updateUser(data.user);
       return true;
     } catch (error) {
       console.error('Помилка розширення ферми', error);
       set({ gameMessage: 'Не вдалося розширити ферму. Перевір з’єднання із сервером.' });
       return false;
+    }
+  },
+
+  houseAnimal: async (userId, building, animal) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/housing/store`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          buildingX: building.col,
+          buildingY: building.row,
+          buildingQuadrant: building.quadrant,
+          animalX: animal.col,
+          animalY: animal.row,
+          animalQuadrant: animal.quadrant,
+        }),
+      });
+      const data = await response.json() as { message?: string; size?: number; tiles?: FarmTileResponse[] };
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося помістити тварину в будівлю' });
+        return false;
+      }
+      set({ tiles: toFarmTileMap(data.tiles ?? []), farmSize: data.size ?? get().farmSize });
+      return true;
+    } catch (error) {
+      console.error('Не вдалося помістити тварину в будівлю:', error);
+      set({ gameMessage: 'Не вдалося помістити тварину в будівлю. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
+  releaseHousedAnimal: async (userId, building, animalId, destination) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/housing/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          buildingX: building.col,
+          buildingY: building.row,
+          buildingQuadrant: building.quadrant,
+          animalId,
+          x: destination.col,
+          y: destination.row,
+          quadrant: destination.quadrant,
+        }),
+      });
+      const data = await response.json() as { message?: string; size?: number; tiles?: FarmTileResponse[] };
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося випустити тварину' });
+        return false;
+      }
+      set({ tiles: toFarmTileMap(data.tiles ?? []), farmSize: data.size ?? get().farmSize });
+      return true;
+    } catch (error) {
+      console.error('Не вдалося випустити тварину:', error);
+      set({ gameMessage: 'Не вдалося випустити тварину. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
+  collectHousedAnimals: async (userId, building) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/housing/collect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          buildingX: building.col,
+          buildingY: building.row,
+          buildingQuadrant: building.quadrant,
+        }),
+      });
+      const data = await response.json() as {
+        message?: string;
+        size?: number;
+        tiles?: FarmTileResponse[];
+        collected?: { yieldItem: string; yieldName: string; amount: number }[];
+        user?: { coins: number; rubies: number; xp: number; level: number; inventory: Record<string, number> };
+      };
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося зібрати продукцію' });
+        return null;
+      }
+      set({ tiles: toFarmTileMap(data.tiles ?? []), farmSize: data.size ?? get().farmSize });
+      if (data.user) useAuthStore.getState().updateUser(data.user);
+      return { items: data.collected ?? [] };
+    } catch (error) {
+      console.error('Не вдалося зібрати продукцію з будівлі:', error);
+      set({ gameMessage: 'Не вдалося зібрати продукцію. Перевір з’єднання із сервером.' });
+      return null;
+    }
+  },
+
+  buyFertilizer: async (userId, itemId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/buy-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, itemId }),
+      });
+      const data = await response.json() as {
+        message?: string;
+        user?: { coins: number; rubies: number; itemInventory: Record<string, number> };
+      };
+      if (!response.ok || !data.user) {
+        set({ gameMessage: data.message || 'Не вдалося купити добриво' });
+        return false;
+      }
+      useAuthStore.getState().updateUser(data.user);
+      return true;
+    } catch (error) {
+      console.error('Не вдалося купити добриво:', error);
+      set({ gameMessage: 'Не вдалося купити добриво. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
+  fertilizeItem: async (userId, itemId, target) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/fertilize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          itemId,
+          x: target.col,
+          y: target.row,
+          quadrant: target.quadrant,
+        }),
+      });
+      const data = await response.json() as {
+        message?: string;
+        tiles?: FarmTileResponse[];
+        size?: number;
+        user?: { coins: number; rubies: number; itemInventory: Record<string, number> };
+        appliedTo?: string;
+        acceleratedMs?: number;
+      };
+      if (!response.ok || !data.user) {
+        set({ gameMessage: data.message || 'Не вдалося застосувати добриво' });
+        return null;
+      }
+      if (data.tiles) set({ tiles: toFarmTileMap(data.tiles), farmSize: data.size ?? get().farmSize });
+      useAuthStore.getState().updateUser(data.user);
+      return { appliedTo: data.appliedTo ?? 'об’єкта', acceleratedMs: data.acceleratedMs ?? 0 };
+    } catch (error) {
+      console.error('Не вдалося застосувати добриво:', error);
+      set({ gameMessage: 'Не вдалося застосувати добриво. Перевір з’єднання із сервером.' });
+      return null;
     }
   },
 
@@ -343,7 +495,7 @@ export const useFarmStore = create<FarmState>((set, get) => {
         const sourceDirtKey = `${fromRow},${fromCol},-1`;
         const destinationDirtKey = `${row},${col},-1`;
         const sourceDirt = newTiles[sourceDirtKey];
-        if (sourceDirt?.type === 'dirt') {
+        if (source.type === 'dirt' && sourceDirt?.type === 'dirt') {
           delete newTiles[sourceDirtKey];
           newTiles[destinationDirtKey] = sourceDirt;
         }

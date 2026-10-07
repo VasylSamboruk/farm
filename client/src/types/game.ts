@@ -17,12 +17,14 @@ export interface GameItemConfig {
   type: GameItemType;
   footprint?: { width: number; height: number };
   largeFootprint?: { width: number; height: number };
+  housing?: { capacity: number; animalTypes: string[] };
   spriteScale?: number;
   flipX?: boolean;
   canFlip?: boolean;
   price: number;
   priceCurrency?: 'coins' | 'rubies';
-  mechanic?: 'expand_farm';
+  mechanic?: 'expand_farm' | 'accelerate_growth' | null;
+  accelerationMs?: number | null;
   plantingXp: number;
   requiredLevel?: number;
   sortOrder?: number;

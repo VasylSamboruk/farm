@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Minus, Plus } from 'lucide-react';
+import { Minus, PackageOpen, Plus } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
 import { useToolStore } from '../../store/useToolStore';
+import { formatGameDuration } from '../../game/trees';
 
 const getTitleFontSize = (name: string) => Math.max(9, Math.min(13, (13 * 14) / name.length));
 
@@ -13,6 +14,7 @@ interface InventoryModalProps {
 }
 
 export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose }) => {
+  const [activeCategory, setActiveCategory] = useState<'harvest' | 'farm' | 'other' | null>(null);
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [sellingItemId, setSellingItemId] = useState<string | null>(null);
   const repeatTimeoutRef = useRef<number | null>(null);
@@ -32,6 +34,16 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
   const stockedFarmItems = Object.entries(user?.itemInventory ?? {}).filter(([, amount]) => amount > 0)
     .map(([itemId, amount]) => ({ item: items[itemId], amount }))
     .filter((entry) => entry.item);
+  const stockedOtherItems = stockedFarmItems.filter(({ item }) => item?.type === 'OTHER');
+  const stockedPlaceableItems = stockedFarmItems.filter(({ item }) => item?.type !== 'OTHER');
+  const categoryCounts = {
+    harvest: stockedItems.reduce((total, item) => total + (inventory[item.yieldItem!] ?? 0), 0),
+    farm: stockedPlaceableItems.reduce((total, entry) => total + entry.amount, 0),
+    other: stockedOtherItems.reduce((total, entry) => total + entry.amount, 0),
+  };
+  const visibleCategory = activeCategory ?? (
+    categoryCounts.other > 0 ? 'other' : categoryCounts.farm > 0 ? 'farm' : 'harvest'
+  );
 
   const stopAmountHold = () => {
     if (repeatTimeoutRef.current !== null) window.clearTimeout(repeatTimeoutRef.current);
@@ -47,13 +59,15 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
     }));
   };
 
-  const startAmountHold = (itemId: string, delta: number, max: number) => {
-    stopAmountHold();
-    changeAmountBy(itemId, delta, max);
-    repeatTimeoutRef.current = window.setTimeout(() => {
-      repeatIntervalRef.current = window.setInterval(() => changeAmountBy(itemId, delta, max), 80);
-    }, 300);
-  };
+  const startAmountHold = (itemId: string, delta: number, max: number) =>
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      stopAmountHold();
+      changeAmountBy(itemId, delta, max);
+      repeatTimeoutRef.current = window.setTimeout(() => {
+        repeatIntervalRef.current = window.setInterval(() => changeAmountBy(itemId, delta, max), 80);
+      }, 300);
+    };
 
   useEffect(() => stopAmountHold, []);
 
@@ -67,11 +81,16 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
     setSellingItemId(null);
   };
 
-  const handleUseFarmItem = async (itemId: string, mechanic?: string) => {
+  const handleUseFarmItem = async (itemId: string, mechanic?: string | null) => {
     if (!user) return;
     if (mechanic === 'expand_farm') {
       const success = await expandFarm(user.id, itemId, true);
       if (success) notifyGameMessage('Подароване розширення застосовано.');
+      return;
+    }
+    if (mechanic === 'accelerate_growth') {
+      setActiveTool(`fertilize_${itemId}`);
+      onClose();
       return;
     }
     if (items[itemId]?.type === 'OTHER') {
@@ -107,12 +126,28 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
           <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити інвентар">✕</button>
         </header>
 
+        <div className="shop-modal-tabs inventory-modal-tabs">
+          {([
+            ['harvest', 'Урожай'],
+            ['farm', 'Ферма'],
+            ['other', 'Інше'],
+          ] as const).map(([category, label]) => (
+            <button
+              key={category}
+              type="button"
+              className={`shop-modal-tab${visibleCategory === category ? ' is-active' : ''}`}
+              onClick={() => setActiveCategory(category)}
+            >
+              {label} <span className="inventory-tab-count">{categoryCounts[category]}</span>
+            </button>
+          ))}
+        </div>
         {stockedItems.length === 0 && stockedFarmItems.length === 0 ? (
           <div className="inventory-modal-empty" style={styles.empty}>Поки що склад порожній</div>
         ) : (
           <div className="modal-scrollbar-hidden" style={styles.grid}>
-              {stockedItems.length > 0 && <h3 className="inventory-section-title" style={styles.sectionTitle}>Урожай</h3>}
-              {stockedItems.map((item) => {
+              {visibleCategory === 'harvest' && stockedItems.length > 0 && <h3 className="inventory-section-title" style={styles.sectionTitle}>Урожай</h3>}
+              {visibleCategory === 'harvest' && stockedItems.map((item) => {
                 const itemId = item.yieldItem!;
                 const stockAmount = inventory[itemId] ?? 0;
                 const amount = Math.min(amounts[itemId] ?? 1, stockAmount);
@@ -136,7 +171,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                         type="button"
                         className="inventory-step-button"
                         style={styles.stepButton}
-                        onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); startAmountHold(itemId, -1, stockAmount); }}
+                        onPointerDown={startAmountHold(itemId, -1, stockAmount)}
                         onPointerUp={stopAmountHold}
                         onPointerCancel={stopAmountHold}
                         onLostPointerCapture={stopAmountHold}
@@ -151,7 +186,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                         type="button"
                         className="inventory-step-button"
                         style={styles.stepButton}
-                        onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); startAmountHold(itemId, 1, stockAmount); }}
+                        onPointerDown={startAmountHold(itemId, 1, stockAmount)}
                         onPointerUp={stopAmountHold}
                         onPointerCancel={stopAmountHold}
                         onLostPointerCapture={stopAmountHold}
@@ -187,8 +222,8 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                   </article>
                 );
               })}
-              {stockedFarmItems.length > 0 && <h3 className="inventory-section-title" style={styles.sectionTitle}>Предмети ферми</h3>}
-              {stockedFarmItems.map(({ item, amount: stockAmount }) => {
+              {visibleCategory === 'farm' && stockedPlaceableItems.length > 0 && <h3 className="inventory-section-title" style={styles.sectionTitle}>Предмети ферми</h3>}
+              {visibleCategory === 'farm' && stockedPlaceableItems.map(({ item, amount: stockAmount }) => {
                 if (!item) return null;
                 const refund = Math.floor(item.price / 2);
                 const currencyImage = item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png';
@@ -210,7 +245,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                       onClick={() => void handleUseFarmItem(item.id, item.mechanic)}
                       disabled={isBusy}
                     >
-                      {item.mechanic === 'expand_farm' ? 'Застосувати' : 'Розмістити'}
+                      {item.mechanic === 'expand_farm' ? 'Застосувати' : item.mechanic === 'accelerate_growth' ? 'Вибрати ціль' : 'Розмістити'}
                     </button>
                     <button
                       type="button"
@@ -225,6 +260,47 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                   </article>
                 );
               })}
+              {visibleCategory === 'other' && stockedOtherItems.length > 0 && <h3 className="inventory-section-title" style={styles.sectionTitle}>Інше</h3>}
+              {visibleCategory === 'other' && stockedOtherItems.map(({ item, amount: stockAmount }) => {
+                if (!item) return null;
+                const isBusy = sellingItemId === item.id;
+                const isFertilizer = item.mechanic === 'accelerate_growth';
+                return (
+                  <article key={item.id} className="game-modal-card" style={styles.card}>
+                    <h3 className="inventory-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.name)}px` }} title={item.name}>{item.name}</h3>
+                    <div className="inventory-image-box" style={styles.imageBox}>
+                      {item.shopImage
+                        ? <img src={item.shopImage} alt="" style={styles.farmItemImage} draggable={false} />
+                        : <span style={styles.productIcon}>{item.shopIcon ?? '🎁'}</span>}
+                    </div>
+                    <div className="inventory-stock-line" style={styles.stockLine}><span>Запас</span><strong>{stockAmount}</strong></div>
+                    {isFertilizer && (
+                      <div className="inventory-stock-line" style={styles.stockLine}>
+                        <span>Прискорює таймер</span>
+                        <strong>{formatGameDuration(item.accelerationMs ?? 0)}</strong>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="inventory-sell-button"
+                      style={styles.sellButton}
+                      onClick={() => void handleUseFarmItem(item.id, item.mechanic)}
+                      disabled={isBusy}
+                    >
+                      {isBusy ? '...' : isFertilizer ? 'Використати' : 'Застосувати'}
+                    </button>
+                  </article>
+                );
+              })}
+              {((visibleCategory === 'harvest' && stockedItems.length === 0) ||
+                (visibleCategory === 'farm' && stockedPlaceableItems.length === 0) ||
+                (visibleCategory === 'other' && stockedOtherItems.length === 0)) && (
+                <div className="inventory-category-empty">
+                  <span className="inventory-category-empty-icon"><PackageOpen size={30} strokeWidth={1.8} /></span>
+                  <strong>У цій категорії поки що порожньо</strong>
+                  <span>Тут з’являться ваші предмети</span>
+                </div>
+              )}
           </div>
         )}
       </section>

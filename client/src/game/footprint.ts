@@ -44,9 +44,11 @@ export const getOccupiedCells = (
   if (!Number.isInteger(anchorQuadrant) || anchorQuadrant < 0 || anchorQuadrant > 3) return null;
 
   if (item.largeFootprint) {
+    const width = flipX ? item.largeFootprint.height : item.largeFootprint.width;
+    const height = flipX ? item.largeFootprint.width : item.largeFootprint.height;
     const cells: FootprintCell[] = [];
-    for (let rowOffset = 0; rowOffset < item.largeFootprint.height; rowOffset++) {
-      for (let colOffset = 0; colOffset < item.largeFootprint.width; colOffset++) {
+    for (let rowOffset = 0; rowOffset < height; rowOffset++) {
+      for (let colOffset = 0; colOffset < width; colOffset++) {
         for (let quadrant = 0; quadrant < 4; quadrant++) {
           cells.push({ row: row + rowOffset, col: col + colOffset, quadrant });
         }

@@ -8,12 +8,15 @@ import { useAdminToast } from './adminToast';
 import { resolveImageUrl } from '../../game/assetUrls';
 import { durationPartsToMilliseconds, millisecondsToDurationParts, type DurationParts } from '../../game/durationInput';
 
-const categories: { type: 'ALL' | AdminCatalogItem['type']; label: string }[] = [
+type AdminShopCategory = 'ALL' | AdminCatalogItem['type'] | 'DECOR' | 'HOUSING_BUILDING';
+
+const categories: { type: AdminShopCategory; label: string }[] = [
   { type: 'ALL', label: 'Усі товари' },
   { type: 'TREE', label: 'Дерева' },
   { type: 'CROP', label: 'Рослини' },
   { type: 'ANIMAL', label: 'Тварини' },
-  { type: 'BUILDING', label: 'Декор' },
+  { type: 'DECOR', label: 'Декор' },
+  { type: 'HOUSING_BUILDING', label: 'Будівлі' },
   { type: 'OTHER', label: 'Інше' },
 ];
 
@@ -26,6 +29,8 @@ interface ItemDraft {
   requiredLevel: string;
   sortOrder: string;
   productionTime: DurationParts;
+  mechanic: 'expand_farm' | 'accelerate_growth' | 'none';
+  acceleration: DurationParts;
   yieldItem: string;
   yieldName: string;
   yieldIcon: string;
@@ -43,6 +48,9 @@ interface ItemDraft {
   yieldImage: string;
   spriteScale: string;
   growthImages: string[];
+  housingEnabled: boolean;
+  housingCapacity: string;
+  housingAnimalTypes: string[];
 }
 
 const createDraft = (item: AdminCatalogItem): ItemDraft => {
@@ -56,6 +64,8 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => {
   requiredLevel: String(item.requiredLevel ?? 1),
   sortOrder: String(item.sortOrder ?? 1),
   productionTime: durationParts,
+  mechanic: item.mechanic ?? 'none',
+  acceleration: millisecondsToDurationParts(item.accelerationMs),
   yieldItem: item.yieldItem ?? '',
   yieldName: item.yieldName ?? '',
   yieldIcon: item.yieldIcon ?? '',
@@ -73,6 +83,9 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => {
   yieldImage: item.yieldImage ?? '',
   spriteScale: String(item.spriteScale ?? 1),
   growthImages: [...(item.growthImages ?? [])],
+  housingEnabled: Boolean(item.housing),
+  housingCapacity: String(item.housing?.capacity ?? 40),
+  housingAnimalTypes: [...(item.housing?.animalTypes ?? [])],
   };
 };
 
@@ -99,7 +112,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
   const [catalog, setCatalog] = useState<AdminCatalogItem[]>([]);
   const [assetBaseUrl, setAssetBaseUrl] = useState('');
   const [drafts, setDrafts] = useState<Record<string, ItemDraft>>({});
-  const [category, setCategory] = useState<(typeof categories)[number]['type']>('ALL');
+  const [category, setCategory] = useState<AdminShopCategory>('ALL');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
@@ -163,11 +176,13 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     const plantingXp = Number(draft.plantingXp);
     const yieldAmount = draft.yieldAmount.trim() ? Number(draft.yieldAmount) : 0;
     const productionTimeMs = durationPartsToMilliseconds(draft.productionTime);
+    const accelerationMs = durationPartsToMilliseconds(draft.acceleration);
     const footprintWidth = Number(draft.footprintWidth);
     const footprintHeight = Number(draft.footprintHeight);
     const largeWidth = draft.largeFootprintWidth.trim() ? Number(draft.largeFootprintWidth) : null;
     const largeHeight = draft.largeFootprintHeight.trim() ? Number(draft.largeFootprintHeight) : null;
     const spriteScale = Number(draft.spriteScale);
+    const housingCapacity = Number(draft.housingCapacity);
     const validOptionalFootprint = (value: number | null) => value === null || (Number.isInteger(value) && value >= 1 && value <= 8);
 
     if (!draft.name.trim() || !Number.isSafeInteger(price) || price < 0 ||
@@ -179,11 +194,20 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
       !Number.isInteger(footprintWidth) || footprintWidth < 1 || footprintWidth > 2 ||
       !Number.isInteger(footprintHeight) || footprintHeight < 1 || footprintHeight > 2 ||
       !validOptionalFootprint(largeWidth) || !validOptionalFootprint(largeHeight) ||
+      ((largeWidth === null) !== (largeHeight === null)) ||
       !Number.isFinite(spriteScale) || spriteScale < 0.1 || spriteScale > 5 ||
+      (draft.housingEnabled && (!Number.isSafeInteger(housingCapacity) || housingCapacity < 1 || housingCapacity > 1000 ||
+        draft.housingAnimalTypes.length === 0 ||
+        draft.housingAnimalTypes.some((animalId) => !catalog.some((entry) => entry.id === animalId && entry.type === 'ANIMAL')))) ||
       draft.growthImages.length > 12 || draft.growthImages.some((source) => !source.trim() || !isImageSource(source.trim())) ||
-      !isImageSource(draft.shopImage.trim()) || !isImageSource(draft.yieldImage.trim())) {
+      !isImageSource(draft.shopImage.trim()) || !isImageSource(draft.yieldImage.trim()) ||
+      (item.type === 'OTHER' && draft.mechanic === 'accelerate_growth' &&
+        (!Number.isSafeInteger(accelerationMs) || (accelerationMs ?? 0) < 1000 || (accelerationMs ?? 0) > 2_592_000_000)) ||
+      (item.type === 'ANIMAL' && ((!draft.growthImages[0] && !draft.shopImage.trim()) || !draft.yieldImage.trim()))) {
       setError('Перевір назву, ціни, рівень, позицію, час росту й розміри предмета.');
-      showToast('error', 'Не вдалося зберегти товар: перевір поля та URL зображень.');
+      showToast('error', item.type === 'ANIMAL'
+        ? 'Для тварини обов’язково потрібні її зображення та окреме зображення продукції.'
+        : 'Не вдалося зберегти товар: перевір поля та URL зображень.');
       return;
     }
 
@@ -203,7 +227,12 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
         growthImages: draft.growthImages.map((source) => source.trim()),
         footprint: { width: footprintWidth, height: footprintHeight },
         largeFootprint: largeWidth === null || largeHeight === null ? null : { width: largeWidth, height: largeHeight },
+        housing: draft.housingEnabled ? { capacity: housingCapacity, animalTypes: draft.housingAnimalTypes } : null,
         access: draft.access,
+        ...(item.type === 'OTHER' ? {
+          mechanic: draft.mechanic === 'none' ? null : draft.mechanic,
+          accelerationMs: draft.mechanic === 'accelerate_growth' ? accelerationMs : null,
+        } : {}),
       });
       await refreshCatalog(item.id);
       setNotice(`Зміни для «${updated.name}» збережено.`);
@@ -271,8 +300,18 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     }
   };
 
-  const visibleItems = catalog.filter((item) => category === 'ALL' || item.type === category)
+  const visibleItems = catalog.filter((item) =>
+    category === 'ALL' ? true
+      : category === 'DECOR' ? item.type === 'BUILDING' && !item.housing
+        : category === 'HOUSING_BUILDING' ? item.type === 'BUILDING' && Boolean(item.housing)
+          : item.type === category
+  )
     .sort((left, right) => left.sortOrder - right.sortOrder);
+
+  const getCategoryCount = (categoryType: AdminShopCategory) => categoryType === 'ALL' ? catalog.length
+    : categoryType === 'DECOR' ? catalog.filter((item) => item.type === 'BUILDING' && !item.housing).length
+      : categoryType === 'HOUSING_BUILDING' ? catalog.filter((item) => item.type === 'BUILDING' && item.housing).length
+        : catalog.filter((item) => item.type === categoryType).length;
 
   return (
     <section className="admin-shop-page" aria-labelledby="admin-shop-title">
@@ -285,7 +324,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
       <nav className="admin-category-tabs" aria-label="Категорії магазину">
         {categories.map((entry) => (
           <button key={entry.type} className={category === entry.type ? 'is-active' : ''} type="button" onClick={() => setCategory(entry.type)}>
-            {entry.label}<span>{entry.type === 'ALL' ? catalog.length : catalog.filter((item) => item.type === entry.type).length}</span>
+            {entry.label}<span>{getCategoryCount(entry.type)}</span>
           </button>
         ))}
       </nav>
@@ -302,6 +341,14 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                   <div className="admin-product-title"><span>{item.type} · {item.id}{item.disabled ? ' · ПРИХОВАНО' : ''}</span><strong>{item.name}</strong></div>
                 </header>
                 <div className="admin-product-fields">
+                  {item.type === 'OTHER' && <>
+                    <label>Механіка<select value={draft.mechanic} onChange={(event) => updateDraft(item.id, { mechanic: event.target.value as ItemDraft['mechanic'] })}>
+                      <option value="none">Без активної механіки</option>
+                      <option value="expand_farm">Розширення ферми вперед</option>
+                      <option value="accelerate_growth">Добриво — прискорення таймера</option>
+                    </select></label>
+                    {draft.mechanic === 'accelerate_growth' && <div className="admin-duration-form-field admin-product-duration"><span>Прискорення часу</span><AdminDurationInput label={`Прискорення добрива для ${item.name}`} value={draft.acceleration} onChange={(acceleration) => updateDraft(item.id, { acceleration })} /></div>}
+                  </>}
                   <label>Назва<input value={draft.name} maxLength={120} onChange={(event) => updateDraft(item.id, { name: event.target.value })} /></label>
                   <label>Ціна покупки<input type="number" min="0" step="1" value={draft.price} onChange={(event) => updateDraft(item.id, { price: event.target.value })} /></label>
                   <label>Валюта<select value={draft.priceCurrency} onChange={(event) => updateDraft(item.id, { priceCurrency: event.target.value as ItemDraft['priceCurrency'] })}><option value="coins">Монети</option><option value="rubies">Рубіни</option></select></label>
@@ -313,25 +360,102 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                   <summary>Додаткові параметри</summary>
                   <div className="admin-product-fields">
                     <label>Досвід за посадку<input type="number" min="0" value={draft.plantingXp} onChange={(event) => updateDraft(item.id, { plantingXp: event.target.value })} /></label>
-                    <div className="admin-duration-form-field"><span>Час до врожаю</span><AdminDurationInput label={`Час до врожаю для ${item.name}`} value={draft.productionTime} onChange={(productionTime) => updateDraft(item.id, { productionTime })} /></div>
+                    <div className="admin-duration-form-field admin-product-duration"><span>Час до врожаю</span><AdminDurationInput label={`Час до врожаю для ${item.name}`} value={draft.productionTime} onChange={(productionTime) => updateDraft(item.id, { productionTime })} /></div>
+                    {item.type === 'ANIMAL' && <p className="admin-product-fields-note">Зображення тварини використовується на фермі та в курнику; іконка й картинка врожаю — для готової продукції.</p>}
                     <label>Кількість урожаю<input type="number" min="0" value={draft.yieldAmount} onChange={(event) => updateDraft(item.id, { yieldAmount: event.target.value })} /></label>
                     <label>ID урожаю<input value={draft.yieldItem} onChange={(event) => updateDraft(item.id, { yieldItem: event.target.value })} /></label>
                     <label>Назва урожаю<input value={draft.yieldName} onChange={(event) => updateDraft(item.id, { yieldName: event.target.value })} /></label>
-                    <label>Іконка урожаю<input value={draft.yieldIcon} maxLength={16} onChange={(event) => updateDraft(item.id, { yieldIcon: event.target.value })} placeholder="🍎" /></label>
+                    <label>{item.type === 'ANIMAL' ? 'Іконка продукції' : 'Іконка урожаю'}<input value={draft.yieldIcon} maxLength={16} onChange={(event) => updateDraft(item.id, { yieldIcon: event.target.value })} placeholder="🍎" /></label>
                     <label>Доступ<select value={draft.access} onChange={(event) => updateDraft(item.id, { access: event.target.value as ItemDraft['access'] })}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option></select></label>
                     <label>Поверхня<select value={draft.placementSurface} onChange={(event) => updateDraft(item.id, { placementSurface: event.target.value as ItemDraft['placementSurface'] })}><option value="grass">Трава</option><option value="soil">Грядка</option></select></label>
-                    <label>Footprint, ширина<input type="number" min="1" max="2" value={draft.footprintWidth} onChange={(event) => updateDraft(item.id, { footprintWidth: event.target.value })} /></label>
-                    <label>Footprint, висота<input type="number" min="1" max="2" value={draft.footprintHeight} onChange={(event) => updateDraft(item.id, { footprintHeight: event.target.value })} /></label>
-                    <label>Великий footprint, ширина<input type="number" min="1" max="8" value={draft.largeFootprintWidth} placeholder="—" onChange={(event) => updateDraft(item.id, { largeFootprintWidth: event.target.value })} /></label>
-                    <label>Великий footprint, висота<input type="number" min="1" max="8" value={draft.largeFootprintHeight} placeholder="—" onChange={(event) => updateDraft(item.id, { largeFootprintHeight: event.target.value })} /></label>
+                    <div className="admin-product-footprint-editor">
+                      <div className="admin-product-footprint-heading">
+                        <strong>Зайнята площа на фермі</strong>
+                        <span>Натисни клітинку: буде виділений прямокутник від лівого верхнього кута.</span>
+                      </div>
+                      <div className="admin-product-footprint-groups">
+                        <div className="admin-product-footprint-group">
+                          <div className="admin-product-footprint-subheading">
+                            <strong>Малі сектори</strong>
+                            <span>{draft.footprintWidth} × {draft.footprintHeight}</span>
+                          </div>
+                          <div className="admin-product-footprint-mini-grid" role="group" aria-label={`Малі сектори для ${item.name}`}>
+                            {Array.from({ length: 4 }, (_, index) => {
+                              const x = index % 2;
+                              const y = Math.floor(index / 2);
+                              const selected = x < Number(draft.footprintWidth) && y < Number(draft.footprintHeight);
+                              return <button
+                                key={index}
+                                className={selected ? 'is-selected' : ''}
+                                type="button"
+                                aria-label={`Малий сектор ${index + 1}`}
+                                aria-pressed={selected}
+                                onClick={() => updateDraft(item.id, {
+                                  footprintWidth: String(x + 1),
+                                  footprintHeight: String(y + 1),
+                                })}
+                              />;
+                            })}
+                          </div>
+                        </div>
+                        <div className="admin-product-footprint-group admin-product-footprint-large-group">
+                          <div className="admin-product-footprint-subheading">
+                            <strong>Великі клітинки</strong>
+                            <span>{draft.largeFootprintWidth && draft.largeFootprintHeight
+                              ? `${draft.largeFootprintWidth} × ${draft.largeFootprintHeight}`
+                              : 'не задано'}</span>
+                            {(draft.largeFootprintWidth || draft.largeFootprintHeight) && <button
+                              type="button"
+                              onClick={() => updateDraft(item.id, { largeFootprintWidth: '', largeFootprintHeight: '' })}
+                            >Очистити</button>}
+                          </div>
+                          <div className="admin-product-footprint-large-grid" role="group" aria-label={`Великі клітинки для ${item.name}`}>
+                            {Array.from({ length: 64 }, (_, index) => {
+                              const x = index % 8;
+                              const y = Math.floor(index / 8);
+                              const width = Number(draft.largeFootprintWidth) || 0;
+                              const height = Number(draft.largeFootprintHeight) || 0;
+                              const selected = x < width && y < height;
+                              return <button
+                                key={index}
+                                className={selected ? 'is-selected' : ''}
+                                type="button"
+                                aria-label={`Велика клітинка ${x + 1}, ${y + 1}`}
+                                aria-pressed={selected}
+                                onClick={() => updateDraft(item.id, {
+                                  largeFootprintWidth: String(x + 1),
+                                  largeFootprintHeight: String(y + 1),
+                                })}
+                              />;
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {category === 'HOUSING_BUILDING' && <>
+                      <label className="admin-check-field"><input type="checkbox" checked={draft.housingEnabled} onChange={(event) => updateDraft(item.id, { housingEnabled: event.target.checked })} />Приміщення для тварин</label>
+                      {draft.housingEnabled && <>
+                        <label>Місткість тварин<input type="number" min="1" max="1000" value={draft.housingCapacity} onChange={(event) => updateDraft(item.id, { housingCapacity: event.target.value })} /></label>
+                        {catalog.filter((entry) => entry.type === 'ANIMAL').map((animal) => (
+                          <label className="admin-check-field" key={`${item.id}-${animal.id}`}>
+                            <input type="checkbox" checked={draft.housingAnimalTypes.includes(animal.id)} onChange={(event) => updateDraft(item.id, {
+                              housingAnimalTypes: event.target.checked
+                                ? [...draft.housingAnimalTypes, animal.id]
+                                : draft.housingAnimalTypes.filter((animalId) => animalId !== animal.id),
+                            })} />
+                            {animal.name}
+                          </label>
+                        ))}
+                      </>}
+                    </>}
                     <label>Масштаб зображення<input type="number" min="0.1" max="5" step="0.1" value={draft.spriteScale} onChange={(event) => updateDraft(item.id, { spriteScale: event.target.value })} /></label>
-                    <AdminImageUrlInput key={`${item.id}-shop-${assetBaseUrl}`} label="Зображення магазину" value={draft.shopImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { shopImage: value })} />
-                    <label>Іконка магазину<input value={draft.shopIcon} maxLength={16} onChange={(event) => updateDraft(item.id, { shopIcon: event.target.value })} placeholder="🌱" /></label>
-                    <AdminImageUrlInput key={`${item.id}-yield-${assetBaseUrl}`} label="Зображення врожаю" value={draft.yieldImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { yieldImage: value })} />
+                    <AdminImageUrlInput key={`${item.id}-shop-${assetBaseUrl}`} label={item.type === 'ANIMAL' ? 'Зображення тварини в магазині' : 'Зображення магазину'} value={draft.shopImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { shopImage: value })} />
+                    <label>{item.type === 'ANIMAL' ? 'Запасна іконка тварини' : 'Іконка магазину'}<input value={draft.shopIcon} maxLength={16} onChange={(event) => updateDraft(item.id, { shopIcon: event.target.value })} placeholder={item.type === 'ANIMAL' ? '🐔' : '🌱'} /></label>
+                    <AdminImageUrlInput key={`${item.id}-yield-${assetBaseUrl}`} label={item.type === 'ANIMAL' ? 'Зображення продукції (яйце, молоко тощо)' : 'Зображення врожаю'} value={draft.yieldImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { yieldImage: value })} />
                     <label className="admin-check-field"><input type="checkbox" checked={draft.flipX} onChange={(event) => updateDraft(item.id, { flipX: event.target.checked })} /> Дзеркальний спрайт</label>
                     <label className="admin-check-field"><input type="checkbox" checked={draft.canFlip} onChange={(event) => updateDraft(item.id, { canFlip: event.target.checked })} /> Дозволити перевертання</label>
                     <div className="admin-stage-editor">
-                      <div className="admin-stage-heading"><strong>Стадії зображення на полі</strong><button type="button" onClick={() => updateDraft(item.id, { growthImages: [...draft.growthImages, ''] })} disabled={draft.growthImages.length >= 12}>Додати стадію</button></div>
+                      <div className="admin-stage-heading"><strong>{item.type === 'ANIMAL' ? 'Зображення тварини на фермі та в курнику' : 'Стадії зображення на полі'}</strong><button type="button" onClick={() => updateDraft(item.id, { growthImages: [...draft.growthImages, ''] })} disabled={draft.growthImages.length >= 12}>Додати стадію</button></div>
                       {draft.growthImages.map((source, index) => <div className="admin-stage-row" key={`${item.id}-stage-${index}`}>
                         <span className="admin-stage-number">{index + 1}</span>
                         <div className="admin-stage-thumb">{source ? <img src={resolveImageUrl(source, assetBaseUrl)} alt={`Стадія ${index + 1}`} /> : <span>URL</span>}</div>
