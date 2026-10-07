@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Camera, Check, Copy, LogOut, Moon, Package, Play, ShieldCheck, Sparkles, Sprout, Sun } from 'lucide-react';
+import { Camera, Check, Copy, LogOut, Moon, Package, Play, ShieldCheck, Sparkles, Sprout, Sun, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { getLevelProgress } from '../../config/progression';
 import type { User } from '../../types/auth';
 import { useAuthStore } from '../../store/authStore';
@@ -20,11 +21,27 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [avatarError, setAvatarError] = useState('');
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [idCopied, setIdCopied] = useState(false);
   const progression = getLevelProgress(user.xp ?? 0);
   const progressPercent = (progression.xpInLevel / progression.xpToNextLevel) * 100;
   const inventoryCount = Object.values(user.inventory ?? {}).reduce((total, amount) => total + amount, 0) +
     Object.values(user.itemInventory ?? {}).reduce((total, amount) => total + amount, 0);
+  const defaultAvatars = Array.from({ length: 6 }, (_, index) => `/assets/ui/avatar/ava${index + 1}.png`);
+
+  const saveAvatar = async (avatar: string) => {
+    try {
+      setAvatarSaving(true);
+      setAvatarError('');
+      const savedAvatar = await socialApi.updateAvatar(avatar);
+      updateUser({ avatar: savedAvatar.avatar });
+      setShowAvatarPicker(false);
+    } catch {
+      setAvatarError('Не вдалося зберегти аватар на сервері. Спробуй ще раз.');
+    } finally {
+      setAvatarSaving(false);
+    }
+  };
 
   const handleAvatarSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -54,8 +71,7 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
       image.close();
 
       const compressedAvatar = canvas.toDataURL('image/jpeg', 0.82);
-      const savedAvatar = await socialApi.updateAvatar(compressedAvatar);
-      updateUser({ avatar: savedAvatar.avatar });
+      await saveAvatar(compressedAvatar);
     } catch {
       setAvatarError('Не вдалося зберегти аватар на сервері. Спробуй ще раз.');
     } finally {
@@ -103,10 +119,9 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
                     {user.avatar ? <img src={user.avatar} alt={`Аватар гравця ${user.username}`} /> : <span>{user.username.slice(0, 1).toUpperCase()}</span>}
                   </div>
                 </div>
-                <button className="avatar-edit" type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarSaving} aria-label={avatarSaving ? 'Зберігаємо аватар' : 'Змінити аватар'} title={avatarSaving ? 'Зберігаємо аватар' : 'Змінити аватар'}>
+                <button className="avatar-edit" type="button" onClick={() => { setAvatarError(''); setShowAvatarPicker(true); }} disabled={avatarSaving} aria-label="Змінити аватар" title="Змінити аватар">
                   {avatarSaving ? <span className="avatar-spinner" /> : <Camera size={16} />}
                 </button>
-                <input ref={avatarInputRef} className="visually-hidden" type="file" accept="image/*" onChange={handleAvatarSelection} />
               </div>
 
               <div className="farmer-identity">
@@ -116,7 +131,6 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
                   {idCopied ? <Check size={13} /> : <Copy size={13} />}
                   <span>ID: {user.id}</span>
                 </button>
-                {avatarError && <p className="avatar-error" role="alert">{avatarError}</p>}
               </div>
 
               <div className="farmer-level-card">
@@ -148,6 +162,29 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
           <FriendsPanel />
         </div>
       </div>
+      {showAvatarPicker && createPortal(
+        <div className="avatar-picker-overlay" onClick={() => !avatarSaving && setShowAvatarPicker(false)}>
+          <section className={`avatar-picker-dialog${theme === 'dark' ? ' is-dark' : ''}`} role="dialog" aria-modal="true" aria-labelledby="avatar-picker-title" onClick={(event) => event.stopPropagation()}>
+            <button className="avatar-picker-close" type="button" onClick={() => setShowAvatarPicker(false)} disabled={avatarSaving} aria-label="Закрити"><X size={18} /></button>
+            <div className="avatar-picker-heading"><Camera size={20} /><div><h2 id="avatar-picker-title">Обери аватар</h2><p>Вибери готовий або завантаж власне фото</p></div></div>
+            <div className="avatar-picker-grid">
+              {defaultAvatars.map((avatar, index) => (
+                <button key={avatar} type="button" className={user.avatar === avatar ? 'is-selected' : ''} onClick={() => void saveAvatar(avatar)} disabled={avatarSaving} aria-label={`Вибрати стандартний аватар ${index + 1}`}>
+                  <img src={avatar} alt={`Стандартний аватар ${index + 1}`} />
+                  {user.avatar === avatar && <Check size={16} />}
+                </button>
+              ))}
+            </div>
+            <button className="avatar-picker-upload" type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarSaving}>
+              {avatarSaving ? <span className="avatar-spinner" /> : <Camera size={17} />}
+              {avatarSaving ? 'Зберігаємо…' : 'Завантажити своє фото'}
+            </button>
+            {avatarError && <p className="avatar-picker-error" role="alert">{avatarError}</p>}
+            <input ref={avatarInputRef} className="visually-hidden" type="file" accept="image/*" onChange={handleAvatarSelection} />
+          </section>
+        </div>,
+        document.body
+      )}
     </main>
   );
 };

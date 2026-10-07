@@ -44,7 +44,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
     (activeCategory === 'HOUSING_BUILDING'
       ? item.type === 'BUILDING' && Boolean(item.housing)
       : item.type === activeCategory && (activeCategory !== 'BUILDING' || !item.housing)) &&
-    !item.disabled && (item.access !== 'admin' || user?.role === 'admin')
+    !item.giftOnly && !item.disabled && (item.access !== 'admin' || user?.role === 'admin')
   ).sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0));
 
   const handleBuy = async (item: (typeof filteredItems)[number]) => {
@@ -104,11 +104,10 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
     <div style={styles.overlay} onClick={onClose}>
       <div className="game-modal-window shop-modal-window" style={styles.glassWindow} onClick={(e) => e.stopPropagation()}>
         
-        <div className="shared-modal-header game-modal-header" style={styles.header}>
+        <div className="shared-modal-header game-modal-header modal-header-single-row" style={styles.header}>
           <div className="modal-header-summary">
             <div style={styles.titleWrapper}>
-              <span style={{ fontSize: '22px' }}>🏪</span>
-              <h2 className="shop-modal-title" style={styles.headerTitle}>МАГАЗИН</h2>
+              <img className="modal-brand-banner" src="/assets/ui/shop_banner.png" alt="Магазин" draggable={false} />
             </div>
             <span className="modal-title-divider" aria-hidden="true" />
             <div style={styles.resourcesContainer}>

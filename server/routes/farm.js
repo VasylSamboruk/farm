@@ -344,6 +344,7 @@ router.post('/place', async (req, res) => {
             return res.status(400).json({ message: 'Товар не знайдено' });
         }
         if ((item.disabled && !fromInventory) || !['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type)) return res.status(400).json({ message: 'Цей товар не можна розмістити' });
+        if (item.giftOnly && !fromInventory) return res.status(403).json({ message: 'Цей предмет можна отримати лише як подарунок' });
         const occupiedQuadrants = getOccupiedQuadrants(quadrant, item);
         const occupiedCells = getOccupiedCells(x, y, quadrant, item, false);
         const farm = await Farm.findOne({ userId });
@@ -667,6 +668,7 @@ router.post('/sell-item', async (req, res) => {
         }
         const item = getGameItem(itemId);
         if (!item) return res.status(400).json({ message: 'Цей предмет не можна продати' });
+        if (item.giftOnly) return res.status(400).json({ message: 'Подарункові предмети не можна продати' });
         if (item.mechanic === 'accelerate_growth') {
             return res.status(400).json({ message: 'Добриво не можна продати' });
         }
@@ -708,6 +710,7 @@ router.post('/save', async (req, res) => {
         const playerLevel = getLevelProgress(user.xp ?? 0).level;
         const isLockedItem = (item) => item && (
             item.disabled ||
+            item.giftOnly ||
             (item.access === 'admin' && user.role !== 'admin') ||
             playerLevel < (item.requiredLevel ?? 1)
         );
@@ -749,6 +752,7 @@ router.post('/save', async (req, res) => {
             submittedLockedCounts.set(tile.itemId, count);
             if (count > (existingLockedCounts.get(tile.itemId) ?? 0)) {
                 if (item.disabled) return res.status(403).json({ message: 'Архівований товар більше не можна додати на ферму' });
+                if (item.giftOnly) return res.status(403).json({ message: 'Цей предмет можна отримати лише як подарунок' });
                 if (item.access === 'admin' && user.role !== 'admin') {
                     return res.status(403).json({ message: 'Цей товар може додавати лише адміністратор' });
                 }

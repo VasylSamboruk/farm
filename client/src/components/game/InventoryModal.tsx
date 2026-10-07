@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Minus, PackageOpen, Plus } from 'lucide-react';
+import { Gift, Minus, PackageOpen, Plus } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
@@ -111,11 +111,10 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
   return (
     <div style={styles.overlay} onClick={onClose}>
       <section className="game-modal-window inventory-modal-window" style={styles.window} onClick={(event) => event.stopPropagation()}>
-        <header className="shared-modal-header game-modal-header" style={styles.header}>
+        <header className="shared-modal-header game-modal-header modal-header-single-row" style={styles.header}>
           <div className="modal-header-summary">
             <div style={styles.titleBlock}>
-              <span style={styles.headerIcon}>📦</span>
-              <h2 className="inventory-modal-title" style={styles.title}>СКЛАД</h2>
+              <img className="modal-brand-banner" src="/assets/ui/inventory_banner.png" alt="Склад" draggable={false} />
             </div>
             <span className="modal-title-divider" aria-hidden="true" />
             <div style={styles.resources}>
@@ -235,9 +234,10 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                       {item.shopImage || item.growthImages?.at(-1)
                         ? <img src={item.shopImage ?? item.growthImages?.at(-1)} alt="" style={styles.farmItemImage} draggable={false} />
                         : <span style={styles.productIcon}>{item.shopIcon ?? '🎁'}</span>}
+                      {item.giftOnly && <span className="inventory-gift-badge"><Gift size={12} />Подарунок</span>}
                     </div>
                     <div className="inventory-stock-line" style={styles.stockLine}><span>Запас</span><strong>{stockAmount}</strong></div>
-                    <div className="inventory-stock-line" style={styles.stockLine}><span>Продаж / шт.</span><strong className="currency-inline inventory-unit-price" style={styles.unitPrice}>{refund}<img src={currencyImage} alt="" draggable={false} /></strong></div>
+                    {!item.giftOnly && <div className="inventory-stock-line" style={styles.stockLine}><span>Продаж / шт.</span><strong className="currency-inline inventory-unit-price" style={styles.unitPrice}>{refund}<img src={currencyImage} alt="" draggable={false} /></strong></div>}
                     <button
                       type="button"
                       className="inventory-sell-button"
@@ -247,16 +247,18 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                     >
                       {item.mechanic === 'expand_farm' ? 'Застосувати' : item.mechanic === 'accelerate_growth' ? 'Вибрати ціль' : 'Розмістити'}
                     </button>
-                    <button
-                      type="button"
-                      className="inventory-sell-all-button"
-                      style={styles.sellAllButton}
-                      onClick={() => void handleSellFarmItem(item.id, stockAmount)}
-                      disabled={isBusy || refund <= 0}
-                    >
-                      <span>{isBusy ? 'Продаємо…' : `Продати все · ${stockAmount} шт.`}</span>
-                      <small style={styles.sellPrice}>+{(refund * stockAmount).toLocaleString('uk-UA')}<img src={currencyImage} alt="" style={styles.sellPriceCoin} draggable={false} /></small>
-                    </button>
+                    {!item.giftOnly && (
+                      <button
+                        type="button"
+                        className="inventory-sell-all-button"
+                        style={styles.sellAllButton}
+                        onClick={() => void handleSellFarmItem(item.id, stockAmount)}
+                        disabled={isBusy || refund <= 0}
+                      >
+                        <span>{isBusy ? 'Продаємо…' : `Продати все · ${stockAmount} шт.`}</span>
+                        <small style={styles.sellPrice}>+{(refund * stockAmount).toLocaleString('uk-UA')}<img src={currencyImage} alt="" style={styles.sellPriceCoin} draggable={false} /></small>
+                      </button>
+                    )}
                   </article>
                 );
               })}
@@ -272,6 +274,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                       {item.shopImage
                         ? <img src={item.shopImage} alt="" style={styles.farmItemImage} draggable={false} />
                         : <span style={styles.productIcon}>{item.shopIcon ?? '🎁'}</span>}
+                      {item.giftOnly && <span className="inventory-gift-badge"><Gift size={12} />Подарунок</span>}
                     </div>
                     <div className="inventory-stock-line" style={styles.stockLine}><span>Запас</span><strong>{stockAmount}</strong></div>
                     {isFertilizer && (

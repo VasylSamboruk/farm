@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Gift, Moon, Sparkles, Sun } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Bell, Gift, Moon, Sparkles, Sun } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
 import { ShopModal } from './ShopModal'; // НЕ ЗАБУДЬ імпортувати ShopModal якщо його ще тут немає
 import { InventoryModal } from './InventoryModal.tsx';
+import { FriendsModal } from './FriendsModal';
+import { socialApi } from '../../api/social.api';
 import { getLevelProgress } from '../../config/progression';
 import { formatGameDuration } from '../../game/trees';
 import { gameApi } from '../../api/game.api';
@@ -31,6 +33,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
   const [showXpBar, setShowXpBar] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false); // Стан для модалки
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+  const [isFriendsOpen, setIsFriendsOpen] = useState(false);
+  const [friendRequestCount, setFriendRequestCount] = useState(0);
+  const [newFriendCount, setNewFriendCount] = useState(0);
+  const friendsModalOpenRef = useRef(false);
   const [pendingRewards, setPendingRewards] = useState<LevelRewardEntry[]>([]);
   const [claimingReward, setClaimingReward] = useState(false);
   const [pendingAdminGifts, setPendingAdminGifts] = useState<AdminGiftEntry[]>([]);
@@ -41,7 +47,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
       cancelInteraction();
     } else {
       setActiveTool(tool);
-      if (tool === 'shovel' || tool === 'trash') setSettingsOpen(false);
+      if (tool === 'shovel') setSettingsOpen(false);
     }
   };
 
@@ -58,7 +64,21 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
     cancelInteraction();
     setIsShopOpen(false);
     setIsInventoryOpen(false);
+    setIsFriendsOpen(false);
+    friendsModalOpenRef.current = false;
     onReturnToProfile();
+  };
+
+  const openFriends = () => {
+    cancelInteraction();
+    setNewFriendCount(0);
+    friendsModalOpenRef.current = true;
+    setIsFriendsOpen(true);
+  };
+
+  const closeFriends = () => {
+    friendsModalOpenRef.current = false;
+    setIsFriendsOpen(false);
   };
 
   const handleSunflowerClick = (e: React.MouseEvent | React.TouchEvent) => {
@@ -109,6 +129,41 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
     };
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    let knownFriendIds: Set<string> | null = null;
+    const refreshFriendRequests = async () => {
+      try {
+        const [requests, friends, giftData] = await Promise.all([
+          socialApi.getRequests(),
+          socialApi.getFriends(),
+          socialApi.getGifts(),
+        ]);
+        if (!active) return;
+        const friendIds = new Set(friends.map((friend) => friend.id));
+        if (knownFriendIds) {
+          const addedFriends = [...friendIds].filter((id) => !knownFriendIds?.has(id)).length;
+          if (addedFriends > 0 && !friendsModalOpenRef.current) {
+            setNewFriendCount((count) => count + addedFriends);
+          }
+        }
+        knownFriendIds = friendIds;
+        setFriendRequestCount(requests.length + giftData.gifts.length);
+      } catch (error) {
+        console.error('Не вдалося оновити сповіщення друзів:', error);
+      }
+    };
+    void refreshFriendRequests();
+    const intervalId = window.setInterval(() => void refreshFriendRequests(), 20_000);
+    window.addEventListener('focus', refreshFriendRequests);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshFriendRequests);
+    };
+  }, [user?.id]);
+
   const claimLevelReward = async () => {
     const reward = pendingRewards[0];
     if (!reward || claimingReward) return;
@@ -141,6 +196,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
 
   const progression = getLevelProgress(user?.xp ?? 0);
   const xpPercent = (progression.xpInLevel / progression.xpToNextLevel) * 100;
+  const friendActivityCount = friendRequestCount + newFriendCount;
   return (
     <div style={styles.hudOverlay}>
       {gameMessage && <div style={styles.gameToast} role="status">{gameMessage}</div>}
@@ -268,29 +324,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
       </div>
 
       {/* НИЖНЯ ПАНЕЛЬ ІКОНОК */}
-      <div style={{ ...styles.actionPanel, opacity: isSettingsOpen ? 1 : 0, transform: isSettingsOpen ? 'translate(-50%, 0)' : 'translate(-50%, 10px)', pointerEvents: isSettingsOpen ? 'auto' : 'none' }}>
-        <button
-          className="hud-pressable"
-          style={activeTool === 'move' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
-          onClick={() => toggleTool('move')}
-          aria-label="Переміщення"
-          title="Переміщення"
-        >
-          <img src="/assets/ui/drapdrog.png" alt="Переміщення" style={styles.bottomIconImg} draggable={false} />
-          {activeTool === 'move' && <span style={styles.toolCancelBadge}>×</span>}
-        </button>
-        <button
-          className="hud-pressable"
-          style={activeTool === 'rotate' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
-          onClick={() => toggleTool('rotate')}
-          aria-label="Переворот"
-          title="Переворот"
-        >
-          <img src="/assets/ui/rotate.png" alt="Переворот" style={styles.bottomIconImg} draggable={false} />
-          {activeTool === 'rotate' && <span style={styles.toolCancelBadge}>×</span>}
-        </button>
-      </div>
-
       <div style={styles.bottomPanelNoBg}>
         <button 
           className="hud-pressable"
@@ -303,26 +336,60 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
           {activeTool === 'shovel' && <span style={styles.toolCancelBadge}>×</span>}
         </button>
 
-        <button 
-          className="hud-pressable"
-          style={activeTool === 'trash' ? { ...styles.cleanIconBtn, ...styles.activeToolGlow } : styles.cleanIconBtn}
-          onClick={() => toggleTool('trash')}
-          aria-label={activeTool === 'trash' ? 'Скасувати видалення' : 'Смітник'}
-          title={activeTool === 'trash' ? 'Скасувати' : 'Видалити предмет'}
-        >
-          <img src="/assets/ui/musor_ico.png" alt="Смітник" style={styles.bottomIconImg} draggable={false} />
-          {activeTool === 'trash' && <span style={styles.toolCancelBadge}>×</span>}
-        </button>
+        <div className="settings-tool-anchor">
+          <button
+            className="hud-pressable"
+            style={isSettingsOpen ? { ...styles.cleanIconBtn, ...styles.activeToolGlow } : styles.cleanIconBtn}
+            onClick={toggleSettings}
+            aria-label={isSettingsOpen ? 'Закрити налаштування інструментів' : 'Налаштування інструментів'}
+            title={isSettingsOpen ? 'Закрити налаштування інструментів' : 'Налаштування інструментів'}
+          >
+            <img src="/assets/ui/setings.png" alt="Налаштування" style={styles.bottomIconImg} draggable={false} />
+            {isSettingsOpen && <span style={styles.toolCancelBadge}>×</span>}
+          </button>
+          <div className="settings-tool-popover" style={{ opacity: isSettingsOpen ? 1 : 0, transform: isSettingsOpen ? 'translate(-50%, 0)' : 'translate(-50%, 10px)', pointerEvents: isSettingsOpen ? 'auto' : 'none' }}>
+            <button
+              className="hud-pressable"
+              style={activeTool === 'move' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
+              onClick={() => toggleTool('move')}
+              aria-label="Переміщення"
+              title="Переміщення"
+            >
+              <img src="/assets/ui/drapdrog.png" alt="Переміщення" style={styles.bottomIconImg} draggable={false} />
+              {activeTool === 'move' && <span style={styles.toolCancelBadge}>×</span>}
+            </button>
+            <button
+              className="hud-pressable"
+              style={activeTool === 'rotate' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
+              onClick={() => toggleTool('rotate')}
+              aria-label="Переворот"
+              title="Переворот"
+            >
+              <img src="/assets/ui/rotate.png" alt="Переворот" style={styles.bottomIconImg} draggable={false} />
+              {activeTool === 'rotate' && <span style={styles.toolCancelBadge}>×</span>}
+            </button>
+            <button
+              className="hud-pressable"
+              style={activeTool === 'trash' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
+              onClick={() => toggleTool('trash')}
+              aria-label={activeTool === 'trash' ? 'Скасувати видалення' : 'Смітник'}
+              title={activeTool === 'trash' ? 'Скасувати' : 'Смітник'}
+            >
+              <img src="/assets/ui/musor_ico.png" alt="Смітник" style={styles.bottomIconImg} draggable={false} />
+              {activeTool === 'trash' && <span style={styles.toolCancelBadge}>×</span>}
+            </button>
+          </div>
+        </div>
 
         <button
-          className="hud-pressable"
-          style={isSettingsOpen ? { ...styles.cleanIconBtn, ...styles.activeToolGlow } : styles.cleanIconBtn}
-          onClick={toggleSettings}
-          aria-label={isSettingsOpen ? 'Закрити налаштування інструментів' : 'Налаштування інструментів'}
-          title={isSettingsOpen ? 'Закрити налаштування інструментів' : 'Налаштування інструментів'}
+          className={`hud-pressable friends-open-button${friendActivityCount > 0 ? ' has-friend-requests' : ''}`}
+          style={styles.cleanIconBtn}
+          onClick={openFriends}
+          aria-label={friendActivityCount > 0 ? `Друзі, ${friendActivityCount} нових сповіщень` : 'Відкрити друзів'}
+          title="Друзі"
         >
-          <img src="/assets/ui/setings.png" alt="Налаштування" style={styles.bottomIconImg} draggable={false} />
-          {isSettingsOpen && <span style={styles.toolCancelBadge}>×</span>}
+          <img src="/assets/ui/friend.png" alt="Друзі" style={styles.bottomIconImg} draggable={false} />
+          {friendActivityCount > 0 && <span className="friends-open-badge"><Bell size={11} />{friendActivityCount}</span>}
         </button>
 
         {/* КНОПКА МАГАЗИНУ (Або скасувати якщо вибрано дерево) */}
@@ -359,6 +426,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
 
       <ShopModal isOpen={isShopOpen} onClose={() => setIsShopOpen(false)} />
       <InventoryModal isOpen={isInventoryOpen} onClose={() => setIsInventoryOpen(false)} />
+      <FriendsModal
+        isOpen={isFriendsOpen}
+        onClose={closeFriends}
+        onRequestCountChange={setFriendRequestCount}
+      />
     </div>
   );
 };

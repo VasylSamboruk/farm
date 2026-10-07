@@ -1,16 +1,51 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { ArrowLeft, Check, ChevronDown, ChevronUp, ClipboardCheck, Copy, House, MoreVertical, Search, UserRoundMinus, UserRoundPlus, X } from 'lucide-react';
+import { ArrowLeft, Bell, Check, ChevronDown, ChevronUp, ClipboardCheck, Copy, Gift, House, MoreVertical, Search, UserRoundMinus, UserRoundPlus, Users, X } from 'lucide-react';
 import { getLevelProgress } from '../../config/progression';
-import { socialApi, type FriendFarm, type SocialPlayer } from '../../api/social.api';
+import { socialApi, type FriendFarm, type ReceivedSocialGift, type SocialGiftProduct, type SocialPlayer } from '../../api/social.api';
 import { loadGameImage, preloadGameImages } from '../../game/sprites';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
+import { useAuthStore } from '../../store/authStore';
 import type { TileData } from '../../store/useFarmStore';
 import { FarmCanvas } from '../game/FarmCanvas';
+import { GiftShopModal } from '../game/GiftShopModal';
+import { ReceivedGiftModal } from '../game/ReceivedGiftModal';
 
 const loadSocialLists = async () => Promise.all([socialApi.getFriends(), socialApi.getRequests()]);
 const shortenPlayerId = (id: string) => id.length > 15 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
+const formatGiftCooldown = (until: string | undefined, now: number) => {
+  if (!until) return '';
+  const remaining = new Date(until).getTime() - now;
+  if (remaining <= 0) return '';
+  const hours = Math.floor(remaining / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  const seconds = Math.floor((remaining % 60_000) / 1000);
+  return `${hours} год ${String(minutes).padStart(2, '0')} хв ${String(seconds).padStart(2, '0')} с`;
+};
+const formatCompactGiftCooldown = (until: string | undefined, now: number) => {
+  if (!until) return '';
+  const remaining = new Date(until).getTime() - now;
+  if (remaining <= 0) return '';
+  const hours = Math.floor(remaining / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  return `${hours}г ${minutes}х`;
+};
+const formatLastOnline = (player: SocialPlayer) => {
+  if (player.isOnline) return 'Зараз онлайн';
+  if (!player.lastOnlineAt) return 'Ще не заходив';
+  const lastSeen = new Date(player.lastOnlineAt);
+  const elapsed = Date.now() - lastSeen.getTime();
+  if (!Number.isFinite(elapsed)) return 'Час невідомий';
+  if (elapsed < 60_000) return 'Був(ла) щойно';
+  if (elapsed < 3_600_000) return `Був(ла) ${Math.floor(elapsed / 60_000)} хв тому`;
+  const time = new Intl.DateTimeFormat('uk-UA', { hour: '2-digit', minute: '2-digit' }).format(lastSeen);
+  if (lastSeen.toDateString() === new Date().toDateString()) return `Сьогодні о ${time}`;
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (lastSeen.toDateString() === yesterday.toDateString()) return `Вчора о ${time}`;
+  return `Був(ла) ${new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(lastSeen)}`;
+};
 
 const getErrorMessage = (error: unknown) => {
   if (axios.isAxiosError<{ message?: string }>(error)) {
@@ -42,7 +77,10 @@ const toTileMap = (tiles: FriendFarm['tiles']): Record<string, TileData> => {
   return tileMap;
 };
 
-export const FriendsPanel: React.FC = () => {
+export const FriendsPanel: React.FC<{
+  isInGame?: boolean;
+  onRequestCountChange?: (count: number) => void;
+}> = ({ isInGame = false, onRequestCountChange }) => {
   const gameItems = useGameConfigStore((state) => state.items);
   const loadGameItems = useGameConfigStore((state) => state.loadItems);
   const [friends, setFriends] = useState<SocialPlayer[]>([]);
@@ -59,28 +97,109 @@ export const FriendsPanel: React.FC = () => {
   const [showFarmContents, setShowFarmContents] = useState(false);
   const [copiedFriendId, setCopiedFriendId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [giftToast, setGiftToast] = useState<{ kind: 'success' | 'error'; title: string; message: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'gifts' | 'search'>('friends');
+  const [receivedGifts, setReceivedGifts] = useState<ReceivedSocialGift[]>([]);
+  const [giftProducts, setGiftProducts] = useState<SocialGiftProduct[]>([]);
+  const [giftCooldowns, setGiftCooldowns] = useState<Record<string, string>>({});
+  const [selectedGiftFriend, setSelectedGiftFriend] = useState<SocialPlayer | null>(null);
+  const [sendingGiftItemId, setSendingGiftItemId] = useState<string | null>(null);
+  const [busyGiftId, setBusyGiftId] = useState<string | null>(null);
+  const [selectedReceivedGift, setSelectedReceivedGift] = useState<ReceivedSocialGift | null>(null);
+  const [giftClock, setGiftClock] = useState(Date.now);
+  const updateUser = useAuthStore((state) => state.updateUser);
+  const hasGiftCooldowns = Object.keys(giftCooldowns).length > 0;
+
+  useEffect(() => {
+    if (!giftToast) return;
+    const timeoutId = window.setTimeout(() => setGiftToast(null), 4200);
+    return () => window.clearTimeout(timeoutId);
+  }, [giftToast]);
+
+  useEffect(() => {
+    if (!hasGiftCooldowns) return;
+    const intervalId = window.setInterval(() => setGiftClock(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [hasGiftCooldowns]);
 
   useEffect(() => {
     let active = true;
-    loadSocialLists()
-      .then(([loadedFriends, loadedRequests]) => {
+    const refreshAll = async () => {
+      const [[loadedFriends, loadedRequests], giftData, products] = await Promise.all([
+        loadSocialLists(),
+        socialApi.getGifts(),
+        socialApi.getGiftShop(),
+      ]);
         if (!active) return;
         setFriends(loadedFriends);
         setRequests(loadedRequests);
-      })
-      .catch((error: unknown) => {
-        if (active) setNotice(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (active) setLoadingLists(false);
-      });
-    return () => { active = false; };
-  }, []);
+        setReceivedGifts(giftData.gifts);
+        setGiftCooldowns(giftData.cooldowns);
+        setGiftProducts(products);
+        onRequestCountChange?.(loadedRequests.length + giftData.gifts.length);
+    };
+    void refreshAll()
+      .catch((error: unknown) => { if (active) setNotice(getErrorMessage(error)); })
+      .finally(() => { if (active) setLoadingLists(false); });
+    const intervalId = window.setInterval(() => {
+      void refreshAll().catch((error: unknown) => { if (active) setNotice(getErrorMessage(error)); });
+    }, 20_000);
+    const onFocus = () => void refreshAll().catch((error: unknown) => { if (active) setNotice(getErrorMessage(error)); });
+    window.addEventListener('focus', onFocus);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [onRequestCountChange]);
 
   const refreshLists = async () => {
-    const [loadedFriends, loadedRequests] = await loadSocialLists();
+    const [[loadedFriends, loadedRequests], giftData] = await Promise.all([loadSocialLists(), socialApi.getGifts()]);
     setFriends(loadedFriends);
     setRequests(loadedRequests);
+    setReceivedGifts(giftData.gifts);
+    setGiftCooldowns(giftData.cooldowns);
+    onRequestCountChange?.(loadedRequests.length + giftData.gifts.length);
+  };
+
+  const sendGift = async (item: SocialGiftProduct) => {
+    if (!selectedGiftFriend || sendingGiftItemId) return;
+    setSendingGiftItemId(item.itemId);
+    setNotice('');
+    try {
+      const result = await socialApi.sendGift(selectedGiftFriend.id, item.itemId);
+      updateUser({ coins: result.coins, rubies: result.rubies });
+      setGiftCooldowns((current) => ({ ...current, [selectedGiftFriend.id]: result.cooldownUntil }));
+      setSelectedGiftFriend(null);
+      setGiftToast({ kind: 'success', title: 'Подарунок надіслано!', message: `${item.name} вже прямує до ${selectedGiftFriend.username}.` });
+      void refreshLists().catch((refreshError: unknown) => setNotice(getErrorMessage(refreshError)));
+    } catch (error) {
+      setGiftToast({ kind: 'error', title: 'Не вдалося надіслати подарунок', message: getErrorMessage(error) });
+      void refreshLists().catch((refreshError: unknown) => setNotice(getErrorMessage(refreshError)));
+    } finally {
+      setSendingGiftItemId(null);
+    }
+  };
+
+  const respondToGift = async (gift: ReceivedSocialGift, accept: boolean) => {
+    setBusyGiftId(gift.id);
+    setNotice('');
+    try {
+      if (accept) {
+        const result = await socialApi.acceptGift(gift.id);
+        updateUser({ itemInventory: result.itemInventory });
+        setGiftToast({ kind: 'success', title: 'Подарунок прийнято!', message: `${gift.itemName} додано до твого інвентаря.` });
+      } else {
+        await socialApi.rejectGift(gift.id);
+        setGiftToast({ kind: 'success', title: 'Подарунок відхилено', message: 'Оплату повернено другові.' });
+      }
+      setSelectedReceivedGift(null);
+      void refreshLists().catch((refreshError: unknown) => setNotice(getErrorMessage(refreshError)));
+    } catch (error) {
+      setGiftToast({ kind: 'error', title: 'Не вдалося обробити подарунок', message: getErrorMessage(error) });
+    } finally {
+      setBusyGiftId(null);
+    }
   };
 
   const searchPlayers = async (event: React.FormEvent) => {
@@ -165,36 +284,55 @@ export const FriendsPanel: React.FC = () => {
   }
 
   return (
-    <section className="friends-section" aria-labelledby="friends-heading">
-      <div className="friends-heading-row">
-        <div>
-          <p className="player-label">ГОСПОДАРСТВО ПОРУЧ</p>
-          <h2 id="friends-heading">Друзі</h2>
+    <section className={`friends-section${isInGame ? ' game-friends-panel' : ''}`} aria-labelledby="friends-heading">
+      {isInGame ? (
+        <nav className="game-friends-tabs" id="friends-heading" aria-label="Розділи друзів">
+          <button type="button" className={activeTab === 'friends' ? 'is-active' : ''} onClick={() => setActiveTab('friends')}>
+            <Users size={16} /><span>Мої друзі</span><small>{friends.length}</small>
+          </button>
+          <button type="button" className={`${activeTab === 'requests' ? 'is-active' : ''}${requests.length > 0 ? ' has-new' : ''}`} onClick={() => setActiveTab('requests')}>
+            <Bell size={16} /><span>Запити</span><small>{requests.length}</small>
+          </button>
+          <button type="button" className={`${activeTab === 'gifts' ? 'is-active' : ''}${receivedGifts.length > 0 ? ' has-new' : ''}`} onClick={() => setActiveTab('gifts')}>
+            <Gift size={16} /><span>Подарунки</span><small>{receivedGifts.length}</small>
+          </button>
+          <button type="button" className={activeTab === 'search' ? 'is-active' : ''} onClick={() => setActiveTab('search')}>
+            <Search size={16} /><span>Пошук</span>
+          </button>
+        </nav>
+      ) : (
+        <div className="friends-heading-row">
+          <div>
+            <p className="player-label">ГОСПОДАРСТВО ПОРУЧ</p>
+            <h2 id="friends-heading">Друзі</h2>
+          </div>
+          <span className="friends-count">{friends.length}</span>
         </div>
-        <span className="friends-count">{friends.length}</span>
-      </div>
-
-      <form className="friend-search" onSubmit={searchPlayers}>
-        <Search size={17} aria-hidden="true" />
-        <input
-          aria-label="Пошук гравця за логіном або ID"
-          placeholder="Знайти за логіном або ID"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-        />
-        <button className="friend-add-button" type="submit" disabled={searching}>
-          <UserRoundPlus size={17} />
-          <span>{searching ? 'Шукаємо...' : 'Додати друга'}</span>
-        </button>
-      </form>
+      )}
 
       {notice && <p className="social-notice" role="status">{notice}</p>}
 
-      {searchResults.length > 0 && (
+      {(!isInGame || activeTab === 'search') && (
+        <form className="friend-search" onSubmit={searchPlayers}>
+          <Search size={17} aria-hidden="true" />
+          <input
+            aria-label="Пошук гравця за логіном або ID"
+            placeholder="Знайти за логіном або ID"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          <button className="friend-add-button" type="submit" disabled={searching}>
+            <UserRoundPlus size={17} />
+            <span>{searching ? 'Шукаємо...' : 'Знайти'}</span>
+          </button>
+        </form>
+      )}
+
+      {(!isInGame || activeTab === 'search') && searchResults.length > 0 && (
         <div className="social-list search-results" aria-label="Результати пошуку">
           {searchResults.map((player) => (
             <div className="social-player-row" key={player.id}>
-              <PlayerIdentity player={player} />
+              <PlayerIdentity player={player} hideId={isInGame} />
               {player.relation === 'none' && (
                 <button className="social-icon-button" type="button" onClick={() => void runPlayerAction(player, 'send')} disabled={busyPlayerId === player.id} aria-label={`Надіслати запит ${player.username}`} title="Додати в друзі"><UserRoundPlus size={17} /></button>
               )}
@@ -205,15 +343,15 @@ export const FriendsPanel: React.FC = () => {
           ))}
         </div>
       )}
-      {!searching && searchQuery.trim().length >= 2 && searchResults.length === 0 && <p className="social-empty">Гравців не знайдено.</p>}
+      {(!isInGame || activeTab === 'search') && !searching && searchQuery.trim().length >= 2 && searchResults.length === 0 && <p className="social-empty">Гравців не знайдено.</p>}
 
-      {requests.length > 0 && (
+      {(!isInGame || activeTab === 'requests') && requests.length > 0 && (
         <div className="friends-subsection">
-          <h3>Запити в друзі <span>{requests.length}</span></h3>
+          {!isInGame && <h3>Запити в друзі <span>{requests.length}</span></h3>}
           <div className="social-list">
             {requests.map((player) => (
               <div className="social-player-row" key={player.id}>
-                <PlayerIdentity player={player} />
+                <PlayerIdentity player={player} hideId={isInGame} />
                 <button className="social-icon-button accept-button" type="button" onClick={() => void runPlayerAction(player, 'accept')} disabled={busyPlayerId === player.id} aria-label={`Прийняти запит від ${player.username}`} title="Прийняти"><Check size={17} /></button>
                 <button className="social-icon-button reject-button" type="button" onClick={() => void runPlayerAction(player, 'decline')} disabled={busyPlayerId === player.id} aria-label={`Відхилити запит від ${player.username}`} title="Відхилити"><X size={17} /></button>
               </div>
@@ -221,16 +359,52 @@ export const FriendsPanel: React.FC = () => {
           </div>
         </div>
       )}
+      {isInGame && activeTab === 'requests' && requests.length === 0 && !loadingLists && (
+        <div className="game-friends-empty"><Bell size={25} /><strong>Нових запитів немає</strong><span>Коли хтось запросить у друзі, запит з’явиться тут.</span></div>
+      )}
 
-      <div className="friends-subsection">
-        <h3>Мої друзі <span>{friends.length}</span></h3>
+      {isInGame && activeTab === 'gifts' && (
+        <div className="friends-subsection">
+          {receivedGifts.length === 0 ? (
+            <div className="game-friends-empty"><Gift size={27} /><strong>Подарунків поки немає</strong><span>Коли друг надішле подарунок, він з’явиться тут.</span></div>
+          ) : (
+            <div className="social-list received-gifts-list">
+              {receivedGifts.map((gift) => (
+                <article className="received-gift-row" key={gift.id}>
+                  <div className="received-gift-card-sender">
+                    <span className="received-gift-mini-avatar">{gift.senderAvatar ? <img src={gift.senderAvatar} alt="" /> : gift.senderName.slice(0, 1).toUpperCase()}</span>
+                    <span className="received-gift-sender-details">
+                      <small>ПОДАРУНОК ВІД</small>
+                      <strong>{gift.senderName}</strong>
+                    </span>
+                    <span className="received-gift-level"><img src="/assets/ui/lvl_ico.png" alt="" /> Рівень {gift.senderLevel}</span>
+                  </div>
+                  <div className="received-gift-card-content">
+                    <div className="received-gift-image">{gift.image ? <img src={gift.image} alt="" draggable={false} /> : <Gift size={28} />}</div>
+                    <div className="received-gift-card-copy">
+                      <small>ДЛЯ ТВОЄЇ ФЕРМИ</small>
+                      <strong>{gift.itemName}</strong>
+                    </div>
+                    <button className="received-gift-open" type="button" onClick={() => setSelectedReceivedGift(gift)}><Gift size={15} /><span>Відкрити</span></button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(!isInGame || activeTab === 'friends') && <div className="friends-subsection">
+        {!isInGame && <h3>Мої друзі <span>{friends.length}</span></h3>}
         {loadingLists ? <p className="social-empty">Завантажуємо список друзів...</p> : friends.length === 0 ? (
-          <p className="social-empty">Додай гравців, щоб навідуватися на їхні ферми.</p>
+          isInGame
+            ? <div className="game-friends-empty"><Users size={27} /><strong>Тут будуть твої друзі</strong><span>Знайди гравців і запроси їх до свого кола.</span><button type="button" onClick={() => setActiveTab('search')}><Search size={15} />Знайти друзів</button></div>
+            : <p className="social-empty">Додай гравців, щоб навідуватися на їхні ферми.</p>
         ) : (
           <div className="social-list friends-grid">
             {friends.map((friend) => (
               <div className="social-player-row" key={friend.id}>
-                <PlayerIdentity player={friend} />
+                <PlayerIdentity player={friend} hideId={isInGame} />
                 {friendToRemoveId === friend.id ? (
                   <div className="remove-friend-confirm" aria-label={`Підтвердити видалення ${friend.username}`}>
                     <span className="remove-friend-prompt">Видалити?</span>
@@ -239,6 +413,10 @@ export const FriendsPanel: React.FC = () => {
                   </div>
                 ) : (
                   <div className="friend-row-actions">
+                    {isInGame && (() => {
+                      const remaining = formatGiftCooldown(giftCooldowns[friend.id], giftClock);
+                      return <button className={`friend-gift-button${remaining ? ' is-cooling' : ''}`} type="button" aria-disabled={Boolean(remaining)} onClick={() => setSelectedGiftFriend(friend)} aria-label={remaining ? `Подарувати ${friend.username}. Доступно через ${remaining}` : `Подарувати ${friend.username}`} title={remaining ? `Наступний подарунок через ${remaining}` : `Подарувати ${friend.username}`}><Gift size={16} />{remaining && <span>{formatCompactGiftCooldown(giftCooldowns[friend.id], giftClock)}</span>}</button>;
+                    })()}
                     <button className="friend-visit-button" type="button" onClick={() => void openFriendFarm(friend)} disabled={openingFriend} aria-label={`Відвідати ферму ${friend.username}`}><House size={16} /><span>В гості</span></button>
                     <div className="friend-menu-wrap">
                       <button className="friend-menu-button" type="button" onClick={() => setOpenFriendMenuId((openId) => openId === friend.id ? null : friend.id)} aria-expanded={openFriendMenuId === friend.id} aria-label={`Дії для друга ${friend.username}`} title="Інші дії"><MoreVertical size={18} /></button>
@@ -254,12 +432,42 @@ export const FriendsPanel: React.FC = () => {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
       {openingFriend && <div className="friend-loading" role="status">Відкриваємо профіль і ферму...</div>}
 
+      {selectedGiftFriend && (
+        <GiftShopModal
+          friend={selectedGiftFriend}
+          items={giftProducts}
+          cooldownUntil={giftCooldowns[selectedGiftFriend.id]}
+          sendingItemId={sendingGiftItemId}
+          onClose={() => setSelectedGiftFriend(null)}
+          onSend={(item) => void sendGift(item)}
+        />
+      )}
+
+      {selectedReceivedGift && (
+        <ReceivedGiftModal
+          gift={selectedReceivedGift}
+          busy={busyGiftId === selectedReceivedGift.id}
+          onClose={() => setSelectedReceivedGift(null)}
+          onAccept={() => void respondToGift(selectedReceivedGift, true)}
+          onReject={() => void respondToGift(selectedReceivedGift, false)}
+        />
+      )}
+
+      {giftToast && createPortal(
+        <div className={`gift-feedback-toast is-${giftToast.kind}`} role={giftToast.kind === 'error' ? 'alert' : 'status'}>
+          <span className="gift-feedback-icon">{giftToast.kind === 'success' ? <Check size={19} /> : <X size={19} />}</span>
+          <span><strong>{giftToast.title}</strong><small>{giftToast.message}</small></span>
+          <button type="button" onClick={() => setGiftToast(null)} aria-label="Закрити повідомлення"><X size={15} /></button>
+        </div>,
+        document.querySelector('.app-shell') ?? document.body
+      )}
+
       {selectedFarm && createPortal(
-        <div className="friend-farm-overlay">
+        <div className={`friend-farm-overlay${isInGame ? ' game-friend-farm-overlay' : ''}`}>
           <FarmCanvas readOnly previewTiles={displayedTiles} farmSize={selectedFarm.size} />
           <div className="friend-farm-toolbar">
             <button className="friend-back-button" type="button" onClick={() => setSelectedFarm(null)} aria-label="Повернутися до профілю" title="Повернутися до профілю"><ArrowLeft size={20} /></button>
@@ -305,14 +513,15 @@ export const FriendsPanel: React.FC = () => {
   );
 };
 
-const PlayerIdentity: React.FC<{ player: SocialPlayer }> = ({ player }) => (
+const PlayerIdentity: React.FC<{ player: SocialPlayer; hideId?: boolean }> = ({ player, hideId = false }) => (
   <div className="social-player-identity">
-    <div className="social-avatar">
+    <div className={`social-avatar${player.isOnline ? ' is-online' : ''}`} title={formatLastOnline(player)}>
       {player.avatar ? <img src={player.avatar} alt="" /> : <span>{player.username.slice(0, 1).toUpperCase()}</span>}
     </div>
     <div className="social-player-copy">
       <strong>{player.username}</strong>
-      <small>ID: {player.id}</small>
+      <small className={`social-last-online${player.isOnline ? ' is-online' : ''}`}><span className="social-presence-dot" aria-hidden="true" />{formatLastOnline(player)}</small>
+      {!hideId && <small>ID: {player.id}</small>}
     </div>
     <span className="social-player-level" aria-label={`Рівень ${getLevelProgress(player.xp).level}`}>
       <img src="/assets/ui/lvl_ico.png" alt="" />

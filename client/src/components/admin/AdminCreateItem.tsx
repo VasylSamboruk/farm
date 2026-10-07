@@ -123,7 +123,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [placementSurface, setPlacementSurface] = useState<'grass' | 'soil'>('grass');
   const [spriteScale, setSpriteScale] = useState('1');
   const [canFlip, setCanFlip] = useState(true);
-  const [access, setAccess] = useState<'all' | 'admin'>('all');
+  const [access, setAccess] = useState<'all' | 'admin' | 'gift'>('all');
   const [housingEnabled, setHousingEnabled] = useState(false);
   const [housingCapacity, setHousingCapacity] = useState('40');
   const [housingAnimalTypes, setHousingAnimalTypes] = useState<string[]>([]);
@@ -181,6 +181,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const changeType = (nextType: ItemType) => {
     setPreviewElapsedMs(0);
     setType(nextType);
+    if (nextType === 'OTHER' && access === 'gift') setAccess('all');
     if (nextType === 'BUILDING') {
       setYieldItem('');
       setYieldName('');
@@ -352,7 +353,8 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
         priceCurrency,
         plantingXp: parsedPlantingXp,
         requiredLevel: parsedLevel,
-        access,
+        access: access === 'gift' ? 'all' : access,
+        giftOnly: access === 'gift',
         footprint,
         ...(largeFootprint ? { largeFootprint } : {}),
         ...(type === 'BUILDING' && housingEnabled
@@ -463,8 +465,8 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
           <section className="admin-create-section">
             <div className="admin-create-section-heading"><span>02</span><div><h2>Економіка та доступ</h2><p>Налаштування покупки й розміщення</p></div></div>
             <div className="admin-create-fields admin-create-fields-three">
-              <label>Ціна покупки<input type="number" min="0" step="1" value={price} onChange={(event) => setPrice(event.target.value)} required /></label>
-              <label>Валюта покупки<select value={priceCurrency} onChange={(event) => setPriceCurrency(event.target.value as 'coins' | 'rubies')}><option value="coins">Монети</option><option value="rubies">Рубіни</option></select></label>
+              <label>{access === 'gift' ? 'Ціна подарунка' : 'Ціна покупки'}<input type="number" min="0" step="1" value={price} onChange={(event) => setPrice(event.target.value)} required /></label>
+              <label>{access === 'gift' ? 'Валюта подарунка' : 'Валюта покупки'}<select value={priceCurrency} onChange={(event) => setPriceCurrency(event.target.value as 'coins' | 'rubies')}><option value="coins">Монети</option><option value="rubies">Рубіни</option></select></label>
               <label>Досвід за встановлення<input type="number" min="0" step="1" value={plantingXp} onChange={(event) => setPlantingXp(event.target.value)} required /></label>
               <label>Доступ з рівня<input type="number" min="1" max="999" step="1" value={requiredLevel} onChange={(event) => setRequiredLevel(event.target.value)} required /></label>
             </div>
@@ -473,7 +475,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
                 <button className={placementSurface === 'grass' ? 'is-active' : ''} type="button" aria-pressed={placementSurface === 'grass'} onClick={() => setPlacementSurface('grass')}><span className="admin-surface-swatch is-grass" />Трава</button>
                 <button className={placementSurface === 'soil' ? 'is-active' : ''} type="button" aria-pressed={placementSurface === 'soil'} onClick={() => setPlacementSurface('soil')}><span className="admin-surface-swatch is-soil" />Грядка</button>
               </div></fieldset>
-              <label>Доступ у магазині<select value={access} onChange={(event) => setAccess(event.target.value as 'all' | 'admin')}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option></select></label>
+              <label>Доступ<select value={access} onChange={(event) => setAccess(event.target.value as 'all' | 'admin' | 'gift')}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option>{type !== 'OTHER' && <option value="gift">Лише як подарунок</option>}</select></label>
             </div>
           </section>
 

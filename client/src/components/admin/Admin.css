@@ -365,6 +365,25 @@
 .admin-level-reward-saved-list h2 { flex-basis: 100%; margin: 0 0 3px; color: var(--admin-ink); font: 700 15px Georgia, serif; }
 .admin-level-reward-saved-list button { display: grid; gap: 3px; min-width: 120px; padding: 9px 11px; border: 1px solid #d9e3d8; border-radius: 5px; color: #45674c; background: #f8fbf6; text-align: left; cursor: pointer; }
 .admin-level-reward-saved-list button strong { font-size: 11px; }
+.admin-gift-shop-row { grid-template-columns: minmax(170px, 1fr) 110px 130px 104px auto; align-items: center; }
+.admin-gift-shop-product { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.admin-gift-shop-product > img,
+.admin-gift-shop-product > span { display: grid; place-items: center; flex: 0 0 42px; width: 42px; height: 42px; object-fit: contain; border: 1px solid #dce4dc; border-radius: 6px; background: #f3f6f0; font-size: 23px; }
+.admin-gift-shop-product > div { display: grid; gap: 4px; min-width: 0; }
+.admin-gift-shop-product strong,
+.admin-gift-shop-product small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-gift-shop-product strong { color: var(--admin-ink); font-size: 11px; }
+.admin-gift-shop-product small { color: var(--admin-muted); font-size: 9px; }
+.admin-gift-shop-enabled { display: flex !important; align-items: center; gap: 6px !important; white-space: nowrap; }
+.admin-gift-shop-enabled input { width: 15px; height: 15px; accent-color: var(--admin-green); }
+.admin-gift-shop-row .admin-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 10px; border: 1px solid #28724e; border-radius: 5px; color: #fff; background: linear-gradient(180deg,#348a5d,#28724e); font-size: 10px; font-weight: 800; cursor: pointer; }
+.admin-gift-shop-add { display: grid; gap: 5px; min-width: min(100%, 320px); color: #58695c; font-size: 10px; font-weight: 800; }
+.admin-gift-shop-add select { min-width: 0; height: 36px; padding: 0 8px; border: 1px solid #d4dfd4; border-radius: 5px; color: var(--admin-ink); background: #fff; font-size: 11px; }
+@media (max-width: 760px) {
+  .admin-gift-shop-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .admin-gift-shop-row > label:not(.admin-gift-shop-enabled) { grid-column: auto; }
+  .admin-gift-shop-row .admin-gift-shop-product { grid-column: 1 / -1; }
+}
 .admin-level-reward-saved-list button span { color: #79877a; font-size: 9px; }
 @media (max-width: 680px) {
   .admin-level-reward-row,

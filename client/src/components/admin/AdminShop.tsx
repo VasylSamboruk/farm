@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ArrowDown, ArrowUp, PackagePlus, PackageSearch, RotateCcw, Save, ShoppingBasket, Trash2 } from 'lucide-react';
-import { adminApi, type AdminCatalogItem } from '../../api/admin.api';
+import { adminApi, type AdminCatalogItem, type AdminGiftShopItem } from '../../api/admin.api';
 import { AdminImageUrlInput } from './AdminImageUrlInput';
 import { AdminDurationInput } from './AdminDurationInput';
 import { useAdminToast } from './adminToast';
 import { resolveImageUrl } from '../../game/assetUrls';
 import { durationPartsToMilliseconds, millisecondsToDurationParts, type DurationParts } from '../../game/durationInput';
 
-type AdminShopCategory = 'ALL' | AdminCatalogItem['type'] | 'DECOR' | 'HOUSING_BUILDING';
+type AdminShopCategory = 'ALL' | AdminCatalogItem['type'] | 'DECOR' | 'HOUSING_BUILDING' | 'GIFTS';
 
 const categories: { type: AdminShopCategory; label: string }[] = [
   { type: 'ALL', label: 'Усі товари' },
@@ -18,6 +18,7 @@ const categories: { type: AdminShopCategory; label: string }[] = [
   { type: 'DECOR', label: 'Декор' },
   { type: 'HOUSING_BUILDING', label: 'Будівлі' },
   { type: 'OTHER', label: 'Інше' },
+  { type: 'GIFTS', label: 'Подарунки' },
 ];
 
 interface ItemDraft {
@@ -42,7 +43,7 @@ interface ItemDraft {
   footprintHeight: string;
   largeFootprintWidth: string;
   largeFootprintHeight: string;
-  access: 'all' | 'admin';
+  access: 'all' | 'admin' | 'gift';
   shopImage: string;
   shopIcon: string;
   yieldImage: string;
@@ -77,7 +78,7 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => {
   footprintHeight: String(item.footprint?.height ?? 1),
   largeFootprintWidth: String(item.largeFootprint?.width ?? ''),
   largeFootprintHeight: String(item.largeFootprint?.height ?? ''),
-  access: item.access ?? 'all',
+  access: item.giftOnly ? 'gift' : item.access ?? 'all',
   shopImage: item.shopImage ?? '',
   shopIcon: item.shopIcon ?? '',
   yieldImage: item.yieldImage ?? '',
@@ -110,6 +111,7 @@ interface AdminShopProps {
 export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
   const showToast = useAdminToast();
   const [catalog, setCatalog] = useState<AdminCatalogItem[]>([]);
+  const [giftSettings, setGiftSettings] = useState<Record<string, AdminGiftShopItem>>({});
   const [assetBaseUrl, setAssetBaseUrl] = useState('');
   const [drafts, setDrafts] = useState<Record<string, ItemDraft>>({});
   const [category, setCategory] = useState<AdminShopCategory>('ALL');
@@ -121,8 +123,9 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
   const [notice, setNotice] = useState('');
 
   const refreshCatalog = async (savedItemId: string) => {
-    const items = await adminApi.getCatalog();
+    const [items, giftItems] = await Promise.all([adminApi.getCatalog(), adminApi.getGiftShop()]);
     setCatalog(items);
+    setGiftSettings(Object.fromEntries(giftItems.map((item) => [item.itemId, item])));
     setDrafts((current) => Object.fromEntries(items.map((item) => [
       item.id,
       item.id === savedItemId ? createDraft(item) : current[item.id] ?? createDraft(item),
@@ -131,11 +134,12 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([adminApi.getCatalog(), adminApi.getMediaSettings()])
-      .then(([items, mediaSettings]) => {
+    void Promise.all([adminApi.getCatalog(), adminApi.getMediaSettings(), adminApi.getGiftShop()])
+      .then(([items, mediaSettings, giftItems]) => {
         if (!active) return;
         setAssetBaseUrl(mediaSettings.assetBaseUrl);
         setCatalog(items);
+        setGiftSettings(Object.fromEntries(giftItems.map((item) => [item.itemId, item])));
         setDrafts(Object.fromEntries(items.map((item) => [item.id, createDraft(item)])));
       })
       .catch((loadError: unknown) => {
@@ -183,6 +187,11 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     const largeHeight = draft.largeFootprintHeight.trim() ? Number(draft.largeFootprintHeight) : null;
     const spriteScale = Number(draft.spriteScale);
     const housingCapacity = Number(draft.housingCapacity);
+    const isGiftItem = draft.access === 'gift';
+    const giftSetting = giftSettings[item.id];
+    const giftPrice = giftSetting?.price ?? item.price;
+    const giftPriceCurrency = giftSetting?.priceCurrency ?? item.priceCurrency ?? 'coins';
+    const giftEnabled = giftSetting?.enabled ?? true;
     const validOptionalFootprint = (value: number | null) => value === null || (Number.isInteger(value) && value >= 1 && value <= 8);
 
     if (!draft.name.trim() || !Number.isSafeInteger(price) || price < 0 ||
@@ -201,6 +210,8 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
         draft.housingAnimalTypes.some((animalId) => !catalog.some((entry) => entry.id === animalId && entry.type === 'ANIMAL')))) ||
       draft.growthImages.length > 12 || draft.growthImages.some((source) => !source.trim() || !isImageSource(source.trim())) ||
       !isImageSource(draft.shopImage.trim()) || !isImageSource(draft.yieldImage.trim()) ||
+      (isGiftItem && (!Number.isSafeInteger(giftPrice) || giftPrice < 0)) ||
+      (isGiftItem && item.type === 'OTHER') ||
       (item.type === 'OTHER' && draft.mechanic === 'accelerate_growth' &&
         (!Number.isSafeInteger(accelerationMs) || (accelerationMs ?? 0) < 1000 || (accelerationMs ?? 0) > 2_592_000_000)) ||
       (item.type === 'ANIMAL' && ((!draft.growthImages[0] && !draft.shopImage.trim()) || !draft.yieldImage.trim()))) {
@@ -228,12 +239,21 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
         footprint: { width: footprintWidth, height: footprintHeight },
         largeFootprint: largeWidth === null || largeHeight === null ? null : { width: largeWidth, height: largeHeight },
         housing: draft.housingEnabled ? { capacity: housingCapacity, animalTypes: draft.housingAnimalTypes } : null,
-        access: draft.access,
+        access: draft.access === 'gift' ? 'all' : draft.access,
+        giftOnly: draft.access === 'gift',
         ...(item.type === 'OTHER' ? {
           mechanic: draft.mechanic === 'none' ? null : draft.mechanic,
           accelerationMs: draft.mechanic === 'accelerate_growth' ? accelerationMs : null,
         } : {}),
       });
+      if (isGiftItem) {
+        const savedGift = await adminApi.updateGiftShopItem(item.id, {
+          price: giftPrice,
+          priceCurrency: giftPriceCurrency,
+          enabled: giftEnabled,
+        });
+        setGiftSettings((current) => ({ ...current, [item.id]: savedGift }));
+      }
       await refreshCatalog(item.id);
       setNotice(`Зміни для «${updated.name}» збережено.`);
       showToast('success', `Зміни для «${updated.name}» збережено.`);
@@ -301,7 +321,9 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
   };
 
   const visibleItems = catalog.filter((item) =>
-    category === 'ALL' ? true
+    category === 'GIFTS' ? Boolean(item.giftOnly)
+      : category === 'ALL' ? true
+      : item.giftOnly ? false
       : category === 'DECOR' ? item.type === 'BUILDING' && !item.housing
         : category === 'HOUSING_BUILDING' ? item.type === 'BUILDING' && Boolean(item.housing)
           : item.type === category
@@ -309,14 +331,15 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     .sort((left, right) => left.sortOrder - right.sortOrder);
 
   const getCategoryCount = (categoryType: AdminShopCategory) => categoryType === 'ALL' ? catalog.length
-    : categoryType === 'DECOR' ? catalog.filter((item) => item.type === 'BUILDING' && !item.housing).length
-      : categoryType === 'HOUSING_BUILDING' ? catalog.filter((item) => item.type === 'BUILDING' && item.housing).length
-        : catalog.filter((item) => item.type === categoryType).length;
+    : categoryType === 'GIFTS' ? catalog.filter((item) => item.giftOnly).length
+      : categoryType === 'DECOR' ? catalog.filter((item) => !item.giftOnly && item.type === 'BUILDING' && !item.housing).length
+        : categoryType === 'HOUSING_BUILDING' ? catalog.filter((item) => !item.giftOnly && item.type === 'BUILDING' && item.housing).length
+          : catalog.filter((item) => !item.giftOnly && item.type === categoryType).length;
 
   return (
     <section className="admin-shop-page" aria-labelledby="admin-shop-title">
       <header className="admin-shop-heading">
-        <div><span className="admin-eyebrow">КАТАЛОГ ГРИ</span><h1 id="admin-shop-title">Магазин</h1><p>Ціни, рівні доступу та параметри товарів</p></div>
+        <div><span className="admin-eyebrow">КАТАЛОГ ГРИ</span><h1 id="admin-shop-title">Магазин</h1><p>Налаштовуй товари, доступ і подарунковий асортимент</p></div>
         <div className="admin-shop-heading-actions"><button className="admin-create-link" type="button" onClick={onAddItem}><PackagePlus size={16} />Додати товар</button><div className="admin-shop-total"><ShoppingBasket size={18} /><strong>{catalog.length}</strong><span>товарів</span></div></div>
       </header>
       {error && <p className="admin-alert is-error" role="alert">{error}</p>}
@@ -334,6 +357,8 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
         <div className="admin-product-grid">
           {visibleItems.map((item) => {
             const draft = drafts[item.id] ?? createDraft(item);
+            const giftSetting = giftSettings[item.id];
+            const isGiftItem = draft.access === 'gift';
             return (
               <article className={`admin-product${item.disabled ? ' is-disabled' : ''}`} key={item.id}>
                 <header className="admin-product-header">
@@ -350,9 +375,15 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                     {draft.mechanic === 'accelerate_growth' && <div className="admin-duration-form-field admin-product-duration"><span>Прискорення часу</span><AdminDurationInput label={`Прискорення добрива для ${item.name}`} value={draft.acceleration} onChange={(acceleration) => updateDraft(item.id, { acceleration })} /></div>}
                   </>}
                   <label>Назва<input value={draft.name} maxLength={120} onChange={(event) => updateDraft(item.id, { name: event.target.value })} /></label>
-                  <label>Ціна покупки<input type="number" min="0" step="1" value={draft.price} onChange={(event) => updateDraft(item.id, { price: event.target.value })} /></label>
-                  <label>Валюта<select value={draft.priceCurrency} onChange={(event) => updateDraft(item.id, { priceCurrency: event.target.value as ItemDraft['priceCurrency'] })}><option value="coins">Монети</option><option value="rubies">Рубіни</option></select></label>
-                  <label>Ціна продажу<input type="number" min="0" step="1" value={draft.sellPrice} placeholder="Не продається" onChange={(event) => updateDraft(item.id, { sellPrice: event.target.value })} /></label>
+                  {!isGiftItem ? <>
+                    <label>Ціна покупки<input type="number" min="0" step="1" value={draft.price} onChange={(event) => updateDraft(item.id, { price: event.target.value })} /></label>
+                    <label>Валюта<select value={draft.priceCurrency} onChange={(event) => updateDraft(item.id, { priceCurrency: event.target.value as ItemDraft['priceCurrency'] })}><option value="coins">Монети</option><option value="rubies">Рубіни</option></select></label>
+                    <label>Ціна продажу<input type="number" min="0" step="1" value={draft.sellPrice} placeholder="Не продається" onChange={(event) => updateDraft(item.id, { sellPrice: event.target.value })} /></label>
+                  </> : <>
+                    <label>Ціна подарунка<input type="number" min="0" step="1" value={giftSetting?.price ?? item.price} onChange={(event) => setGiftSettings((current) => ({ ...current, [item.id]: { itemId: item.id, name: item.name, type: item.type, image: item.shopImage ?? '', icon: item.shopIcon ?? '', price: Number(event.target.value), priceCurrency: current[item.id]?.priceCurrency ?? item.priceCurrency ?? 'coins', enabled: current[item.id]?.enabled ?? true } }))} /></label>
+                    <label>Валюта подарунка<select value={giftSetting?.priceCurrency ?? item.priceCurrency ?? 'coins'} onChange={(event) => setGiftSettings((current) => ({ ...current, [item.id]: { itemId: item.id, name: item.name, type: item.type, image: item.shopImage ?? '', icon: item.shopIcon ?? '', price: current[item.id]?.price ?? item.price, priceCurrency: event.target.value as AdminGiftShopItem['priceCurrency'], enabled: current[item.id]?.enabled ?? true } }))}><option value="coins">Монети</option><option value="rubies">Рубіни</option></select></label>
+                    <label className="admin-check-field"><input type="checkbox" checked={giftSetting?.enabled ?? true} onChange={(event) => setGiftSettings((current) => ({ ...current, [item.id]: { itemId: item.id, name: item.name, type: item.type, image: item.shopImage ?? '', icon: item.shopIcon ?? '', price: current[item.id]?.price ?? item.price, priceCurrency: current[item.id]?.priceCurrency ?? item.priceCurrency ?? 'coins', enabled: event.target.checked } }))} />У подарунковому магазині</label>
+                  </>}
                   <label>Мінімальний рівень<input type="number" min="1" max="999" value={draft.requiredLevel} onChange={(event) => updateDraft(item.id, { requiredLevel: event.target.value })} /></label>
                   <label>Позиція у списку<input type="number" min="1" max="9999" value={draft.sortOrder} onChange={(event) => updateDraft(item.id, { sortOrder: event.target.value })} /></label>
                 </div>
@@ -366,7 +397,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                     <label>ID урожаю<input value={draft.yieldItem} onChange={(event) => updateDraft(item.id, { yieldItem: event.target.value })} /></label>
                     <label>Назва урожаю<input value={draft.yieldName} onChange={(event) => updateDraft(item.id, { yieldName: event.target.value })} /></label>
                     <label>{item.type === 'ANIMAL' ? 'Іконка продукції' : 'Іконка урожаю'}<input value={draft.yieldIcon} maxLength={16} onChange={(event) => updateDraft(item.id, { yieldIcon: event.target.value })} placeholder="🍎" /></label>
-                    <label>Доступ<select value={draft.access} onChange={(event) => updateDraft(item.id, { access: event.target.value as ItemDraft['access'] })}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option></select></label>
+                    <label>Доступ<select value={draft.access} onChange={(event) => updateDraft(item.id, { access: event.target.value as ItemDraft['access'] })}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option>{item.type !== 'OTHER' && <option value="gift">Лише як подарунок</option>}</select></label>
                     <label>Поверхня<select value={draft.placementSurface} onChange={(event) => updateDraft(item.id, { placementSurface: event.target.value as ItemDraft['placementSurface'] })}><option value="grass">Трава</option><option value="soil">Грядка</option></select></label>
                     <div className="admin-product-footprint-editor">
                       <div className="admin-product-footprint-heading">

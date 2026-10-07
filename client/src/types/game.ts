@@ -40,6 +40,7 @@ export interface GameItemConfig {
   sellPrice?: number | null;
   placementSurface?: 'grass' | 'soil';
   access?: 'all' | 'admin';
+  giftOnly?: boolean;
   custom?: boolean;
   disabled?: boolean;
 }

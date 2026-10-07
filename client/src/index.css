@@ -976,6 +976,15 @@ html, body, #root {
   .modal-title-divider { height: 26px; }
   .modal-resource-chip { min-height: 29px; gap: 4px; padding: 3px 6px; font-size: 9px; }
   .modal-resource-chip > img { flex-basis: 15px; width: 15px; height: 15px; }
+  .modal-header-single-row { flex-wrap: nowrap !important; gap: 5px !important; padding: 8px 9px !important; }
+  .modal-header-single-row .modal-header-summary { flex: 1 1 0%; flex-wrap: nowrap; gap: 5px; }
+  .modal-header-single-row .modal-header-summary > div:first-child { flex: 0 1 auto; min-width: 0; }
+  .modal-header-single-row .modal-title-divider { flex: 0 0 1px; width: 1px; height: 24px; margin: 0; }
+  .modal-header-single-row .modal-header-summary > div:last-child { flex: 0 1 auto; min-width: 0; flex-wrap: nowrap; gap: 4px; }
+  .modal-header-single-row .modal-brand-banner { width: clamp(88px, 27vw, 122px) !important; max-height: 34px; }
+  .modal-header-single-row .modal-resource-chip { flex: 0 1 auto; min-width: 0; min-height: 27px; gap: 3px; padding: 2px 4px; font-size: 8px; }
+  .modal-header-single-row .modal-resource-chip > img { flex: 0 0 13px; width: 13px; height: 13px; }
+  .modal-header-single-row > button { align-self: center; flex: 0 0 32px !important; width: 32px !important; height: 32px !important; }
 }
 
 .farmer-play-button { position: relative; display: flex; align-items: center; justify-content: center; gap: 15px; width: min(100%, 600px); min-height: 72px; margin: 16px auto 18px; padding: 10px 22px; border: 5px solid #70431f; border-radius: 25px 18px 24px 18px; color: #fff8d9; background: linear-gradient(180deg, #9fe446, #62bd28 48%, #38891f); box-shadow: inset 0 3px 0 rgba(237, 255, 163, 0.8), inset 0 -4px 0 rgba(42, 103, 26, 0.38), 0 5px 0 #56331d, 0 9px 15px rgba(26, 37, 21, 0.28); text-shadow: 0 2px 2px rgba(30, 66, 21, 0.6); cursor: pointer; transition: filter 140ms ease, transform 140ms ease; }
@@ -2649,4 +2658,384 @@ html, body, #root {
 
 .app-shell[data-theme='dark'] .housing-notice {
   color: #b8e5aa;
+}
+
+.social-modal-overlay {
+  position: fixed;
+  z-index: 110;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(25, 34, 45, .48);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.social-modal-window {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: min(88dvh, 820px);
+  overflow: hidden;
+}
+
+.social-modal-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 10px 16px;
+}
+
+.social-modal-title { display: flex; align-items: center; gap: 9px; }
+.social-modal-title img { width: 27px; height: 27px; object-fit: contain; }
+.social-modal-title h2 { margin: 0; color: #263447; font: 900 17px/1.1 'Trebuchet MS', sans-serif; }
+.social-modal-subtitle { color: #718095; font: 600 11px/1.3 'Trebuchet MS', sans-serif; }
+.social-modal-content { min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.social-modal-content::-webkit-scrollbar { display: none; }
+
+.game-friends-panel {
+  margin: 0;
+  padding: 14px 16px 18px;
+  border: 0;
+  color: #263447;
+}
+
+.game-friends-panel .friends-heading-row { margin-bottom: 12px; }
+.game-friends-panel .friends-heading-row .player-label { margin: 0 0 3px; color: #6f8295; font-size: 9px; letter-spacing: .55px; }
+.game-friends-panel .friends-heading-row h2 { color: #34485d; font: 800 17px/1.15 'Trebuchet MS', sans-serif; }
+.game-friends-panel .friends-count { min-width: 28px; height: 28px; border-color: rgba(107,129,154,.26); color: #405168; background: linear-gradient(180deg,#f8fafc,#dce3e9); }
+.game-friends-panel .friend-search { min-height: 42px; border-color: rgba(107,129,154,.32); border-radius: 12px; color: #6b7b8d; background: linear-gradient(145deg,rgba(255,255,255,.76),rgba(226,232,238,.68)); }
+.game-friends-panel .friend-search input { color: #34485d; }
+.game-friends-panel .friend-search input::placeholder { color: #8290a0; }
+.game-friends-panel .friend-search > button { display: flex; width: auto; min-width: 122px; height: 32px; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border: 1px solid rgba(31,112,66,.78); border-radius: 9px; color: #fff; background: linear-gradient(180deg,#238351,#1b6e42); font: 800 10px 'Trebuchet MS',sans-serif; box-shadow: inset 0 1px 0 rgba(255,255,255,.25),0 2px 5px rgba(31,128,75,.16); }
+.game-friends-panel .social-notice,
+.game-friends-panel .social-empty { color: #65748a; }
+.game-friends-panel .social-notice { color: #a0503a; }
+.game-friends-panel .friends-subsection { margin-top: 17px; }
+.game-friends-panel .friends-subsection h3 { color: #405168; }
+.game-friends-panel .friends-subsection h3 span { color: #7b8998; }
+.game-friends-panel .social-list { border: 0; }
+.game-friends-panel .friends-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.game-friends-panel .social-player-row { min-width: 0; min-height: 58px; gap: 7px; padding: 6px 8px; border: 1px solid rgba(190,201,211,.78); border-radius: 12px; background: linear-gradient(145deg,rgba(248,249,250,.98),rgba(226,231,236,.94)); box-shadow: inset 0 1px 0 rgba(255,255,255,.8),0 3px 8px rgba(38,48,61,.08); }
+.game-friends-panel .social-player-identity { gap: 8px; }
+.game-friends-panel .social-avatar { width: 38px; height: 38px; border-color: rgba(107,129,154,.4); color: #fff; background: linear-gradient(145deg,#6c9b70,#42684d); }
+.game-friends-panel .social-player-copy strong { color: #34485d; }
+.game-friends-panel .social-player-copy small { color: #7c8998; }
+.game-friends-panel .friend-row-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; }
+.game-friends-panel .friend-visit-button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 0 8px; border: 1px solid rgba(31,112,66,.78); border-radius: 8px; color: #fff; background: linear-gradient(180deg,#238351,#1b6e42); box-shadow: inset 0 1px 0 rgba(255,255,255,.25),0 2px 5px rgba(31,128,75,.16); font: 800 9px 'Trebuchet MS',sans-serif; white-space: nowrap; cursor: pointer; }
+.game-friends-panel .friend-visit-button:disabled { opacity: .55; cursor: wait; }
+.game-friends-panel .friend-menu-wrap { position: relative; }
+.game-friends-panel .friend-menu-button { display: grid; place-items: center; width: 28px; height: 32px; padding: 0; border: 1px solid rgba(107,129,154,.3); border-radius: 8px; color: #52667c; background: rgba(255,255,255,.55); cursor: pointer; }
+.game-friends-panel .friend-action-menu { position: absolute; z-index: 5; top: calc(100% + 4px); right: 0; min-width: 150px; padding: 4px; border: 1px solid #c5ced7; border-radius: 9px; background: #f7f9fb; box-shadow: 0 8px 20px rgba(38,48,61,.22); }
+.game-friends-panel .friend-action-menu button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 0 8px; border: 0; border-radius: 6px; color: #8b3d3d; background: transparent; text-align: left; font: 700 10px 'Trebuchet MS',sans-serif; cursor: pointer; }
+.game-friends-panel .friend-action-menu button:hover { background: rgba(175,68,68,.09); }
+.game-friends-panel .social-icon-button { width: 31px; height: 31px; border-color: rgba(107,129,154,.3); color: #45617b; background: linear-gradient(180deg,#f8fafc,#dce3e9); }
+.game-friends-panel .accept-button { color: #267548; }
+.game-friends-panel .reject-button { color: #a34444; }
+.game-friends-panel .social-text-action { min-height: 30px; border-color: rgba(31,112,66,.45); border-radius: 8px; color: #fff; background: linear-gradient(180deg,#4b9b68,#2f7651); }
+.game-friends-panel .social-text-action.reject-button { border-color: rgba(164,68,68,.35); color: #fff; background: linear-gradient(180deg,#ce6c67,#a34444); }
+.game-friends-panel .social-state { color: #718095; }
+.game-friends-panel .remove-friend-prompt { color: #718095; }
+.game-friends-panel .friend-loading { color: #52667c; }
+
+.settings-tool-anchor { position: relative; display: flex; flex: 0 0 auto; }
+.settings-tool-popover { position: absolute; z-index: 4; bottom: calc(100% + 8px); left: 50%; display: flex; flex-direction: column; align-items: center; gap: 5px; transition: opacity .18s ease, transform .18s ease; }
+.friends-open-button { width: clamp(51px, 15.8vw, 68px) !important; height: clamp(51px, 15.8vw, 68px) !important; }
+.friends-open-button > img { width: 100%; height: 100%; object-fit: contain; }
+.modal-brand-banner { display: block; width: clamp(138px, 20vw, 172px) !important; height: auto !important; max-height: 48px; object-fit: contain; }
+.friends-open-badge { position: absolute; top: 0; right: 0; display: flex; min-width: 19px; height: 19px; align-items: center; justify-content: center; gap: 2px; padding: 0 4px; border: 1px solid rgba(255,255,255,.9); border-radius: 999px; color: #fff; background: linear-gradient(180deg,#ef625c,#b93037); box-shadow: 0 2px 7px rgba(70,13,20,.48); font: 900 9px/1 'Trebuchet MS',sans-serif; }
+.friends-open-button.has-friend-requests::after { position: absolute; z-index: -1; inset: 5px; border: 2px solid rgba(255,211,94,.9); border-radius: 50%; content: ''; animation: friend-request-pulse 1.7s ease-out infinite; pointer-events: none; }
+@keyframes friend-request-pulse { 0% { opacity: .82; transform: scale(.92); } 100% { opacity: 0; transform: scale(1.48); } }
+
+.game-friends-tabs { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; margin: 2px 0 13px; }
+.game-friends-tabs button { position: relative; display: flex; min-height: 46px; align-items: center; justify-content: center; gap: 7px; padding: 7px 9px; border: 1px solid rgba(190,201,211,.92); border-radius: 13px; color: #50657b; background: linear-gradient(180deg,rgba(248,250,252,.98),rgba(220,227,234,.92)); box-shadow: inset 0 1px 0 rgba(255,255,255,.9),0 3px 8px rgba(38,48,61,.08); font: 800 11px 'Trebuchet MS',sans-serif; cursor: pointer; transition: transform .14s ease,filter .14s ease,box-shadow .14s ease; }
+.game-friends-tabs button:hover { filter: brightness(1.04); transform: translateY(-1px); }
+.game-friends-tabs button.is-active { border-color: #347865; color: #fff; background: linear-gradient(180deg,#477a69,#315f52); box-shadow: inset 0 1px 0 rgba(255,255,255,.22),0 3px 8px rgba(40,82,69,.18); }
+.game-friends-tabs button small { display: grid; min-width: 19px; height: 19px; place-items: center; padding: 0 4px; border-radius: 999px; color: #50657b; background: rgba(80,101,123,.12); font: 900 9px 'Trebuchet MS',sans-serif; }
+.game-friends-tabs button.is-active small { color: #fff; background: rgba(255,255,255,.2); }
+.game-friends-tabs button.has-new:not(.is-active) { border-color: rgba(201,137,47,.72); box-shadow: inset 0 1px 0 rgba(255,255,255,.9),0 0 0 2px rgba(255,207,98,.18),0 3px 10px rgba(184,120,38,.15); animation: friend-request-tab-glow 1.8s ease-in-out infinite; }
+.game-friends-tabs button.has-new:not(.is-active) small { color: #fff; background: linear-gradient(180deg,#e6a83f,#c27b20); }
+@keyframes friend-request-tab-glow { 50% { box-shadow: inset 0 1px 0 rgba(255,255,255,.9),0 0 0 4px rgba(255,207,98,.12),0 3px 12px rgba(184,120,38,.22); } }
+.game-friends-empty { display: flex; min-height: 190px; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 22px; color: #75869a; text-align: center; font-family: 'Trebuchet MS',sans-serif; }
+.game-friends-empty > svg { color: #6a8a78; }
+.game-friends-empty strong { color: #40566d; font-size: 14px; }
+.game-friends-empty > span { max-width: 300px; color: #8391a0; font-size: 11px; line-height: 1.45; }
+.game-friends-empty button { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; gap: 6px; margin-top: 3px; padding: 0 12px; border: 1px solid rgba(31,112,66,.7); border-radius: 9px; color: #fff; background: linear-gradient(180deg,#238351,#1b6e42); box-shadow: inset 0 1px 0 rgba(255,255,255,.25),0 2px 5px rgba(31,128,75,.16); font: 800 10px 'Trebuchet MS',sans-serif; cursor: pointer; }
+.game-friends-panel .friend-row-actions { display: flex; align-items: center; gap: 5px; }
+.friend-gift-button { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border: 1px solid rgba(194,153,66,.56); border-radius: 10px; color: #80591a; background: linear-gradient(180deg,#fff0b9,#f4cf70); box-shadow: inset 0 1px 0 rgba(255,255,255,.85),0 2px 5px rgba(125,86,26,.15); cursor: pointer; }
+.received-gifts-list { display: grid; gap: 7px; border-top: 0; }
+.received-gift-row { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 8px; border: 1px solid rgba(196,174,131,.52); border-radius: 12px; background: linear-gradient(145deg,rgba(255,252,239,.88),rgba(235,228,211,.8)); }
+.received-gift-image { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; overflow: hidden; border: 1px solid rgba(255,255,255,.85); border-radius: 10px; background: rgba(255,255,255,.55); color: #c18a31; }
+.received-gift-image img { width: 100%; height: 100%; object-fit: contain; }
+.received-gift-copy { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.received-gift-copy strong { overflow: hidden; color: #3f5368; text-overflow: ellipsis; white-space: nowrap; font: 800 11px 'Trebuchet MS',sans-serif; }
+.received-gift-copy span { color: #748295; font: 600 10px 'Trebuchet MS',sans-serif; }
+.gift-shop-overlay { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 12px; background: rgba(22,29,39,.62); backdrop-filter: blur(5px); pointer-events: auto; }
+.gift-shop-window { display: flex; flex-direction: column; width: min(610px,100%); max-height: 100%; overflow: hidden; }
+.gift-shop-header { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid rgba(107,129,154,.2); }
+.gift-shop-header > div { display: flex; flex: 1; align-items: center; gap: 9px; min-width: 0; color: #bd8731; }
+.gift-shop-header h2 { margin: 0; color: #35475b; font: 900 15px 'Trebuchet MS',sans-serif; }
+.gift-shop-header span { color: #7b8998; font: 600 10px 'Trebuchet MS',sans-serif; }
+.gift-shop-header > div > div { display: grid; gap: 3px; min-width: 0; }
+.gift-shop-cooldown { padding: 7px 12px; color: #69521f; background: rgba(250,225,157,.4); text-align: center; font: 600 10px 'Trebuchet MS',sans-serif; }
+.gift-shop-cooldown strong { white-space: nowrap; }
+.gift-shop-categories { display: flex; flex: 0 0 auto; gap: 6px; padding: 9px 12px; overflow-x: auto; border-bottom: 1px solid rgba(132,83,39,.15); }
+.gift-shop-categories button { flex: 0 0 auto; min-height: 31px; padding: 0 11px; border: 1px solid rgba(177,190,201,.8); border-radius: 10px; color: #596c7f; background: rgba(255,255,255,.72); font: 800 10px 'Trebuchet MS',sans-serif; cursor: pointer; }
+.gift-shop-categories button.is-active { border-color: #347865; color: #fff; background: linear-gradient(180deg,#477a69,#315f52); }
+.gift-shop-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(138px,1fr)); gap: 9px; padding: 12px; overflow-y: auto; }
+.gift-shop-card { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 6px; padding: 9px; border: 1px solid rgba(196,174,131,.54); border-radius: 13px; background: linear-gradient(145deg,#fffdf2,#efe3c8); text-align: center; }
+.gift-shop-image { display: grid; place-items: center; width: 100%; height: 76px; overflow: hidden; border-radius: 10px; background: rgba(255,255,255,.48); color: #ba883b; font-size: 28px; }
+.gift-shop-image img { width: 100%; height: 100%; object-fit: contain; }
+.gift-shop-card > strong { color: #34485d; font: 900 11px 'Trebuchet MS',sans-serif; }
+.gift-shop-type { color: #7d8b99; font: 700 9px 'Trebuchet MS',sans-serif; }
+.gift-shop-card > button { width: 100%; min-height: 34px; padding: 5px; border: 1px solid #387b58; border-radius: 9px; color: #fff; background: linear-gradient(180deg,#43a96d,#28734b); box-shadow: inset 0 1px 0 rgba(255,255,255,.25); font: 900 9px 'Trebuchet MS',sans-serif; cursor: pointer; }
+.gift-shop-card > button:disabled { opacity: .55; cursor: not-allowed; }
+.gift-shop-empty { display: grid; min-height: 140px; place-content: center; justify-items: center; gap: 8px; padding: 16px; color: #8491a0; font: 700 11px 'Trebuchet MS',sans-serif; text-align: center; }
+.app-shell[data-theme='dark'] .gift-shop-header h2,
+.app-shell[data-theme='dark'] .received-gift-copy strong { color: #e7e1ef; }
+.app-shell[data-theme='dark'] .gift-shop-header span,
+.app-shell[data-theme='dark'] .received-gift-copy span { color: #b6acc5; }
+.app-shell[data-theme='dark'] .gift-shop-card { border-color: rgba(170,156,195,.35); background: linear-gradient(145deg,#454153,#333341); }
+.app-shell[data-theme='dark'] .gift-shop-image { background: rgba(255,255,255,.06); }
+.app-shell[data-theme='dark'] .gift-shop-card > strong { color: #e7e1ef; }
+.app-shell[data-theme='dark'] .gift-shop-type { color: #b6acc5; }
+.app-shell[data-theme='dark'] .received-gift-row { border-color: rgba(170,156,195,.3); background: linear-gradient(145deg,rgba(68,63,82,.9),rgba(48,47,62,.88)); }
+.app-shell[data-theme='dark'] .received-gift-image { border-color: rgba(190,176,215,.2); background: rgba(255,255,255,.05); }
+
+.game-friend-farm-overlay { z-index: 260; }
+.app-shell[data-theme='dark'] .social-modal-window .social-modal-title h2 { color: #e5e0ed; }
+.app-shell[data-theme='dark'] .social-modal-subtitle { color: #b9aec9; }
+.app-shell[data-theme='dark'] .game-friends-panel { color: #e5e0ed; }
+.app-shell[data-theme='dark'] .game-friends-panel .friends-heading-row .player-label,
+.app-shell[data-theme='dark'] .game-friends-panel .social-player-copy small { color: #aaa2b9; }
+.app-shell[data-theme='dark'] .game-friends-panel .friends-heading-row h2,
+.app-shell[data-theme='dark'] .game-friends-panel .friends-subsection h3,
+.app-shell[data-theme='dark'] .game-friends-panel .social-player-copy strong { color: #e5e0ed; }
+.app-shell[data-theme='dark'] .game-friends-panel .friends-count { border-color: rgba(177,165,197,.3); color: #e5e0ed; background: linear-gradient(180deg,#484457,#343343); }
+.app-shell[data-theme='dark'] .game-friends-panel .friend-search { border-color: rgba(177,165,197,.3); color: #c4bdcf; background: linear-gradient(145deg,rgba(49,47,61,.98),rgba(39,40,53,.98)); }
+.app-shell[data-theme='dark'] .game-friends-panel .friend-search input { color: #eee9f5; }
+.app-shell[data-theme='dark'] .game-friends-panel .friend-search input::placeholder,
+.app-shell[data-theme='dark'] .game-friends-panel .social-empty,
+.app-shell[data-theme='dark'] .game-friends-panel .social-state,
+.app-shell[data-theme='dark'] .game-friends-panel .remove-friend-prompt { color: #b9aec9; }
+.app-shell[data-theme='dark'] .game-friends-panel .social-player-row { border-color: rgba(149,137,171,.42); background: linear-gradient(145deg,rgba(65,61,78,.98),rgba(47,46,60,.98)); box-shadow: inset 0 1px 0 rgba(255,255,255,.1),0 4px 10px rgba(8,8,16,.2); }
+.app-shell[data-theme='dark'] .game-friends-panel .social-avatar { border-color: rgba(184,171,205,.38); }
+.app-shell[data-theme='dark'] .game-friends-panel .friend-menu-button,
+.app-shell[data-theme='dark'] .game-friends-panel .social-icon-button { border-color: rgba(177,165,197,.3); color: #e5e0ed; background: linear-gradient(180deg,#484457,#343343); }
+.app-shell[data-theme='dark'] .game-friends-panel .friend-action-menu { border-color: rgba(169,152,197,.38); background: rgba(42,39,56,.98); }
+.app-shell[data-theme='dark'] .game-friends-panel .friend-action-menu button { color: #f0b7bb; }
+.app-shell[data-theme='dark'] .game-friends-panel .friend-action-menu button:hover { background: rgba(219,105,113,.14); }
+.app-shell[data-theme='dark'] .game-friends-panel .friend-loading { color: #e5e0ed; }
+.app-shell[data-theme='dark'] .game-friends-tabs button { border-color: rgba(177,165,197,.3); color: #e4deef; background: linear-gradient(180deg,rgba(72,68,87,.96),rgba(52,51,67,.96)); box-shadow: inset 0 1px 0 rgba(255,255,255,.12),0 2px 6px rgba(7,7,14,.2); }
+.app-shell[data-theme='dark'] .game-friends-tabs button.is-active { border-color: #6b568c; background: linear-gradient(180deg,#665284,#4e3e68); }
+.app-shell[data-theme='dark'] .game-friends-tabs button small { color: #e5e0ed; background: rgba(255,255,255,.12); }
+.app-shell[data-theme='dark'] .game-friends-tabs button.is-active small { background: rgba(255,255,255,.2); }
+.app-shell[data-theme='dark'] .game-friends-tabs button.has-new:not(.is-active) { border-color: rgba(220,171,90,.72); }
+.app-shell[data-theme='dark'] .game-friends-empty { color: #b9aec9; }
+.app-shell[data-theme='dark'] .game-friends-empty > svg { color: #b8a9d1; }
+.app-shell[data-theme='dark'] .game-friends-empty strong { color: #e5e0ed; }
+.app-shell[data-theme='dark'] .game-friends-empty > span { color: #aaa2b9; }
+
+@media (max-width: 520px) {
+  .social-modal-overlay { padding: 10px; }
+  .social-modal-window { max-height: 92dvh; border-radius: 16px !important; }
+  .social-modal-header { padding: 9px 11px; }
+  .social-modal-subtitle { display: none; }
+  .game-friends-panel { padding: 11px 12px 14px; }
+  .game-friends-panel .friends-grid { grid-template-columns: minmax(0,1fr); }
+  .game-friends-tabs { gap: 5px; }
+  .game-friends-tabs button { min-height: 43px; gap: 4px; padding-inline: 4px; font-size: 9px; }
+  .game-friends-tabs button svg { width: 14px; height: 14px; }
+  .gift-shop-overlay { padding: 8px; }
+  .gift-shop-header { padding: 9px; }
+  .gift-shop-header h2 { font-size: 12px; }
+  .gift-shop-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; padding: 9px; }
+}
+
+.friend-gift-button { position: relative; display: flex; flex: 0 0 40px; width: 40px; height: 40px; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+.friend-gift-button.is-cooling { filter: grayscale(.72); opacity: .72; }
+.friend-gift-button[aria-disabled='true'] { cursor: pointer; }
+.friend-gift-button > span { position: static; width: auto; padding: 0; transform: none; border: 0; color: #684c1e; background: transparent; box-shadow: none; font: 700 6px/1 'Trebuchet MS',sans-serif; white-space: nowrap; }
+.app-shell[data-theme='dark'] .friend-gift-button > span { color: #f0d995; }
+.received-gift-row { min-height: 74px; }
+.received-gift-copy small { display: inline-flex; align-items: center; gap: 3px; color: #9a793a; font: 800 9px 'Trebuchet MS',sans-serif; }
+.received-gift-copy small img { width: 13px; height: 13px; object-fit: contain; }
+.received-gift-sender-inline { display: inline-flex; align-items: center; gap: 5px; }
+.received-gift-mini-avatar { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,.8); border-radius: 50%; color: #fff; background: linear-gradient(145deg,#8b79aa,#5f6e8b); font: 800 9px 'Trebuchet MS',sans-serif; }
+.received-gift-mini-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.received-gift-open { flex: 0 0 auto; min-height: 32px; padding: 0 10px; border: 1px solid #b78a38; border-radius: 9px; color: #634b1d; background: linear-gradient(180deg,#fff0b9,#f4cf70); box-shadow: inset 0 1px 0 rgba(255,255,255,.8),0 2px 5px rgba(125,86,26,.12); font: 900 9px 'Trebuchet MS',sans-serif; cursor: pointer; }
+.received-gift-overlay { z-index: 125; }
+.received-gift-window { width: min(430px,100%); }
+.received-gift-detail { display: grid; gap: 12px; padding: 15px; }
+.received-gift-sender { display: flex; align-items: center; gap: 9px; padding: 9px; border: 1px solid rgba(196,174,131,.45); border-radius: 12px; background: rgba(247,242,226,.72); }
+.received-gift-sender-avatar { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; overflow: hidden; border: 2px solid rgba(255,255,255,.9); border-radius: 50%; color: #fff; background: linear-gradient(145deg,#8b79aa,#5f6e8b); box-shadow: 0 2px 6px rgba(42,48,59,.17); font: 900 17px 'Trebuchet MS',sans-serif; }
+.received-gift-sender-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.received-gift-sender > div:nth-child(2) { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.received-gift-sender > div:nth-child(2) small { color: #a18043; font: 900 8px 'Trebuchet MS',sans-serif; letter-spacing: .12em; }
+.received-gift-sender > div:nth-child(2) strong { overflow: hidden; color: #3f5368; text-overflow: ellipsis; white-space: nowrap; font: 900 13px 'Trebuchet MS',sans-serif; }
+.received-gift-level { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 5px 7px; border: 1px solid rgba(188,153,82,.32); border-radius: 999px; color: #735725; background: #fff8e4; font: 900 9px 'Trebuchet MS',sans-serif; }
+.received-gift-level img { width: 14px; height: 14px; object-fit: contain; }
+.received-gift-present { display: grid; justify-items: center; gap: 6px; padding: 12px; border: 1px solid rgba(196,174,131,.44); border-radius: 14px; background: linear-gradient(145deg,rgba(255,252,239,.92),rgba(235,228,211,.76)); text-align: center; }
+.received-gift-present-image { display: grid; place-items: center; width: 150px; height: 124px; overflow: hidden; border-radius: 12px; color: #c18a31; background: rgba(255,255,255,.56); }
+.received-gift-present-image img { width: 100%; height: 100%; object-fit: contain; }
+.received-gift-present > strong { color: #3f5368; font: 900 14px 'Trebuchet MS',sans-serif; }
+.received-gift-present > span { color: #788596; font: 600 10px 'Trebuchet MS',sans-serif; }
+.received-gift-modal-actions { display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px; }
+.received-gift-modal-actions button { display: inline-flex; min-height: 39px; align-items: center; justify-content: center; gap: 6px; border-radius: 10px; font: 900 10px 'Trebuchet MS',sans-serif; cursor: pointer; }
+.received-gift-reject { border: 1px solid rgba(173,103,100,.42); color: #86514e; background: #fff5f2; }
+.received-gift-accept { border: 1px solid #387b58; color: #fff; background: linear-gradient(180deg,#43a96d,#28734b); box-shadow: inset 0 1px 0 rgba(255,255,255,.2); }
+.received-gift-modal-actions button:disabled { opacity: .6; cursor: wait; }
+.gift-confirm-backdrop { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; padding: 14px; background: rgba(20,27,35,.62); backdrop-filter: blur(4px); }
+.gift-confirm-dialog { position: relative; display: grid; justify-items: center; gap: 8px; width: min(360px,100%); padding: 22px 19px 17px; border: 1px solid rgba(222,190,124,.76); border-radius: 19px; background: linear-gradient(145deg,#fffdf4,#f2e6ca); box-shadow: 0 18px 55px rgba(15,19,26,.36),inset 0 1px 0 #fff; text-align: center; }
+.gift-confirm-close { position: absolute; top: 9px; right: 9px; display: grid; place-items: center; width: 29px; height: 29px; border: 1px solid rgba(132,114,85,.2); border-radius: 50%; color: #768292; background: rgba(255,255,255,.65); cursor: pointer; }
+.gift-confirm-mark { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid rgba(202,164,77,.5); border-radius: 15px; color: #8d6828; background: linear-gradient(145deg,#fff2c4,#f0d47f); box-shadow: 0 5px 12px rgba(125,86,26,.14); }
+.gift-confirm-eyebrow { margin: 0; color: #a17d3d; font: 900 8px 'Trebuchet MS',sans-serif; letter-spacing: .15em; }
+.gift-confirm-dialog h3 { margin: 0; color: #3c4f63; font: 900 16px 'Trebuchet MS',sans-serif; }
+.gift-confirm-recipient { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: 1px solid rgba(157,166,174,.3); border-radius: 11px; background: rgba(255,255,255,.53); text-align: left; }
+.gift-confirm-avatar { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; overflow: hidden; border-radius: 50%; color: #fff; background: linear-gradient(145deg,#8b79aa,#5f6e8b); font: 900 13px 'Trebuchet MS',sans-serif; }
+.gift-confirm-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.gift-confirm-recipient > span:last-child { display: grid; gap: 3px; }
+.gift-confirm-recipient strong { color: #3f5368; font: 900 11px 'Trebuchet MS',sans-serif; }
+.gift-confirm-recipient small { color: #788596; font: 700 9px 'Trebuchet MS',sans-serif; }
+.gift-confirm-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: 1px solid rgba(196,174,131,.44); border-radius: 11px; background: rgba(255,255,255,.48); color: #3f5368; font: 900 10px 'Trebuchet MS',sans-serif; text-align: left; }
+.gift-confirm-item > span { display: grid; place-items: center; flex: 0 0 42px; width: 42px; height: 42px; overflow: hidden; border-radius: 8px; color: #bc8b3a; background: rgba(255,255,255,.7); font-size: 22px; }
+.gift-confirm-item img { width: 100%; height: 100%; object-fit: contain; }
+.gift-confirm-cost { margin: 1px 0; color: #778596; font: 600 10px 'Trebuchet MS',sans-serif; }
+.gift-confirm-cost strong { color: #735725; }
+.gift-confirm-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 7px; width: 100%; margin-top: 2px; }
+.gift-confirm-actions button { display: inline-flex; min-height: 37px; align-items: center; justify-content: center; gap: 5px; border: 1px solid rgba(132,148,159,.35); border-radius: 9px; color: #68798a; background: rgba(255,255,255,.75); font: 900 9px 'Trebuchet MS',sans-serif; cursor: pointer; }
+.gift-confirm-actions .gift-confirm-send { border-color: #387b58; color: #fff; background: linear-gradient(180deg,#43a96d,#28734b); }
+.gift-confirm-actions button:disabled { opacity: .6; cursor: wait; }
+.gift-feedback-toast { position: fixed; z-index: 150; top: max(14px,env(safe-area-inset-top)); left: 50%; display: flex; align-items: center; gap: 10px; width: min(440px,calc(100% - 24px)); padding: 11px 12px; transform: translateX(-50%); border: 1px solid rgba(207,184,133,.58); border-radius: 14px; color: #3e5367; background: linear-gradient(145deg,rgba(255,253,244,.98),rgba(237,229,211,.98)); box-shadow: 0 10px 32px rgba(20,27,35,.24),inset 0 1px 0 #fff; animation: gift-feedback-enter .22s ease-out; pointer-events: auto; }
+.gift-feedback-toast.is-error { border-color: rgba(196,123,115,.55); }
+.gift-feedback-icon { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 10px; color: #fff; background: linear-gradient(180deg,#43a96d,#28734b); }
+.gift-feedback-toast.is-error .gift-feedback-icon { background: linear-gradient(180deg,#c76c67,#a94e50); }
+.gift-feedback-toast > span:nth-child(2) { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.gift-feedback-toast strong { color: #3f5368; font: 900 11px 'Trebuchet MS',sans-serif; }
+.gift-feedback-toast small { overflow: hidden; color: #778596; text-overflow: ellipsis; font: 600 9px 'Trebuchet MS',sans-serif; }
+.gift-feedback-toast > button { display: grid; place-items: center; width: 27px; height: 27px; border: 0; border-radius: 50%; color: #7b8998; background: transparent; cursor: pointer; }
+@keyframes gift-feedback-enter { from { opacity: 0; transform: translate(-50%,-8px); } to { opacity: 1; transform: translate(-50%,0); } }
+.app-shell[data-theme='dark'] .received-gift-sender,
+.app-shell[data-theme='dark'] .received-gift-present,
+.app-shell[data-theme='dark'] .gift-confirm-dialog { border-color: rgba(170,156,195,.34); background: linear-gradient(145deg,#454153,#333341); }
+.app-shell[data-theme='dark'] .received-gift-sender > div:nth-child(2) strong,
+.app-shell[data-theme='dark'] .received-gift-present > strong,
+.app-shell[data-theme='dark'] .gift-confirm-dialog h3,
+.app-shell[data-theme='dark'] .gift-confirm-recipient strong,
+.app-shell[data-theme='dark'] .gift-confirm-item { color: #e7e1ef; }
+.app-shell[data-theme='dark'] .received-gift-present > span,
+.app-shell[data-theme='dark'] .gift-confirm-recipient small,
+.app-shell[data-theme='dark'] .gift-confirm-cost { color: #b6acc5; }
+.app-shell[data-theme='dark'] .gift-confirm-recipient,
+.app-shell[data-theme='dark'] .gift-confirm-item { border-color: rgba(170,156,195,.26); background: rgba(255,255,255,.05); }
+.app-shell[data-theme='dark'] .gift-feedback-toast { border-color: rgba(170,156,195,.4); color: #e7e1ef; background: linear-gradient(145deg,#454153,#333341); }
+.app-shell[data-theme='dark'] .gift-feedback-toast strong { color: #e7e1ef; }
+.app-shell[data-theme='dark'] .gift-feedback-toast small { color: #b6acc5; }
+@media (max-width: 520px) {
+  .received-gift-row { align-items: flex-start; }
+  .received-gift-open { align-self: center; padding-inline: 7px; font-size: 8px; }
+  .received-gift-detail { padding: 11px; }
+  .received-gift-sender { gap: 6px; padding: 7px; }
+  .received-gift-level { gap: 2px; padding: 4px 5px; font-size: 8px; }
+  .gift-confirm-dialog { padding: 19px 13px 13px; }
+}
+.social-avatar { position: relative; }
+.social-presence-dot { position: absolute; right: 0; bottom: 0; width: 11px; height: 11px; border: 2px solid #f6f1df; border-radius: 50%; background: #8d9692; box-shadow: 0 1px 3px rgba(24,32,27,.28); }
+.social-avatar.is-online .social-presence-dot { background: #35bf68; box-shadow: 0 0 0 2px rgba(53,191,104,.16),0 1px 4px rgba(24,32,27,.3); }
+.social-last-online { color: rgba(255,253,241,.67) !important; font-size: 9px !important; }
+.social-last-online.is-online { color: #77e096 !important; font-weight: 800 !important; }
+.farmer-lobby .social-last-online { color: #728171 !important; }
+.farmer-lobby .social-last-online.is-online { color: #268348 !important; }
+.app-shell[data-theme='dark'] .game-friends-panel .social-last-online { color: #b9aec9 !important; }
+.app-shell[data-theme='dark'] .game-friends-panel .social-last-online.is-online { color: #7de09a !important; }
+.app-shell[data-theme='dark'] .social-presence-dot { border-color: #484457; }
+.gift-confirm-backdrop { z-index: 1000; }
+.gift-confirm-dialog { max-height: calc(100dvh - 28px); overflow-y: auto; }
+.gift-shop-card > button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 4px 10px; }
+.gift-shop-card > button > svg { flex: 0 0 17px; color: #fff1bb; }
+.gift-shop-card > button > strong { color: #fff; font: 900 15px/1 'Trebuchet MS',sans-serif; font-variant-numeric: tabular-nums; }
+.gift-shop-card > button > img { flex: 0 0 22px; width: 22px; height: 22px; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(25,35,24,.36)); }
+.gift-confirm-cost { display: inline-flex; align-items: center; gap: 4px; }
+.gift-confirm-cost strong { display: inline-flex; align-items: center; gap: 4px; font: 900 12px 'Trebuchet MS',sans-serif; }
+.gift-confirm-cost strong img { width: 19px; height: 19px; object-fit: contain; }
+.game-friends-panel .social-avatar { overflow: hidden; }
+.social-avatar img { border-radius: 50%; }
+.social-player-copy { gap: 4px; }
+.social-last-online { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: 5px; padding: 2px 6px; border: 1px solid rgba(115,131,146,.23); border-radius: 999px; color: #526477 !important; background: rgba(255,255,255,.68); font-size: 9px !important; font-weight: 800 !important; line-height: 1.25; }
+.social-last-online.is-online { border-color: rgba(42,148,78,.25); color: #176b37 !important; background: #e1f6e7; }
+.social-presence-dot { display: inline-block; flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: #89939c; box-shadow: 0 0 0 2px rgba(104,119,132,.12); }
+.social-last-online.is-online .social-presence-dot { background: #21a64e; box-shadow: 0 0 0 2px rgba(33,166,78,.16); }
+.farmer-lobby .social-last-online { color: #435568 !important; background: rgba(255,255,255,.8); }
+.farmer-lobby .social-last-online.is-online { color: #176b37 !important; }
+.app-shell[data-theme='dark'] .game-friends-panel .social-last-online { border-color: rgba(177,165,197,.28); color: #e1dced !important; background: rgba(35,33,47,.78); }
+.app-shell[data-theme='dark'] .game-friends-panel .social-last-online.is-online { border-color: rgba(94,202,126,.34); color: #a4edb8 !important; background: rgba(36,93,57,.42); }
+.app-shell[data-theme='dark'] .game-friends-panel .social-last-online .social-presence-dot { background: #92909a; }
+.app-shell[data-theme='dark'] .game-friends-panel .social-last-online.is-online .social-presence-dot { background: #4bd16e; }
+@media (max-width: 760px) {
+  .game-friends-panel .friends-grid { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 520px) {
+  .game-friends-panel .social-player-row { min-height: 66px; }
+  .game-friends-panel .social-last-online { font-size: 9px !important; }
+  .gift-shop-card > button { gap: 5px; padding-inline: 7px; }
+}
+.received-gifts-list { grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); gap: 11px; padding: 2px; }
+.received-gift-row { display: grid; align-content: start; gap: 0; min-width: 0; padding: 0; overflow: hidden; border: 1px solid rgba(190,157,95,.44); border-radius: 15px; background: linear-gradient(155deg,#fffdf5 0%,#f4ead1 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.96),0 5px 13px rgba(55,48,34,.09); }
+.received-gift-card-sender { display: flex; min-width: 0; align-items: center; gap: 9px; padding: 10px 12px; border-bottom: 1px solid rgba(190,157,95,.2); background: linear-gradient(100deg,rgba(255,255,255,.84),rgba(246,238,218,.72)); }
+.received-gift-mini-avatar { flex: 0 0 38px; width: 38px; height: 38px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(42,48,59,.16); font-size: 14px; }
+.received-gift-sender-details { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.game-friends-panel .received-gift-sender-details small,
+.game-friends-panel .received-gift-card-copy > small { color: #a17d3d; font: 500 6px/1.2 'Trebuchet MS',sans-serif; letter-spacing: .03em; }
+.received-gift-sender-details strong { overflow: hidden; color: #394d62; text-overflow: ellipsis; white-space: nowrap; font: 500 9px 'Trebuchet MS',sans-serif; }
+.received-gift-level { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 5px 7px; border: 1px solid rgba(188,153,82,.32); border-radius: 999px; color: #735725; background: #fff8e4; font: 900 9px 'Trebuchet MS',sans-serif; }
+.received-gift-level img { width: 14px; height: 14px; object-fit: contain; }
+.received-gift-card-content { display: flex; min-width: 0; align-items: center; gap: 11px; padding: 11px 12px; }
+.received-gift-image { flex: 0 0 66px; width: 66px; height: 66px; border: 1px solid rgba(190,157,95,.22); border-radius: 13px; background: linear-gradient(145deg,#fff,#f9f3e6); color: #b7893f; }
+.received-gift-card-copy { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.game-friends-panel .received-gift-card-copy > small { color: #879183; font-size: 6px; }
+.received-gift-card-copy > strong { overflow: hidden; color: #354b61; text-overflow: ellipsis; font: 500 9px/1.25 'Trebuchet MS',sans-serif; }
+.received-gift-open { display: inline-flex; min-width: 74px; align-items: center; justify-content: center; gap: 5px; min-height: 34px; padding: 0 9px; border-color: #a98338; color: #684e1e; background: linear-gradient(180deg,#ffedaa,#edc75d); box-shadow: inset 0 1px 0 rgba(255,255,255,.86),0 2px 4px rgba(125,86,26,.14); font-size: 9px; }
+.received-gift-open:hover { filter: brightness(1.04); transform: translateY(-1px); }
+.app-shell[data-theme='dark'] .received-gift-row { border-color: rgba(170,156,195,.36); background: linear-gradient(155deg,#454153,#333341); box-shadow: inset 0 1px 0 rgba(255,255,255,.1),0 5px 13px rgba(5,5,12,.22); }
+.app-shell[data-theme='dark'] .received-gift-card-sender { border-bottom-color: rgba(170,156,195,.2); background: linear-gradient(100deg,rgba(255,255,255,.07),rgba(255,255,255,.025)); }
+.app-shell[data-theme='dark'] .received-gift-sender-details strong,
+.app-shell[data-theme='dark'] .received-gift-card-copy > strong { color: #e7e1ef; }
+.app-shell[data-theme='dark'] .received-gift-card-copy > span { color: #b6acc5; }
+.app-shell[data-theme='dark'] .received-gift-image { border-color: rgba(170,156,195,.26); background: linear-gradient(145deg,#514c60,#3c3b4d); }
+.avatar-picker-overlay { position: fixed; z-index: 500; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(20,25,31,.62); backdrop-filter: blur(5px); }
+.avatar-picker-dialog { position: relative; width: min(360px,100%); padding: 23px 20px 19px; border: 1px solid rgba(133,101,56,.34); border-radius: 19px; color: #405064; background: linear-gradient(155deg,#fffdf7,#f1e7d4); box-shadow: 0 18px 54px rgba(13,19,27,.38),inset 0 1px 0 rgba(255,255,255,.95); }
+.avatar-picker-close { position: absolute; top: 10px; right: 10px; display: grid; width: 31px; height: 31px; place-items: center; padding: 0; border: 1px solid rgba(112,91,64,.18); border-radius: 50%; color: #687586; background: rgba(255,255,255,.72); cursor: pointer; }
+.avatar-picker-heading { display: flex; align-items: center; gap: 11px; padding-right: 28px; }
+.avatar-picker-heading > svg { flex: 0 0 auto; color: #56845e; }
+.avatar-picker-heading h2 { margin: 0; color: #394d61; font: 700 17px/1.2 'Trebuchet MS',sans-serif; }
+.avatar-picker-heading p { margin: 4px 0 0; color: #798797; font: 400 10px/1.4 'Trebuchet MS',sans-serif; }
+.avatar-picker-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin: 19px 0 16px; }
+.avatar-picker-grid button { position: relative; display: grid; aspect-ratio: 1; place-items: center; min-width: 0; padding: 4px; overflow: hidden; border: 2px solid rgba(145,122,84,.2); border-radius: 15px; background: rgba(255,255,255,.65); cursor: pointer; transition: border-color .15s ease,transform .15s ease,box-shadow .15s ease; }
+.avatar-picker-grid button:hover { transform: translateY(-2px); }
+.avatar-picker-grid button.is-selected { border-color: #4c9563; box-shadow: 0 0 0 3px rgba(76,149,99,.17); }
+.avatar-picker-grid button:disabled { opacity: .62; cursor: wait; }
+.avatar-picker-grid img { width: 100%; height: 100%; border-radius: 11px; object-fit: cover; }
+.avatar-picker-grid button > svg { position: absolute; right: 4px; bottom: 4px; width: 22px; height: 22px; padding: 4px; border-radius: 50%; color: #fff; background: #43895a; }
+.avatar-picker-upload { display: flex; width: 100%; min-height: 42px; align-items: center; justify-content: center; gap: 8px; border: 1px solid #438259; border-radius: 11px; color: #fff; background: linear-gradient(180deg,#58996b,#36754e); box-shadow: inset 0 1px 0 rgba(255,255,255,.26),0 3px 7px rgba(48,108,69,.2); font: 700 11px 'Trebuchet MS',sans-serif; cursor: pointer; }
+.avatar-picker-upload:disabled,
+.avatar-picker-close:disabled { opacity: .65; cursor: wait; }
+.avatar-picker-error { margin: 10px 0 0; color: #a74444; font: 600 10px/1.4 'Trebuchet MS',sans-serif; text-align: center; }
+.avatar-picker-dialog.is-dark { border-color: rgba(177,161,207,.42); color: #e9e2f0; background: linear-gradient(155deg,#494356,#333140); box-shadow: 0 18px 54px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.1); }
+.avatar-picker-dialog.is-dark .avatar-picker-heading h2 { color: #eee8f5; }
+.avatar-picker-dialog.is-dark .avatar-picker-heading p { color: #b9aec9; }
+.avatar-picker-dialog.is-dark .avatar-picker-close { border-color: rgba(177,161,207,.3); color: #ddd4e9; background: rgba(255,255,255,.08); }
+.avatar-picker-dialog.is-dark .avatar-picker-grid button { border-color: rgba(177,161,207,.25); background: rgba(255,255,255,.05); }
+.avatar-picker-dialog.is-dark .avatar-picker-error { color: #ffb8bd; }
+.inventory-gift-badge { position: absolute; z-index: 1; top: 5px; left: 5px; display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; border: 1px solid rgba(194,153,66,.52); border-radius: 999px; color: #76561f; background: rgba(255,247,220,.94); box-shadow: 0 2px 5px rgba(48,38,20,.16); font: 700 8px/1 'Trebuchet MS',sans-serif; pointer-events: none; }
+.app-shell[data-theme='dark'] .inventory-gift-badge { border-color: rgba(222,193,119,.42); color: #f3dfaa; background: rgba(62,54,72,.94); }
+@media (max-width: 520px) {
+  .received-gifts-list { grid-template-columns: minmax(0,1fr); gap: 9px; }
+  .received-gift-card-sender { padding: 8px 10px; }
+  .received-gift-card-content { gap: 8px; padding: 9px 10px; }
+  .received-gift-image { flex-basis: 56px; width: 56px; height: 56px; }
+  .received-gift-open { min-width: 36px; width: 36px; padding: 0; }
+  .received-gift-open > span { display: none; }
 }

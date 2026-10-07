@@ -3,12 +3,14 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import Farm from '../models/Farm.js';
 import LevelReward from '../models/LevelReward.js';
+import GiftShopItem from '../models/GiftShopItem.js';
 import User, { USER_STARTING_COINS } from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
 import { createStarterFarmTiles } from '../services/starterFarm.js';
 import { createCustomGameItem, getGameItem, listGameItems, permanentlyDeleteGameItem, reorderGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 import { getMediaSettings, normalizeAssetSource, resolveAssetSource, resolveGameItemImages, restorePreviousAssetBaseUrl, setAssetBaseUrl } from '../services/mediaStorage.js';
+import { listGiftShopItems } from '../services/giftShop.js';
 
 const router = express.Router();
 const MAX_PAGE_SIZE = 100;
@@ -105,6 +107,7 @@ const serializeCatalogItem = (item) => ({
     largeFootprint: item.largeFootprint,
     housing: item.housing,
     access: item.access ?? 'all',
+    giftOnly: Boolean(item.giftOnly),
     custom: Boolean(item.custom),
     disabled: Boolean(item.disabled),
 });
@@ -170,6 +173,36 @@ router.get('/level-rewards', async (_req, res, next) => {
     }
 });
 
+router.get('/gift-shop', async (_req, res, next) => {
+    try {
+        return res.json({ items: await listGiftShopItems({ includeDisabled: true }) });
+    } catch (error) {
+        return next(error);
+    }
+});
+
+router.put('/gift-shop/:itemId', async (req, res) => {
+    const { itemId } = req.params;
+    const { price, priceCurrency, enabled } = req.body ?? {};
+    if (!getGameItem(itemId)?.giftOnly) return res.status(404).json({ message: 'Подарунок не знайдено' });
+    if (!Number.isSafeInteger(price) || price < 0 || price > 1_000_000_000 ||
+        !['coins', 'rubies'].includes(priceCurrency) || typeof enabled !== 'boolean') {
+        return res.status(400).json({ message: 'Перевір ціну, валюту та статус подарунка' });
+    }
+    try {
+        await GiftShopItem.findOneAndUpdate(
+            { itemId },
+            { $set: { price, priceCurrency, enabled } },
+            { new: true, upsert: true, runValidators: true }
+        ).lean();
+        const serialized = (await listGiftShopItems({ includeDisabled: true })).find((entry) => entry.itemId === itemId);
+        if (!serialized) return res.status(404).json({ message: 'Подарунок не знайдено' });
+        return res.json({ item: serialized });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося зберегти подарунок', error: error.message });
+    }
+});
+
 router.put('/level-rewards/:level', async (req, res) => {
     const level = Number(req.params.level);
     const rewards = req.body?.rewards;
@@ -204,7 +237,7 @@ router.post('/catalog', async (req, res) => {
     const body = req.body ?? {};
     const { id, name, type, price, priceCurrency = 'coins', plantingXp, requiredLevel, productionTimeMs, yieldItem, yieldName,
         yieldIcon, yieldAmount, sellPrice, placementSurface, spriteScale, shopImage, shopIcon, housing,
-        yieldImage, growthImages, footprint, largeFootprint, canFlip, access, mechanic, accelerationMs } = body;
+        yieldImage, growthImages, footprint, largeFootprint, canFlip, access, mechanic, accelerationMs, giftOnly = false } = body;
     const allowedTypes = ['TREE', 'CROP', 'ANIMAL', 'BUILDING', 'OTHER'];
     const producesItems = ['TREE', 'CROP', 'ANIMAL'].includes(type);
     const validId = typeof id === 'string' && /^[a-z][a-z0-9_]{1,47}$/.test(id);
@@ -238,7 +271,8 @@ router.post('/catalog', async (req, res) => {
         (type === 'OTHER' && mechanic !== undefined && !['expand_farm', 'accelerate_growth'].includes(mechanic)) ||
         (mechanic === 'accelerate_growth' && (type !== 'OTHER' || !Number.isSafeInteger(accelerationMs) || accelerationMs < 1000 || accelerationMs > 2_592_000_000)) ||
         (accelerationMs !== undefined && mechanic !== 'accelerate_growth') ||
-        typeof canFlip !== 'boolean' || !['all', 'admin'].includes(access) ||
+        typeof canFlip !== 'boolean' || !['all', 'admin'].includes(access) || typeof giftOnly !== 'boolean' ||
+        (giftOnly && type === 'OTHER') ||
         (!shopImage && !growthImages.length && !shopIcon)) {
         return res.status(400).json({ message: 'Перевір обов’язкові поля, розміри та посилання на зображення.' });
     }
@@ -273,6 +307,7 @@ router.post('/catalog', async (req, res) => {
             ...(mechanic === 'accelerate_growth' ? { accelerationMs } : {}),
             canFlip,
             access,
+            giftOnly,
         });
         if (!item) return res.status(409).json({ message: 'Товар з таким ID уже існує.' });
         return res.status(201).json({ item: serializeCatalogItem(item) });
@@ -291,6 +326,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'canFlip', 'footprint',
             'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX', 'access', 'requiredLevel', 'sortOrder', 'disabled',
             'housing',
+            'giftOnly',
             'mechanic', 'accelerationMs',
         ]);
         const updates = {};
@@ -307,6 +343,14 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             }
             if (field === 'priceCurrency') {
                 if (!['coins', 'rubies'].includes(value)) return res.status(400).json({ message: 'Валюта має бути монетами або рубінами' });
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'giftOnly') {
+                if (typeof value !== 'boolean') return res.status(400).json({ message: 'Статус подарункового предмета має бути так або ні' });
+                if (value && item.type === 'OTHER') {
+                    return res.status(400).json({ message: 'Для магазину подарунків обирай рослини, дерева, тварин або декор' });
+                }
                 updates[field] = value;
                 continue;
             }

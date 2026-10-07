@@ -8,6 +8,7 @@ import { getLevelProgress } from '../config/progression.js';
 import { createStarterFarmTiles } from '../services/starterFarm.js';
 import LevelReward from '../models/LevelReward.js';
 import { getGameItem } from '../services/gameCatalog.js';
+import { ensureDefaultAvatar, getRandomDefaultAvatar } from '../services/avatars.js';
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ router.get('/me', async (req, res) => {
         }
         const user = await User.findById(payload.userId).select('username role coins rubies xp level avatar inventory itemInventory');
         if (!user) return res.status(401).json({ message: 'Гравця не знайдено' });
+        await ensureDefaultAvatar(user);
         const progression = getLevelProgress(user.xp ?? 0);
         return res.json({
             id: user._id,
@@ -225,7 +227,8 @@ router.post('/register', async (req, res) => {
         // 3. Зберігаємо користувача
         const newUser = new User({
             username,
-            password: hashedPassword
+            password: hashedPassword,
+            avatar: getRandomDefaultAvatar(),
         });
 
         await newUser.save();
@@ -270,6 +273,10 @@ router.post('/login', async (req, res) => {
         }
 
         let userNeedsSave = false;
+        if (!user.avatar) {
+            user.avatar = getRandomDefaultAvatar();
+            userNeedsSave = true;
+        }
         if (user.isBanned) {
             user.isBanned = false;
             user.banUntil = null;

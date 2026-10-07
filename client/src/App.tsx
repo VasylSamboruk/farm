@@ -4,6 +4,7 @@ import { useAuthStore } from './store/authStore';
 import { useFarmStore } from './store/useFarmStore';
 import { useGameConfigStore } from './store/useGameConfigStore';
 import { authApi } from './api/auth.api';
+import { socialApi } from './api/social.api';
 import { AuthForm } from './components/auth/AuthForm';
 import { PlayerProfile } from './components/auth/PlayerProfile';
 import { AdminUsers } from './components/admin/AdminUsers';
@@ -46,7 +47,7 @@ export const App: React.FC = () => {
     : location.pathname === '/admin/items/new' ? 'create'
       : location.pathname === '/admin/media' ? 'media'
         : location.pathname === '/admin/pricing' ? 'pricing'
-          : location.pathname === '/admin/rewards' ? 'rewards' : 'users';
+        : location.pathname === '/admin/rewards' ? 'rewards' : 'users';
   const playRequested = Boolean(sessionKey && sessionKey === playSessionKey);
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('farmcanvas:theme') === 'light' ? 'light' : 'dark'
@@ -73,8 +74,46 @@ export const App: React.FC = () => {
   }, [isAdminRoute, location.pathname, navigate]);
 
   useEffect(() => {
+    if (location.pathname === '/admin/gifts') navigate('/admin/shop', { replace: true });
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
     if (user && user.role !== 'admin' && isAdminRoute) navigate('/', { replace: true });
   }, [user, isAdminRoute, navigate]);
+
+  useEffect(() => {
+    if (!userId || !localStorage.getItem('token')) return;
+    let active = true;
+    const sendPresence = () => {
+      if (document.visibilityState !== 'visible') return;
+      void socialApi.updatePresence().catch((error: unknown) => {
+        if (active) console.error('Не вдалося оновити статус онлайн:', error);
+      });
+    };
+    sendPresence();
+    const intervalId = window.setInterval(sendPresence, 45_000);
+    window.addEventListener('focus', sendPresence);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', sendPresence);
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || playRequested || !localStorage.getItem('token')) return;
+    let active = true;
+    void authApi.getCurrentUser()
+      .then((currentUser) => {
+        if (active) updateUser(currentUser);
+      })
+      .catch((error: unknown) => {
+        console.error('Не вдалося оновити профіль гравця:', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [playRequested, updateUser, userId]);
 
   useEffect(() => {
     if (!playRequested) return;
@@ -161,14 +200,17 @@ export const App: React.FC = () => {
           {adminSection === 'shop'
             ? <AdminShop onAddItem={() => navigate('/admin/items/new')} />
             : adminSection === 'create'
-              ? <AdminCreateItem onCancel={() => navigate('/admin/shop')} onCreated={() => navigate('/admin/shop')} />
+              ? <AdminCreateItem
+                  onCancel={() => navigate('/admin/shop')}
+                  onCreated={() => navigate('/admin/shop')}
+                />
               : adminSection === 'media'
                 ? <AdminMedia />
                 : adminSection === 'pricing'
                   ? <AdminPricing />
                   : adminSection === 'rewards'
                     ? <AdminLevelRewards />
-                  : <AdminUsers />}
+                    : <AdminUsers />}
         </AdminShell>
       </div>
     );

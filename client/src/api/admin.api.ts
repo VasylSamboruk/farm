@@ -68,6 +68,18 @@ export interface AdminCatalogItem {
   access: 'all' | 'admin';
   custom?: boolean;
   disabled?: boolean;
+  giftOnly?: boolean;
+}
+
+export interface AdminGiftShopItem {
+  itemId: string;
+  name: string;
+  type: AdminCatalogItem['type'];
+  image: string;
+  icon: string;
+  price: number;
+  priceCurrency: 'coins' | 'rubies';
+  enabled: boolean;
 }
 
 export interface AdminMediaSettings {
@@ -90,6 +102,14 @@ export const adminApi = {
   getLevelRewards: async (): Promise<LevelRewardEntry[]> => {
     const response = await api.get<{ levels: LevelRewardEntry[] }>('/admin/level-rewards');
     return response.data.levels;
+  },
+  getGiftShop: async (): Promise<AdminGiftShopItem[]> => {
+    const response = await api.get<{ items: AdminGiftShopItem[] }>('/admin/gift-shop');
+    return response.data.items;
+  },
+  updateGiftShopItem: async (itemId: string, changes: Pick<AdminGiftShopItem, 'price' | 'priceCurrency' | 'enabled'>): Promise<AdminGiftShopItem> => {
+    const response = await api.put<{ item: AdminGiftShopItem }>(`/admin/gift-shop/${itemId}`, changes);
+    return response.data.item;
   },
   saveLevelRewards: async (level: number, rewards: LevelRewardEntry['rewards']): Promise<LevelRewardEntry> => {
     const response = await api.put<LevelRewardEntry>(`/admin/level-rewards/${level}`, { rewards });
