@@ -3243,10 +3243,11 @@ html, body, #root {
 }
 
 .friend-gift-button { position: relative; display: flex; flex: 0 0 40px; width: 40px; height: 40px; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
-.friend-gift-button.is-cooling { filter: grayscale(.72); opacity: .72; }
+.friend-gift-button.is-cooling { filter: none; opacity: 1; }
 .friend-gift-button[aria-disabled='true'] { cursor: pointer; }
-.friend-gift-button > span { position: static; width: auto; padding: 0; transform: none; border: 0; color: #684c1e; background: transparent; box-shadow: none; font: 700 6px/1 'Trebuchet MS',sans-serif; white-space: nowrap; }
-.app-shell[data-theme='dark'] .friend-gift-button > span { color: #f0d995; }
+.friend-gift-button > span { position: static; width: auto; padding: 2px 4px; transform: none; border: 1px solid rgba(142,103,35,.2); border-radius: 5px; color: #684c1e; background: rgba(255,255,255,.58); box-shadow: 0 1px 2px rgba(76,53,19,.12); font: 900 7px/1 'Trebuchet MS',sans-serif; white-space: nowrap; }
+.app-shell[data-theme='dark'] .friend-gift-button { border-color: rgba(194,166,115,.52); color: #ffe6a8; background: linear-gradient(180deg,#62563f,#494333); box-shadow: inset 0 1px 0 rgba(255,255,255,.18),0 2px 5px rgba(0,0,0,.24); }
+.app-shell[data-theme='dark'] .friend-gift-button > span { border-color: rgba(255,231,173,.22); color: #fff0c3; background: rgba(32,30,40,.82); box-shadow: 0 1px 3px rgba(0,0,0,.28); text-shadow: 0 1px 2px rgba(0,0,0,.65); }
 .received-gift-row { min-height: 74px; }
 .received-gift-copy small { display: inline-flex; align-items: center; gap: 3px; color: #9a793a; font: 800 9px 'Trebuchet MS',sans-serif; }
 .received-gift-copy small img { width: 13px; height: 13px; object-fit: contain; }
