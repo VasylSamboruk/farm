@@ -134,6 +134,7 @@ const toFarmTileMap = (tiles: FarmTileResponse[]) => {
 
 export const useFarmStore = create<FarmState>((set, get) => {
   let isProcessingHarvestQueue = false;
+  let isStoringAnimal = false;
 
   const processHarvestQueue = async (userId: string) => {
     if (isProcessingHarvestQueue) return;
@@ -220,6 +221,19 @@ export const useFarmStore = create<FarmState>((set, get) => {
   },
 
   houseAnimal: async (userId, building, animal) => {
+    if (isStoringAnimal) return false;
+    isStoringAnimal = true;
+
+    const state = get();
+    const animalKey = `${animal.row},${animal.col},${animal.quadrant}`;
+    const buildingKey = `${building.row},${building.col},${building.quadrant}`;
+    const animalTile = state.tiles[animalKey];
+    if (!animalTile?.itemId || animalTile.type !== 'item') {
+      isStoringAnimal = false;
+      set({ gameMessage: 'Тварину не знайдено на полі. Її не переміщено.' });
+      return false;
+    }
+
     try {
       const response = await fetch(`${API_BASE_URL}/farm/housing/store`, {
         method: 'POST',
@@ -234,17 +248,42 @@ export const useFarmStore = create<FarmState>((set, get) => {
           animalQuadrant: animal.quadrant,
         }),
       });
-      const data = await response.json() as { message?: string; size?: number; tiles?: FarmTileResponse[] };
+      const data = await response.json() as {
+        message?: string;
+        success?: boolean;
+        storedAnimalId?: string;
+        size?: number;
+        tiles?: FarmTileResponse[];
+      };
       if (!response.ok) {
         set({ gameMessage: data.message || 'Не вдалося помістити тварину в будівлю' });
         return false;
       }
-      set({ tiles: toFarmTileMap(data.tiles ?? []), farmSize: data.size ?? get().farmSize });
+
+      if (data.success !== true || !Array.isArray(data.tiles)) {
+        set({ gameMessage: 'Не вдалося підтвердити переміщення. Тварина залишилася на полі.' });
+        return false;
+      }
+      const tiles = toFarmTileMap(data.tiles);
+      const housedAfter = tiles[buildingKey]?.housedAnimals;
+      if (
+        !data.storedAnimalId ||
+        tiles[animalKey]?.itemId ||
+        !housedAfter ||
+        !housedAfter.some((housedAnimal) => housedAnimal.id === data.storedAnimalId)
+      ) {
+        set({ gameMessage: 'Не вдалося підтвердити переміщення. Тварина залишилася на полі.' });
+        return false;
+      }
+
+      set({ tiles, farmSize: data.size ?? get().farmSize });
       return true;
     } catch (error) {
       console.error('Не вдалося помістити тварину в будівлю:', error);
       set({ gameMessage: 'Не вдалося помістити тварину в будівлю. Перевір з’єднання із сервером.' });
       return false;
+    } finally {
+      isStoringAnimal = false;
     }
   },
 
@@ -452,7 +491,12 @@ export const useFarmStore = create<FarmState>((set, get) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, x: col, y: row, quadrant })
       });
-      const data = await response.json();
+      const data = await response.json() as {
+        message?: string;
+        removedTiles?: { x: number; y: number; quadrant: number }[];
+        returnedAnimals?: { itemId: string; name: string; amount: number }[];
+        user?: { coins: number; rubies: number; itemInventory?: Record<string, number> };
+      };
       if (!response.ok) {
         set({ gameMessage: data.message || 'Не вдалося видалити предмет' });
         return false;
@@ -465,7 +509,20 @@ export const useFarmStore = create<FarmState>((set, get) => {
         }
         return { tiles: newTiles };
       });
-      if (data.user) useAuthStore.getState().updateUser({ coins: data.user.coins, rubies: data.user.rubies });
+      if (data.user) {
+        useAuthStore.getState().updateUser({
+          coins: data.user.coins,
+          rubies: data.user.rubies,
+          itemInventory: data.user.itemInventory,
+        });
+      }
+      if (data.returnedAnimals?.length) {
+        set({
+          gameMessage: `Тварини повернені в інвентар: ${data.returnedAnimals
+            .map((animal) => `${animal.name} ×${animal.amount}`)
+            .join(', ')}.`,
+        });
+      }
       return true;
     } catch (err) {
       console.error('Помилка видалення', err);

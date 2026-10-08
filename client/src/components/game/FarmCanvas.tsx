@@ -1,4 +1,6 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Check, X } from 'lucide-react';
 import { HARVEST_QUEUE_DURATION_MS, useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
 import { useAuthStore } from '../../store/authStore';
@@ -20,7 +22,7 @@ import {
   formatGameDuration,
   TREE_RENDER_HEIGHT,
 } from '../../game/trees';
-import { getLoadedGameImage, preloadGameImages } from '../../game/sprites';
+import { getGameSpriteSize, getLoadedGameImage, getPlacedItemImage, preloadGameImages } from '../../game/sprites';
 import type { TileData } from '../../store/useFarmStore';
 import type { GameItemConfig } from '../../types/game';
 import { HousingModal } from './HousingModal';
@@ -66,6 +68,13 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     refund: number;
     refundCurrency: 'coins' | 'rubies';
   } | null>(null);
+  const [housingToast, setHousingToast] = useState<{ title: string; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!housingToast) return;
+    const timeoutId = window.setTimeout(() => setHousingToast(null), 4200);
+    return () => window.clearTimeout(timeoutId);
+  }, [housingToast]);
 
   const {
     tiles,
@@ -700,7 +709,82 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           : drawPlacedItem(ctx, item, tile, centerX, groundY, now, isHovered);
         ctx.restore();
 
+        if (item.buildingCategory === 'FACTORY' && item.productionTimeMs && tile.factoryStartedAt) {
+          const startedAt = new Date(tile.factoryStartedAt).getTime();
+          const queuedUnits = tile.factoryQueuedUnits ?? 0;
+          if (Number.isFinite(startedAt) && queuedUnits > 0) {
+            const readyUnits = Math.min(
+              queuedUnits,
+              Math.floor(Math.max(0, now - startedAt) / item.productionTimeMs)
+            );
+            if (readyUnits < queuedUnits) {
+              const image = getPlacedItemImage(item, tile, now);
+              const spriteHeight = image ? getGameSpriteSize(image, item).height : 82;
+              const exhaustX = centerX;
+              const exhaustY = groundY - spriteHeight * 0.9;
+              const puffCycle = 1900;
+
+              ctx.save();
+              const glow = ctx.createRadialGradient(exhaustX, exhaustY + 5, 1, exhaustX, exhaustY + 5, 30);
+              glow.addColorStop(0, 'rgba(255, 205, 112, 0.62)');
+              glow.addColorStop(1, 'rgba(255, 160, 64, 0)');
+              ctx.fillStyle = glow;
+              ctx.beginPath();
+              ctx.arc(exhaustX, exhaustY + 5, 30, 0, Math.PI * 2);
+              ctx.fill();
+
+              for (let index = 0; index < 6; index++) {
+                const progress = ((now % puffCycle) / puffCycle + index / 6) % 1;
+                const rise = progress * Math.max(90, spriteHeight * 0.3);
+                const drift = Math.sin(progress * Math.PI * 2 + index * 1.7) * (9 + progress * 16);
+                const radius = 10 + progress * 17;
+                ctx.globalAlpha = Math.sin(progress * Math.PI) * 0.82;
+                const puff = ctx.createRadialGradient(
+                  exhaustX + drift - radius * 0.25,
+                  exhaustY - rise - radius * 0.28,
+                  1,
+                  exhaustX + drift,
+                  exhaustY - rise,
+                  radius
+                );
+                puff.addColorStop(0, 'rgba(255, 255, 250, 0.96)');
+                puff.addColorStop(0.42, 'rgba(232, 239, 234, 0.84)');
+                puff.addColorStop(1, 'rgba(177, 192, 187, 0.08)');
+                ctx.fillStyle = puff;
+                ctx.beginPath();
+                ctx.ellipse(
+                  exhaustX + drift,
+                  exhaustY - rise,
+                  radius * 0.78,
+                  radius,
+                  progress * 0.7,
+                  0,
+                  Math.PI * 2
+                );
+                ctx.fill();
+              }
+              ctx.restore();
+            }
+          }
+        }
+
         if (!drawIndicators) return;
+
+        if (item.housing) {
+          const readyAnimal = getReadyHousedAnimals(tile, gameItemsRef.current, now)[0];
+          const animalItem = readyAnimal ? gameItemsRef.current[readyAnimal.itemId] : undefined;
+          if (animalItem) {
+            drawYieldBadge(
+              ctx,
+              centerX,
+              groundY - 148,
+              animalItem.yieldIcon ?? '📦',
+              now,
+              1,
+              getLoadedGameImage(animalItem.yieldImage)
+            );
+          }
+        }
 
         if (item.buildingCategory === 'FACTORY' && (tile.factoryQueuedUnits ?? 0) > 0) {
           const startedAt = tile.factoryStartedAt ? new Date(tile.factoryStartedAt).getTime() : Number.NaN;
@@ -1189,7 +1273,19 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
               : undefined;
             const selectedItem = selected?.itemId ? gameItemsRef.current[selected.itemId] : undefined;
             if (selectedItemTile && selectedItem?.type === 'ANIMAL' && housingPositionRef.current) {
-              await houseAnimal(userRef.current.id, housingPositionRef.current, selectedItemTile);
+              const stored = await houseAnimal(userRef.current.id, housingPositionRef.current, selectedItemTile);
+              if (stored) {
+                const buildingPosition = housingPositionRef.current;
+                const buildingKey = `${buildingPosition.row},${buildingPosition.col},${buildingPosition.quadrant}`;
+                const buildingTile = useFarmStore.getState().tiles[buildingKey];
+                const building = buildingTile?.itemId ? gameItemsRef.current[buildingTile.itemId] : undefined;
+                const housedCount = buildingTile?.housedAnimals?.length ?? 0;
+                const capacity = building?.housing?.capacity ?? housedCount;
+                setHousingToast({
+                  title: 'Тварину успішно додано!',
+                  message: `${selectedItem.name} · ${housedCount} із ${capacity} місць зайнято`,
+                });
+              }
             } else {
               notifyGameMessage('Клацни по тварині, яку хочеш помістити в будівлю.');
             }
@@ -1559,6 +1655,14 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
   return (
     <>
       {canvas}
+      {housingToast && createPortal(
+        <div className="gift-feedback-toast is-success" role="status">
+          <span className="gift-feedback-icon"><Check size={19} /></span>
+          <span><strong>{housingToast.title}</strong><small>{housingToast.message}</small></span>
+          <button type="button" onClick={() => setHousingToast(null)} aria-label="Закрити повідомлення"><X size={15} /></button>
+        </div>,
+        document.querySelector('.app-shell') ?? document.body
+      )}
       {housingMode && (
         <div className="housing-interaction-banner" role="status">
           <span>{housingMode === 'store' ? 'Обери тварин на фермі, щоб помістити в будівлю' : 'Обери вільну клітинку трави для випуску тварини'}</span>

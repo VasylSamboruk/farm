@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Bell, Gift, Moon, Sparkles, Sun } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, Bell, Gift, Moon, Sparkles, Sun, X } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
@@ -199,7 +200,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
   const friendActivityCount = friendRequestCount + newFriendCount;
   return (
     <div style={styles.hudOverlay}>
-      {gameMessage && <div style={styles.gameToast} role="status">{gameMessage}</div>}
+      {gameMessage && createPortal(
+        <div className="gift-feedback-toast is-success" role="status">
+          <span className="gift-feedback-icon"><Bell size={18} /></span>
+          <span><strong>Повідомлення</strong><small>{gameMessage}</small></span>
+          <button type="button" onClick={dismissGameMessage} aria-label="Закрити повідомлення"><X size={15} /></button>
+        </div>,
+        document.querySelector('.app-shell') ?? document.body
+      )}
       {pendingRewards[0] && (
         <div className="level-reward-overlay">
           <section className="level-reward-dialog" role="dialog" aria-modal="true" aria-labelledby="level-reward-title">
@@ -437,7 +445,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
 
 const styles: Record<string, React.CSSProperties> = {
   hudOverlay: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 10, fontFamily: '"Inter", sans-serif', userSelect: 'none' },
-  gameToast: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', maxWidth: 'min(360px, calc(100vw - 32px))', padding: '12px 18px', border: '1px solid rgba(255, 210, 130, 0.75)', borderRadius: '9px', background: 'rgba(42, 30, 20, 0.96)', color: '#fff4dd', boxShadow: '0 10px 30px rgba(0,0,0,0.45)', textAlign: 'center', fontSize: '14px', fontWeight: '700', pointerEvents: 'none' },
   topLeftWrapper: { position: 'absolute', top: '12px', left: '12px', display: 'flex', flexDirection: 'column', gap: '6px', pointerEvents: 'auto', zIndex: 20 },
   levelContainer: { position: 'relative', width: '75px', height: '75px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))' },
   sunflowerImg: { width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' },
