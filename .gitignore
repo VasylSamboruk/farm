@@ -9,6 +9,9 @@
 **/.env.*
 !**/.env.example
 
+# Local economy rollback snapshots
+/server/economy-rollbacks/
+
 # Logs and local tooling
 *.log
 npm-debug.log*
