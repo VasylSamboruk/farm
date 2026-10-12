@@ -204,9 +204,12 @@ export const getGameSpriteSize = (image: HTMLImageElement, item: GameItemConfig)
   const spriteScale = item.spriteScale ?? 1;
   const maxWidth = footprint.width * 88 * spriteScale;
   const maxHeight = footprint.height * 82 * spriteScale;
-  const isSeedling = item.type === 'CROP' && (item.growthImages?.length ?? 0) > 1 &&
+  const isFirstGrowthStage = (item.type === 'CROP' || item.type === 'TREE') &&
     getLoadedGameImage(item.growthImages?.[0]) === image;
-  const growthScale = isSeedling ? CROP_SEEDLING_SCALE : 1;
+  const defaultFirstStageScale = item.type === 'CROP' && (item.growthImages?.length ?? 0) > 1
+    ? CROP_SEEDLING_SCALE
+    : 1;
+  const growthScale = isFirstGrowthStage ? item.firstStageScale ?? defaultFirstStageScale : 1;
   const scale = Math.min(maxWidth / bounds.width, maxHeight / bounds.height) * growthScale;
 
   return { width: bounds.width * scale, height: bounds.height * scale };

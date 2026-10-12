@@ -56,6 +56,7 @@ interface PreviewSelection {
   title: string;
   image?: string;
   icon?: string;
+  stageIndex?: number;
 }
 
 interface AdminPreviewSpriteProps {
@@ -63,10 +64,11 @@ interface AdminPreviewSpriteProps {
   image: string;
   icon: string;
   spriteScale: number;
+  firstStageScale: number;
   footprint: { width: number; height: number };
 }
 
-const AdminPreviewSprite: React.FC<AdminPreviewSpriteProps> = ({ type, image, icon, spriteScale, footprint }) => {
+const AdminPreviewSprite: React.FC<AdminPreviewSpriteProps> = ({ type, image, icon, spriteScale, firstStageScale, footprint }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -85,6 +87,7 @@ const AdminPreviewSprite: React.FC<AdminPreviewSpriteProps> = ({ type, image, ic
         plantingXp: 0,
         footprint,
         spriteScale,
+        firstStageScale,
         shopIcon: icon,
         growthImages: image ? [image] : [],
       };
@@ -97,7 +100,7 @@ const AdminPreviewSprite: React.FC<AdminPreviewSpriteProps> = ({ type, image, ic
     else void loadGameImage(image).then(draw).catch(draw);
 
     return () => { active = false; };
-  }, [footprint, icon, image, spriteScale, type]);
+  }, [firstStageScale, footprint, icon, image, spriteScale, type]);
 
   return <canvas ref={canvasRef} className="admin-preview-sprite-canvas" width={200} height={300} aria-hidden="true" />;
 };
@@ -136,6 +139,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [yieldImage, setYieldImage] = useState('');
   const [placementSurface, setPlacementSurface] = useState<'grass' | 'soil'>('grass');
   const [spriteScale, setSpriteScale] = useState('1');
+  const [firstStageScale, setFirstStageScale] = useState('1');
   const [canFlip, setCanFlip] = useState(true);
   const [access, setAccess] = useState<'all' | 'admin' | 'gift'>('all');
   const [housingCapacity, setHousingCapacity] = useState('40');
@@ -196,6 +200,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const changeType = (nextType: ItemType) => {
     setPreviewElapsedMs(0);
     setType(nextType);
+    setFirstStageScale(nextType === 'CROP' ? '0.55' : '1');
     if (nextType === 'OTHER' && access === 'gift') setAccess('all');
     if (nextType === 'BUILDING') {
       setYieldItem('');
@@ -223,7 +228,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
     setPreviewElapsedMs(0);
   };
 
-  const renderFarmPreview = (image: string, icon: string, expanded = false) => {
+  const renderFarmPreview = (image: string, icon: string, expanded = false, previewStageScale = 1) => {
     const largeWidth = footprintMode === 'large' && largeRectangle ? largeRectangle.width : 1;
     const largeHeight = footprintMode === 'large' && largeRectangle ? largeRectangle.height : 1;
     const worldScale = footprintMode === 'large'
@@ -276,7 +281,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
           width: `${previewWidth}px`,
           height: `${previewWidth * 1.5}px`,
         }}>
-          <AdminPreviewSprite type={type} image={resolveImageUrl(image, assetBaseUrl)} icon={icon} spriteScale={Number(spriteScale) || 1} footprint={previewFootprint} />
+          <AdminPreviewSprite type={type} image={resolveImageUrl(image, assetBaseUrl)} icon={icon} spriteScale={Number(spriteScale) || 1} firstStageScale={previewStageScale} footprint={previewFootprint} />
         </div>
         <span className="admin-preview-surface-label">{placementSurface === 'grass' ? 'ТРАВА' : 'ГРЯДКА'}</span>
         {!isBuilding && type !== 'ANIMAL' && growthImages.length > 1 && <button className="admin-preview-replay" type="button" onClick={restartPreviewCycle}><RotateCcw size={13} /><span>Повторити ріст</span></button>}
@@ -305,6 +310,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
     const parsedPlantingXp = Number(plantingXp);
     const parsedLevel = Number(requiredLevel);
     const parsedScale = Number(spriteScale);
+    const parsedFirstStageScale = Number(firstStageScale);
     const selectedRectangle = footprintMode === 'mini' ? miniRectangle : largeRectangle;
     const parsedSellPrice = sellPrice.trim() ? Number(sellPrice) : undefined;
     const parsedProductionTime = productionTimeMs ?? undefined;
@@ -321,7 +327,9 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
       !Number.isSafeInteger(parsedPrice) || parsedPrice < 0 ||
       !Number.isSafeInteger(parsedPlantingXp) || parsedPlantingXp < 0 ||
       !Number.isSafeInteger(parsedLevel) || parsedLevel < 1 || parsedLevel > 999 ||
-      !Number.isFinite(parsedScale) || parsedScale < 0.1 || parsedScale > 5 || hasIncompleteStage) {
+      !Number.isFinite(parsedScale) || parsedScale < 0.1 || parsedScale > 5 ||
+      (['TREE', 'CROP'].includes(type) && (!Number.isFinite(parsedFirstStageScale) || parsedFirstStageScale < 0.1 || parsedFirstStageScale > 5)) ||
+      hasIncompleteStage) {
       setError('Заповни назву, коректні значення та прямокутну зайняту площу.');
       showToast('error', 'Перевір назву, параметри та прямокутний footprint.');
       return;
@@ -413,6 +421,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
         ...(type === 'TREE' || type === 'ANIMAL' ? { skinsEnabled, skins: skinsEnabled ? skins : [] } : {}),
         placementSurface,
         spriteScale: parsedScale,
+        ...(['TREE', 'CROP'].includes(type) ? { firstStageScale: parsedFirstStageScale } : {}),
         canFlip,
         ...((!isBuilding || isFactory) ? {
           sellPrice: parsedSellPrice,
@@ -656,6 +665,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
                 ))}
               </div>
               <label className="admin-create-field-wide">Масштаб спрайта<input type="number" min="0.1" max="8" step="0.1" value={spriteScale} onChange={(event) => setSpriteScale(event.target.value)} /></label>
+              {['TREE', 'CROP'].includes(type) && <label className="admin-create-field-wide">Масштаб 1-ї стадії<input type="number" min="0.1" max="5" step="0.1" value={firstStageScale} onChange={(event) => setFirstStageScale(event.target.value)} /></label>}
             </div>
             <label className="admin-create-check"><input type="checkbox" checked={canFlip} onChange={(event) => setCanFlip(event.target.checked)} />Дозволити дзеркальне відображення</label>
           </section>
@@ -687,12 +697,19 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
 
         <aside className="admin-create-preview">
           <div className="admin-create-preview-heading"><ImagePlus size={17} /><strong>Попередній перегляд</strong></div>
-          {renderFarmPreview(growingImage, selectedIcon)}
+          {renderFarmPreview(
+            growingImage,
+            selectedIcon,
+            false,
+            previewStageIndex === 0
+              ? (type === 'CROP' && growthImages.length > 1 ? 0.55 : 1) * (Number(firstStageScale) || 1)
+              : 1,
+          )}
           <div className="admin-create-preview-name"><span>{type}</span><strong>{name.trim() || 'Новий товар'}</strong><small>{id.trim() || 'item_id'}</small></div>
           <div className="admin-preview-thumbnails" aria-label="Зображення товару">
             <button type="button" onClick={() => setPreviewSelection({ title: 'Іконка магазину', icon: selectedIcon })} aria-label="Збільшити іконку магазину"><span>{selectedIcon}</span><small>Іконка</small></button>
             {shopImage.trim() && <button type="button" onClick={() => setPreviewSelection({ title: 'Зображення магазину', image: shopImage.trim() })} aria-label="Збільшити зображення магазину"><img src={resolveImageUrl(shopImage.trim(), assetBaseUrl)} alt="" /><small>Магазин</small></button>}
-            {growthImages.map((source, index) => <button type="button" key={`${source}-${index}`} onClick={() => setPreviewSelection({ title: `Стадія ${index + 1}`, image: source })} aria-label={`Збільшити стадію ${index + 1}`}><img src={resolveImageUrl(source, assetBaseUrl)} alt="" /><small>{index + 1}</small></button>)}
+            {growthImages.map((source, index) => <button type="button" key={`${source}-${index}`} onClick={() => setPreviewSelection({ title: `Стадія ${index + 1}`, image: source, stageIndex: index })} aria-label={`Збільшити стадію ${index + 1}`}><img src={resolveImageUrl(source, assetBaseUrl)} alt="" /><small>{index + 1}</small></button>)}
             {yieldImage.trim() && <button type="button" onClick={() => setPreviewSelection({ title: 'Зображення врожаю', image: yieldImage.trim(), icon: yieldIcon })} aria-label="Збільшити зображення врожаю"><img src={resolveImageUrl(yieldImage.trim(), assetBaseUrl)} alt="" /><small>Врожай</small></button>}
           </div>
           <div className="admin-create-preview-meta"><span>Поверхня</span><strong>{placementSurface === 'grass' ? 'Трава' : 'Грядка'}</strong><span>Ціна</span><strong>{Number(price || 0).toLocaleString('uk-UA')} {priceCurrency === 'rubies' ? 'рубінів' : 'монет'}</strong></div>
@@ -701,7 +718,14 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
       {previewSelection && <div className="admin-preview-lightbox" role="presentation" onClick={() => setPreviewSelection(null)}>
         <section className="admin-preview-dialog" role="dialog" aria-modal="true" aria-label={previewSelection.title} onClick={(event) => event.stopPropagation()}>
           <header><div><span>ПОПЕРЕДНІЙ ПЕРЕГЛЯД</span><strong>{previewSelection.title}</strong></div><button type="button" onClick={() => setPreviewSelection(null)} aria-label="Закрити перегляд"><X size={18} /></button></header>
-          {renderFarmPreview(previewSelection.image ?? '', previewSelection.icon ?? selectedIcon, true)}
+          {renderFarmPreview(
+            previewSelection.image ?? '',
+            previewSelection.icon ?? selectedIcon,
+            true,
+            previewSelection.stageIndex === 0
+              ? (type === 'CROP' && growthImages.length > 1 ? 0.55 : 1) * (Number(firstStageScale) || 1)
+              : 1,
+          )}
           <p>{type === 'CROP' && placementSurface === 'soil' ? 'Рослина росте на грядці' : placementSurface === 'grass' ? 'Об’єкт стоїть на траві' : 'Об’єкт розміщений на грядці'}</p>
         </section>
       </div>}

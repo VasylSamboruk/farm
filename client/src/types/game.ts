@@ -37,6 +37,7 @@ export interface GameItemConfig {
   factoryInputItemId?: string;
   factoryCapacity?: number;
   spriteScale?: number;
+  firstStageScale?: number;
   flipX?: boolean;
   canFlip?: boolean;
   price: number;

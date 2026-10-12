@@ -133,7 +133,11 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   };
 
   const scrollCategories = (direction: -1 | 1) => {
-    tabsRef.current?.scrollBy({ left: direction * 180, behavior: 'smooth' });
+    const track = tabsRef.current;
+    if (!track) return;
+    const firstTab = track.querySelector<HTMLButtonElement>('.shop-modal-tab');
+    const gap = Number.parseFloat(window.getComputedStyle(track).columnGap) || 0;
+    track.scrollBy({ left: direction * ((firstTab?.offsetWidth ?? 120) + gap), behavior: 'smooth' });
   };
 
   return (

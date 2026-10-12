@@ -148,6 +148,7 @@ const serializeCatalogItem = (item) => ({
     canFlip: item.canFlip,
     flipX: item.flipX,
     spriteScale: item.spriteScale,
+    firstStageScale: item.firstStageScale,
     shopIcon: item.shopIcon,
     growthImages: item.growthImages ?? [],
     footprint: item.footprint,
@@ -526,7 +527,7 @@ router.put('/leaderboard/prizes', async (req, res) => {
 router.post('/catalog', async (req, res) => {
     const body = req.body ?? {};
     const { id, name, type, price, priceCurrency = 'coins', plantingXp, requiredLevel, productionTimeMs, yieldItem, yieldName,
-        yieldIcon, yieldAmount, sellPrice, placementSurface, spriteScale, shopImage, shopIcon, housing,
+        yieldIcon, yieldAmount, sellPrice, placementSurface, spriteScale, firstStageScale, shopImage, shopIcon, housing,
         yieldImage, growthImages, footprint, largeFootprint, canFlip, access, mechanic, accelerationMs, grassTexture,
         backgroundImage, backgroundNightImage, skinsEnabled = false, skins = [],
         grassEdgeOverlap = 12, grassEdgeBlur = 0, appearanceAnimation = 'none', giftOnly = false,
@@ -550,6 +551,8 @@ router.post('/catalog', async (req, res) => {
         (sellPrice !== undefined && (!Number.isSafeInteger(sellPrice) || sellPrice < 0)) ||
         !['grass', 'soil'].includes(placementSurface) ||
         !Number.isFinite(spriteScale) || spriteScale < 0.1 || spriteScale > 8 ||
+        (firstStageScale !== undefined && (!['TREE', 'CROP'].includes(type) ||
+            !Number.isFinite(firstStageScale) || firstStageScale < 0.1 || firstStageScale > 5)) ||
         !isFootprint(footprint) ||
         (type === 'BUILDING' && !['DECOR', 'PEN', 'FACTORY'].includes(buildingCategory)) ||
         (type === 'BUILDING' && buildingCategory === 'PEN' && !housing) ||
@@ -609,6 +612,7 @@ router.post('/catalog', async (req, res) => {
             ...(sellPrice === undefined ? {} : { sellPrice }),
             placementSurface,
             spriteScale,
+            ...(firstStageScale === undefined ? {} : { firstStageScale }),
             shopImage: normalizeImage(shopImage) || undefined,
             ...(mechanic === 'grass_style' ? { grassTexture: normalizeImage(grassTexture) } : {}),
             ...(mechanic === 'grass_style' ? { grassEdgeOverlap, grassEdgeBlur } : {}),
@@ -656,7 +660,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         if (!item) return res.status(404).json({ message: 'Предмет не знайдено в каталозі' });
         const allowedFields = new Set([
             'name', 'price', 'priceCurrency', 'sellPrice', 'plantingXp', 'productionTimeMs', 'yieldItem', 'yieldName',
-            'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'canFlip', 'footprint',
+            'yieldIcon', 'yieldAmount', 'placementSurface', 'spriteScale', 'firstStageScale', 'canFlip', 'footprint',
             'largeFootprint', 'shopImage', 'shopIcon', 'yieldImage', 'growthImages', 'flipX', 'access', 'requiredLevel', 'sortOrder', 'disabled',
             'housing',
             'buildingCategory', 'factoryInputItemId', 'factoryCapacity',
@@ -789,6 +793,14 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             if (field === 'spriteScale') {
                 const parsed = Number(value);
                 if (!Number.isFinite(parsed) || parsed < 0.1 || parsed > 5) return res.status(400).json({ message: 'spriteScale має бути від 0.1 до 5' });
+                updates[field] = parsed;
+                continue;
+            }
+            if (field === 'firstStageScale') {
+                const parsed = Number(value);
+                if (!['TREE', 'CROP'].includes(item.type) || !Number.isFinite(parsed) || parsed < 0.1 || parsed > 5) {
+                    return res.status(400).json({ message: 'Масштаб першої стадії дерева або рослини має бути від 0.1 до 5' });
+                }
                 updates[field] = parsed;
                 continue;
             }

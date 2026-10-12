@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { ArrowLeft, Bell, Check, ChevronDown, ChevronUp, ClipboardCheck, Copy, Gift, House, MoreVertical, Search, UserRoundMinus, UserRoundPlus, Users, X } from 'lucide-react';
@@ -87,7 +87,8 @@ export const FriendsPanel: React.FC<{
   onRequestCountChange?: (count: number) => void;
   initialVisitUserId?: string | null;
   onInitialVisitHandled?: () => void;
-}> = ({ isInGame = false, onRequestCountChange, initialVisitUserId, onInitialVisitHandled }) => {
+  onReturnFromInitialVisit?: () => void;
+}> = ({ isInGame = false, onRequestCountChange, initialVisitUserId, onInitialVisitHandled, onReturnFromInitialVisit }) => {
   const gameItems = useGameConfigStore((state) => state.items);
   const levelIcons = useGameConfigStore((state) => state.levelIcons);
   const loadGameItems = useGameConfigStore((state) => state.loadItems);
@@ -106,7 +107,7 @@ export const FriendsPanel: React.FC<{
   const [copiedFriendId, setCopiedFriendId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [giftToast, setGiftToast] = useState<{ kind: 'success' | 'error'; title: string; message: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'gifts' | 'search'>('friends');
+  const [activeTab, setActiveTab] = useState<'friends' | 'requests' | 'gifts'>('friends');
   const [receivedGifts, setReceivedGifts] = useState<ReceivedSocialGift[]>([]);
   const [giftProducts, setGiftProducts] = useState<SocialGiftProduct[]>([]);
   const [giftCooldowns, setGiftCooldowns] = useState<Record<string, string>>({});
@@ -115,6 +116,7 @@ export const FriendsPanel: React.FC<{
   const [busyGiftId, setBusyGiftId] = useState<string | null>(null);
   const [selectedReceivedGift, setSelectedReceivedGift] = useState<ReceivedSocialGift | null>(null);
   const [giftClock, setGiftClock] = useState(Date.now);
+  const initialVisitFlow = useRef(false);
   const updateUser = useAuthStore((state) => state.updateUser);
   const hasGiftCooldowns = Object.keys(giftCooldowns).length > 0;
 
@@ -274,12 +276,22 @@ export const FriendsPanel: React.FC<{
 
   useEffect(() => {
     if (!initialVisitUserId) return;
+    initialVisitFlow.current = true;
     const timer = window.setTimeout(() => {
       void openFriendFarm({ id: initialVisitUserId, username: 'Гравець', avatar: '', xp: 0, level: 1 });
       onInitialVisitHandled?.();
     }, 0);
     return () => window.clearTimeout(timer);
   }, [initialVisitUserId, onInitialVisitHandled, openFriendFarm]);
+
+  const returnFromFriendFarm = () => {
+    if (initialVisitFlow.current) {
+      initialVisitFlow.current = false;
+      onReturnFromInitialVisit?.();
+      return;
+    }
+    setSelectedFarm(null);
+  };
 
   const copyFriendId = async (id: string) => {
     try {
@@ -305,16 +317,13 @@ export const FriendsPanel: React.FC<{
       {isInGame ? (
         <nav className="game-friends-tabs" id="friends-heading" aria-label="Розділи друзів">
           <button type="button" className={activeTab === 'friends' ? 'is-active' : ''} onClick={() => setActiveTab('friends')}>
-            <Users size={16} /><span>Мої друзі</span><small>{friends.length}</small>
+            <Users size={16} /><span>Мої друзі</span><small className="friends-tab-count">{friends.length}</small>
           </button>
           <button type="button" className={`${activeTab === 'requests' ? 'is-active' : ''}${requests.length > 0 ? ' has-new' : ''}`} onClick={() => setActiveTab('requests')}>
-            <Bell size={16} /><span>Запити</span><small>{requests.length}</small>
+            <Bell size={16} /><span>Запити</span><small className="friends-tab-count">{requests.length}</small>
           </button>
           <button type="button" className={`${activeTab === 'gifts' ? 'is-active' : ''}${receivedGifts.length > 0 ? ' has-new' : ''}`} onClick={() => setActiveTab('gifts')}>
-            <Gift size={16} /><span>Подарунки</span><small>{receivedGifts.length}</small>
-          </button>
-          <button type="button" className={activeTab === 'search' ? 'is-active' : ''} onClick={() => setActiveTab('search')}>
-            <Search size={16} /><span>Пошук</span>
+            <Gift size={16} /><span>Подарунки</span><small className="friends-tab-count">{receivedGifts.length}</small>
           </button>
         </nav>
       ) : (
@@ -329,7 +338,7 @@ export const FriendsPanel: React.FC<{
 
       {notice && <p className="social-notice" role="status">{notice}</p>}
 
-      {(!isInGame || activeTab === 'search') && (
+      {(!isInGame || activeTab === 'friends') && (
         <form className="friend-search" onSubmit={searchPlayers}>
           <Search size={17} aria-hidden="true" />
           <input
@@ -345,7 +354,7 @@ export const FriendsPanel: React.FC<{
         </form>
       )}
 
-      {(!isInGame || activeTab === 'search') && searchResults.length > 0 && (
+      {(!isInGame || activeTab === 'friends') && searchResults.length > 0 && (
         <div className="social-list search-results" aria-label="Результати пошуку">
           {searchResults.map((player) => (
             <div className="social-player-row" key={player.id}>
@@ -360,7 +369,7 @@ export const FriendsPanel: React.FC<{
           ))}
         </div>
       )}
-      {(!isInGame || activeTab === 'search') && !searching && searchQuery.trim().length >= 2 && searchResults.length === 0 && <p className="social-empty">Гравців не знайдено.</p>}
+      {(!isInGame || activeTab === 'friends') && !searching && searchQuery.trim().length >= 2 && searchResults.length === 0 && <p className="social-empty">Гравців не знайдено.</p>}
 
       {(!isInGame || activeTab === 'requests') && requests.length > 0 && (
         <div className="friends-subsection">
@@ -415,7 +424,7 @@ export const FriendsPanel: React.FC<{
         {!isInGame && <h3>Мої друзі <span>{friends.length}</span></h3>}
         {loadingLists ? <p className="social-empty">Завантажуємо список друзів...</p> : friends.length === 0 ? (
           isInGame
-            ? <div className="game-friends-empty"><Users size={27} /><strong>Тут будуть твої друзі</strong><span>Знайди гравців і запроси їх до свого кола.</span><button type="button" onClick={() => setActiveTab('search')}><Search size={15} />Знайти друзів</button></div>
+            ? <div className="game-friends-empty"><Users size={27} /><strong>Тут будуть твої друзі</strong><span>Знайди гравців у полі пошуку вище та запроси їх до свого кола.</span></div>
             : <p className="social-empty">Додай гравців, щоб навідуватися на їхні ферми.</p>
         ) : (
           <div className="social-list friends-grid">
@@ -494,7 +503,7 @@ export const FriendsPanel: React.FC<{
             previewBackgroundIsNight={selectedFarm.backgroundIsNight}
           />
           <div className="friend-farm-toolbar">
-            <button className="friend-back-button" type="button" onClick={() => setSelectedFarm(null)} aria-label="Повернутися до профілю" title="Повернутися до профілю"><ArrowLeft size={20} /></button>
+            <button className="friend-back-button" type="button" onClick={returnFromFriendFarm} aria-label="Повернутися до профілю" title="Повернутися до профілю"><ArrowLeft size={20} /></button>
             <div className="friend-farm-player">
               <div className="friend-farm-identity">
                 {selectedFarm.profile.avatar ? <img src={selectedFarm.profile.avatar} alt="" /> : <span>{selectedFarm.profile.username.slice(0, 1).toUpperCase()}</span>}
@@ -539,17 +548,27 @@ export const FriendsPanel: React.FC<{
 
 const PlayerIdentity: React.FC<{ player: SocialPlayer; hideId?: boolean; levelIcons: ReturnType<typeof useGameConfigStore.getState>['levelIcons'] }> = ({ player, hideId = false, levelIcons }) => (
   <div className="social-player-identity">
-    <div className={`social-avatar${player.isOnline ? ' is-online' : ''}`} title={formatLastOnline(player)}>
-      {player.avatar ? <img src={player.avatar} alt="" /> : <span>{player.username.slice(0, 1).toUpperCase()}</span>}
-    </div>
+    <span className="social-avatar-wrap">
+      <span className={`social-avatar${player.isOnline ? ' is-online' : ''}`} title={formatLastOnline(player)}>
+        {player.avatar ? <img src={player.avatar} alt="" /> : <span>{player.username.slice(0, 1).toUpperCase()}</span>}
+      </span>
+      {hideId && (
+        <span className="social-player-level" aria-label={`Рівень ${getLevelProgress(player.xp).level}`}>
+          <img src={getLevelIcon(getLevelProgress(player.xp).level, levelIcons)} alt="" draggable={false} />
+          <strong>{getLevelProgress(player.xp).level}</strong>
+        </span>
+      )}
+    </span>
     <div className="social-player-copy">
       <strong>{player.username}</strong>
       <small className={`social-last-online${player.isOnline ? ' is-online' : ''}`}><span className="social-presence-dot" aria-hidden="true" />{formatLastOnline(player)}</small>
       {!hideId && <small>ID: {player.id}</small>}
     </div>
-    <span className="social-player-level" aria-label={`Рівень ${getLevelProgress(player.xp).level}`}>
-      <img src={getLevelIcon(getLevelProgress(player.xp).level, levelIcons)} alt="" />
-      <strong>{getLevelProgress(player.xp).level}</strong>
-    </span>
+    {!hideId && (
+      <span className="social-player-level" aria-label={`Рівень ${getLevelProgress(player.xp).level}`}>
+        <img src={getLevelIcon(getLevelProgress(player.xp).level, levelIcons)} alt="" />
+        <strong>{getLevelProgress(player.xp).level}</strong>
+      </span>
+    )}
   </div>
 );

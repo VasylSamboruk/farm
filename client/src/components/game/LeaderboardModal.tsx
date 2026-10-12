@@ -54,7 +54,6 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ isOpen, onCl
   const [claimingId, setClaimingId] = useState('');
   const [error, setError] = useState('');
   const [now, setNow] = useState(0);
-  const [refreshCount, setRefreshCount] = useState(0);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -79,13 +78,12 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ isOpen, onCl
       active = false;
       window.clearTimeout(timer);
     };
-  }, [isOpen, page, refreshCount, type]);
+  }, [isOpen, page, type]);
 
   useEffect(() => {
     if (!isOpen) return;
     const interval = window.setInterval(() => {
       setNow(Date.now());
-      setRefreshCount((current) => current + 1);
     }, 15_000);
     return () => window.clearInterval(interval);
   }, [isOpen]);
@@ -138,7 +136,13 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ isOpen, onCl
           ? <img src={`/assets/ui/top${player.rank}.png`} alt={`Місце ${player.rank}`} draggable={false} />
           : `#${player.rank}`}
       </span>
-      <span className="leaderboard-avatar">{player.avatar ? <img src={player.avatar} alt="" /> : player.username.slice(0, 1).toUpperCase()}</span>
+      <span className="leaderboard-avatar-wrap">
+        <span className="leaderboard-avatar">{player.avatar ? <img src={player.avatar} alt="" /> : player.username.slice(0, 1).toUpperCase()}</span>
+        <span className="leaderboard-level-badge" title={`Рівень ${player.level}`} aria-label={`Рівень ${player.level}`}>
+          <img src={getLevelIcon(player.level, levelIcons)} alt="" draggable={false} />
+          <b>{player.level}</b>
+        </span>
+      </span>
       <span className="leaderboard-player-copy">
         <strong>{player.username}</strong>
         <span className={`leaderboard-presence${player.isOnline ? ' is-online' : ''}`} title={player.lastOnlineAt ? new Intl.DateTimeFormat('uk-UA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(player.lastOnlineAt)) : 'Час останньої активності невідомий'}>
@@ -146,15 +150,11 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ isOpen, onCl
           {formatLastOnline(player.lastOnlineAt, player.isOnline, now)}
         </span>
       </span>
-      <span className="leaderboard-level-badge" title={`Рівень ${player.level}`} aria-label={`Рівень ${player.level}`}>
-        <img src={getLevelIcon(player.level, levelIcons)} alt="" draggable={false} />
-        <b>{player.level}</b>
-      </span>
       <strong className="leaderboard-xp">{formatNumber(player.xp)} <small>XP</small></strong>
       <button type="button" className="leaderboard-visit" onClick={() => onVisitPlayer(player)} aria-label={`Відвідати профіль ${player.username}`} title="Відвідати профіль"><House size={16} /><span>В гості</span></button>
       {type === 'competition' && prizeForRank(player.rank).length > 0 && (
         <div className="leaderboard-row-prizes" aria-label="Призи за це місце">
-          <span className="leaderboard-row-prizes-label">Нагорода за місце</span>
+          <span className="leaderboard-row-prizes-label">Нагорода</span>
           {rewardList(prizeForRank(player.rank))}
         </div>
       )}
@@ -174,9 +174,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ isOpen, onCl
         <header className="shared-modal-header game-modal-header social-modal-header modal-header-single-row leaderboard-header">
           <div className="modal-header-summary">
             <div className="leaderboard-title-mark"><img src="/assets/ui/rating.png" alt="" draggable={false} /></div>
-            <div className="leaderboard-heading-copy"><h2 id="leaderboard-title">Рейтинг гравців</h2><span>Змагайся та відвідуй ферми</span></div>
-            <span className="modal-title-divider" aria-hidden="true" />
-            <span className="social-modal-subtitle">Загальний рейтинг і змагання XP</span>
+            <div className="leaderboard-heading-copy"><h2 id="leaderboard-title">Рейтинг гравців</h2></div>
           </div>
           <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити рейтинг">✕</button>
         </header>

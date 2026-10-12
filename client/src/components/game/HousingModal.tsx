@@ -70,9 +70,7 @@ export const HousingModal: React.FC<HousingModalProps> = ({ building, position, 
               {animalImage && <img src={animalImage} alt="" draggable={false} />}
             </span>
             <div className="housing-modal-title-copy">
-              <span className="housing-modal-eyebrow">ТВАРИННИЦТВО</span>
               <h2 id="housing-modal-title">{building.name}</h2>
-              <span className="housing-capacity">{animals.length}/{capacity} місць зайнято</span>
             </div>
           </div>
           <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити">×</button>

@@ -535,6 +535,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
         onRequestCountChange={setFriendRequestCount}
         visitPlayerId={visitPlayerId}
         onVisitHandled={clearVisitPlayer}
+        onReturnFromInitialVisit={closeFriends}
       />
       <LeaderboardModal isOpen={isLeaderboardOpen} onClose={() => setIsLeaderboardOpen(false)} onVisitPlayer={visitLeaderboardPlayer} />
     </div>

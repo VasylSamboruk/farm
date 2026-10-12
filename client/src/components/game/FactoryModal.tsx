@@ -89,9 +89,7 @@ export const FactoryModal: React.FC<FactoryModalProps> = ({ building, position, 
               {building.shopImage ? <img src={building.shopImage} alt="" draggable={false} /> : '🏭'}
             </span>
             <div className="housing-modal-title-copy">
-              <span className="factory-eyebrow">ВИРОБНИЦТВО</span>
               <h2 id="factory-modal-title">{building.name}</h2>
-              <span className="factory-header-caption">{inputItem?.yieldName ?? inputItem?.name ?? 'Сировина'} → {building.yieldName ?? 'продукт'}</span>
             </div>
           </div>
           <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити">×</button>

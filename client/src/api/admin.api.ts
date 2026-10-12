@@ -72,6 +72,7 @@ export interface AdminCatalogItem {
   canFlip?: boolean;
   flipX?: boolean;
   spriteScale?: number;
+  firstStageScale?: number;
   growthImages?: string[];
   footprint?: { width: number; height: number };
   largeFootprint?: { width: number; height: number } | null;

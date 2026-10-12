@@ -60,6 +60,7 @@ interface ItemDraft {
   shopIcon: string;
   yieldImage: string;
   spriteScale: string;
+  firstStageScale: string;
   growthImages: string[];
   housingEnabled: boolean;
   housingCapacity: string;
@@ -105,6 +106,8 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => {
   shopIcon: item.shopIcon ?? '',
   yieldImage: item.yieldImage ?? '',
   spriteScale: String(item.spriteScale ?? 1),
+  firstStageScale: String(item.firstStageScale ??
+    (item.type === 'CROP' && (item.growthImages?.length ?? 0) > 1 ? 0.55 : 1)),
   growthImages: [...(item.growthImages ?? [])],
   housingEnabled: Boolean(item.housing),
   housingCapacity: String(item.housing?.capacity ?? 40),
@@ -225,6 +228,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     const largeWidth = draft.largeFootprintWidth.trim() ? Number(draft.largeFootprintWidth) : null;
     const largeHeight = draft.largeFootprintHeight.trim() ? Number(draft.largeFootprintHeight) : null;
     const spriteScale = Number(draft.spriteScale);
+    const firstStageScale = Number(draft.firstStageScale);
     const grassEdgeOverlap = Number(draft.grassEdgeOverlap);
     const grassEdgeBlur = Number(draft.grassEdgeBlur);
     const housingCapacity = Number(draft.housingCapacity);
@@ -248,6 +252,8 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
       !validOptionalFootprint(largeWidth) || !validOptionalFootprint(largeHeight) ||
       ((largeWidth === null) !== (largeHeight === null)) ||
       !Number.isFinite(spriteScale) || spriteScale < 0.1 || spriteScale > 5 ||
+      (['TREE', 'CROP'].includes(item.type) &&
+        (!Number.isFinite(firstStageScale) || firstStageScale < 0.1 || firstStageScale > 5)) ||
       (item.type === 'OTHER' && draft.mechanic === 'grass_style' &&
         (!Number.isInteger(grassEdgeOverlap) || grassEdgeOverlap < 0 || grassEdgeOverlap > 24 ||
           !Number.isFinite(grassEdgeBlur) || grassEdgeBlur < 0 || grassEdgeBlur > 4)) ||
@@ -285,6 +291,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
         yieldItem: draft.yieldItem.trim(), yieldName: draft.yieldName.trim(), yieldIcon: draft.yieldIcon.trim(), yieldAmount,
         placementSurface: draft.placementSurface, flipX: draft.flipX, canFlip: draft.canFlip,
         spriteScale,
+        ...(['TREE', 'CROP'].includes(item.type) ? { firstStageScale } : {}),
         shopImage: draft.shopImage.trim() || null,
         ...(item.type === 'OTHER' && draft.mechanic === 'grass_style' ? {
           grassTexture: draft.grassTexture.trim() || null,
@@ -610,6 +617,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                       <label>Місткість черги<input type="number" min="1" max="1000" value={draft.factoryCapacity} onChange={(event) => updateDraft(item.id, { factoryCapacity: event.target.value })} /></label>
                     </>}
                     <label>Масштаб зображення<input type="number" min="0.1" max="5" step="0.1" value={draft.spriteScale} onChange={(event) => updateDraft(item.id, { spriteScale: event.target.value })} /></label>
+                    {['TREE', 'CROP'].includes(item.type) && <label>Масштаб 1-ї стадії<input type="number" min="0.1" max="5" step="0.1" value={draft.firstStageScale} onChange={(event) => updateDraft(item.id, { firstStageScale: event.target.value })} /></label>}
                     {(item.type === 'TREE' || item.type === 'ANIMAL') && <AdminSkinEditor
                       type={item.type}
                       enabled={draft.skinsEnabled}
