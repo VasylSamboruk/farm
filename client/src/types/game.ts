@@ -2,6 +2,7 @@ export type GameItemType = 'TREE' | 'CROP' | 'ANIMAL' | 'BUILDING' | 'OTHER';
 export type BuildingCategory = 'DECOR' | 'PEN' | 'FACTORY';
 export type LevelReward = { kind: 'coins'; amount: number } | { kind: 'rubies'; amount: number } | { kind: 'item'; amount: number; itemId: string };
 export interface LevelRewardEntry { level: number; rewards: LevelReward[]; }
+export interface LevelIconEntry { minLevel: number; icon: string; }
 export interface ItemSkin {
   id: string;
   name: string;

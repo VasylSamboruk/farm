@@ -4,6 +4,7 @@ import { Ban, Coins, Eye, Gift, PackagePlus, Pencil, Plus, RotateCcw, Search, Sh
 import { adminApi, type AdminCatalogItem, type AdminFarmItem, type AdminUser } from '../../api/admin.api';
 import type { AdminGiftReward } from '../../types/game';
 import { getLevelProgress } from '../../config/progression';
+import { getLevelIcon } from '../../config/levelIcons';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
 import type { TileData } from '../../store/useFarmStore';
 import { loadGameImage, preloadGameImages } from '../../game/sprites';
@@ -44,6 +45,7 @@ const toFarmPreviewTiles = (farmItems: AdminFarmItem[]): Record<string, TileData
 export const AdminUsers: React.FC = () => {
   const showToast = useAdminToast();
   const loadGameItems = useGameConfigStore((state) => state.loadItems);
+  const levelIcons = useGameConfigStore((state) => state.levelIcons);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [catalog, setCatalog] = useState<AdminCatalogItem[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -359,7 +361,7 @@ export const AdminUsers: React.FC = () => {
                   <button key={entry.id} className={entry.id === selectedUserId ? 'admin-user-row is-selected' : 'admin-user-row'} type="button" onClick={() => { setSelectedUserId(entry.id); setUsernameDraft(entry.username); setRoleDraft(entry.role); setNotice(''); setError(''); }}>
                     <span className="admin-avatar">{entry.avatar ? <img src={entry.avatar} alt="" /> : entry.username.slice(0, 1).toUpperCase()}</span>
                     <span className="admin-user-copy"><strong>{entry.username}</strong><small>{entry.isBanned ? 'Заблокований' : `ID: ${entry.id}`}</small></span>
-                    <span className="admin-user-level"><img src="/assets/ui/lvl_ico.png" alt="" /><strong>{entry.level}</strong></span>
+                    <span className="admin-user-level"><img src={getLevelIcon(entry.level, levelIcons)} alt="" /><strong>{entry.level}</strong></span>
                   </button>
                 ))}
               </div>
@@ -379,7 +381,7 @@ export const AdminUsers: React.FC = () => {
                 <header className="admin-player-card">
                   <span className="admin-avatar admin-avatar-large">{selectedUser.avatar ? <img src={selectedUser.avatar} alt="" /> : selectedUser.username.slice(0, 1).toUpperCase()}</span>
                   <div className="admin-player-name"><span className="admin-kicker">ПРОФІЛЬ ГРАВЦЯ</span><h2>{selectedUser.username}</h2><code>ID: {selectedUser.id}</code></div>
-                  <div className="admin-player-level"><img src="/assets/ui/lvl_ico.png" alt="" /><strong>{getLevelProgress(selectedUser.xp).level}</strong><span>РІВЕНЬ</span></div>
+                  <div className="admin-player-level"><img src={getLevelIcon(getLevelProgress(selectedUser.xp).level, levelIcons)} alt="" /><strong>{getLevelProgress(selectedUser.xp).level}</strong><span>РІВЕНЬ</span></div>
                 </header>
 
                 <div className="admin-stat-grid">

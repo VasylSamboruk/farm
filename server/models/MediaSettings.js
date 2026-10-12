@@ -5,6 +5,13 @@ const mediaSettingsSchema = new mongoose.Schema({
     assetBaseUrl: { type: String, default: '' },
     previousAssetBaseUrl: { type: String, default: '' },
     assetBaseUrlHistory: { type: [String], default: [] },
+    levelIcons: {
+        type: [{
+            minLevel: { type: Number, min: 2, max: 999, required: true },
+            icon: { type: String, required: true },
+        }],
+        default: undefined,
+    },
 }, { timestamps: true, versionKey: false });
 
 export default mongoose.model('MediaSettings', mediaSettingsSchema);

@@ -9,8 +9,19 @@ import { getLevelProgress } from '../config/progression.js';
 import { createStarterFarmTiles } from '../services/starterFarm.js';
 import { createCustomGameItem, getGameItem, listGameItems, listPermanentlyDeletedGameItems, permanentlyDeleteGameItem, reorderGameItem, restorePermanentlyDeletedGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
-import { getMediaSettings, normalizeAssetSource, resolveAssetSource, resolveGameItemImages, restorePreviousAssetBaseUrl, setAssetBaseUrl } from '../services/mediaStorage.js';
+import { getLevelIcons, getMediaSettings, normalizeAssetSource, resolveAssetSource, resolveGameItemImages, restorePreviousAssetBaseUrl, setAssetBaseUrl, setLevelIcons } from '../services/mediaStorage.js';
 import { listGiftShopItems } from '../services/giftShop.js';
+import {
+    createLeaderboardCompetition,
+    deleteLeaderboardCompetition,
+    getAdminLeaderboardPlayers,
+    getLeaderboardSettings,
+    listLeaderboardCompetitions,
+    saveLeaderboardSettings,
+    setAdminLeaderboardPlayerVisibility,
+    setLeaderboardCompetitionActive,
+    updateLeaderboardCompetition,
+} from '../services/leaderboard.js';
 
 const router = express.Router();
 const MAX_PAGE_SIZE = 100;
@@ -227,6 +238,38 @@ router.get('/level-rewards', async (_req, res, next) => {
     }
 });
 
+router.get('/level-icons', async (_req, res, next) => {
+    try {
+        return res.json({ levelIcons: await getLevelIcons() });
+    } catch (error) {
+        return next(error);
+    }
+});
+
+router.put('/level-icons', async (req, res) => {
+    const levelIcons = req.body?.levelIcons;
+    if (!Array.isArray(levelIcons) || levelIcons.length > 20) {
+        return res.status(400).json({ message: 'Додай не більше 20 налаштувань іконок рівнів' });
+    }
+    const levels = new Set();
+    for (const entry of levelIcons) {
+        if (!entry || !Number.isSafeInteger(entry.minLevel) || entry.minLevel < 2 || entry.minLevel > 999 ||
+            levels.has(entry.minLevel) || !isImageSource(entry.icon)) {
+            return res.status(400).json({ message: 'Перевір рівень початку та адресу іконки. Рівні мають бути унікальними, від 2 до 999' });
+        }
+        levels.add(entry.minLevel);
+    }
+    try {
+        const mediaSettings = await getMediaSettings();
+        const normalized = levelIcons
+            .sort((left, right) => left.minLevel - right.minLevel)
+            .map(({ minLevel, icon }) => ({ minLevel, icon: normalizeAssetSource(icon, mediaSettings) }));
+        return res.json({ levelIcons: await setLevelIcons(normalized) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося зберегти іконки рівнів', error: error.message });
+    }
+});
+
 router.get('/gift-shop', async (_req, res, next) => {
     try {
         return res.json({ items: await listGiftShopItems({ includeDisabled: true }) });
@@ -298,6 +341,185 @@ router.delete('/level-rewards/:level', async (req, res) => {
         return res.json({ success: true, level });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося видалити нагороди рівня', error: error.message });
+    }
+});
+
+router.get('/leaderboard/prizes', async (_req, res, next) => {
+    try {
+        return res.json(await getLeaderboardSettings());
+    } catch (error) {
+        return next(error);
+    }
+});
+
+function validateLeaderboardPrizeRanges(prizeRanges) {
+    if (!Array.isArray(prizeRanges) || prizeRanges.length > 100) {
+        return 'Додай не більше 100 діапазонів призів';
+    }
+    const sortedRanges = [...prizeRanges].sort((left, right) => left.rankFrom - right.rankFrom);
+    let previousRankTo = 0;
+    for (const range of sortedRanges) {
+        if (!range || !Number.isSafeInteger(range.rankFrom) || !Number.isSafeInteger(range.rankTo) ||
+            range.rankFrom < 1 || range.rankTo < range.rankFrom || range.rankTo > 1_000_000 ||
+            range.rankFrom <= previousRankTo || !Array.isArray(range.rewards) || range.rewards.length < 1 || range.rewards.length > 20) {
+            return 'Перевір діапазони місць і склад призів: місця не мають перетинатися';
+        }
+        previousRankTo = range.rankTo;
+        for (const reward of range.rewards) {
+            if (!reward || !Number.isSafeInteger(reward.amount) || reward.amount < 1 || reward.amount > 100_000) {
+                return 'Кількість призу має бути цілим числом від 1 до 100 000';
+            }
+            if (reward.kind === 'item') {
+                if (typeof reward.itemId !== 'string' || !getGameItem(reward.itemId)) {
+                    return 'Предмет для призу відсутній у каталозі';
+                }
+            } else if (!['coins', 'rubies'].includes(reward.kind)) {
+                return 'Невідомий тип призу';
+            }
+        }
+    }
+    return null;
+}
+
+router.get('/leaderboard/competitions', async (_req, res, next) => {
+    try {
+        return res.json(await listLeaderboardCompetitions());
+    } catch (error) {
+        return next(error);
+    }
+});
+
+router.get('/leaderboard/players', async (req, res, next) => {
+    const type = req.query.type === 'total' || req.query.type === 'competition' ? req.query.type : null;
+    const page = req.query.page === undefined ? 1 : Number(req.query.page);
+    if (!type) return res.status(400).json({ message: 'Невідомий тип рейтингу.' });
+    if (!Number.isSafeInteger(page) || page < 1 || page > 10_000) {
+        return res.status(400).json({ message: 'Некоректна сторінка рейтингу.' });
+    }
+    try {
+        return res.json(await getAdminLeaderboardPlayers({
+            type,
+            competitionId: typeof req.query.competitionId === 'string' ? req.query.competitionId : '',
+            page,
+            search: typeof req.query.search === 'string' ? req.query.search : '',
+        }));
+    } catch (error) {
+        return next(error);
+    }
+});
+
+router.patch('/leaderboard/players/:userId/visibility', async (req, res, next) => {
+    const { type, competitionId, hidden } = req.body ?? {};
+    if (!['total', 'competition'].includes(type) || typeof hidden !== 'boolean') {
+        return res.status(400).json({ message: 'Некоректні налаштування видимості гравця.' });
+    }
+    try {
+        await setAdminLeaderboardPlayerVisibility({
+            type,
+            competitionId: typeof competitionId === 'string' ? competitionId : '',
+            userId: req.params.userId,
+            hidden,
+        });
+        return res.json({ success: true });
+    } catch (error) {
+        return res.status(error.status || 500).json({ message: error.status ? error.message : 'Не вдалося змінити видимість гравця.' });
+    }
+});
+
+router.post('/leaderboard/competitions', async (req, res, next) => {
+    const { prizeRanges, competitionStartAt, competitionEndAt } = req.body ?? {};
+    const validationError = validateLeaderboardPrizeRanges(prizeRanges);
+    if (validationError) return res.status(400).json({ message: validationError });
+    if (typeof competitionStartAt !== 'string' || typeof competitionEndAt !== 'string') {
+        return res.status(400).json({ message: 'Вкажи коректний час початку та завершення змагання' });
+    }
+    try {
+        return res.status(201).json(await createLeaderboardCompetition({ prizeRanges, competitionStartAt, competitionEndAt }));
+    } catch (error) {
+        return res.status(error.status || 500).json({ message: error.status ? error.message : 'Не вдалося створити змагання', error: error.message });
+    }
+});
+
+router.put('/leaderboard/competitions/:competitionId', async (req, res, next) => {
+    const { prizeRanges, competitionStartAt, competitionEndAt } = req.body ?? {};
+    const validationError = validateLeaderboardPrizeRanges(prizeRanges);
+    if (validationError) return res.status(400).json({ message: validationError });
+    if (typeof competitionStartAt !== 'string' || typeof competitionEndAt !== 'string') {
+        return res.status(400).json({ message: 'Вкажи коректний час початку та завершення змагання' });
+    }
+    try {
+        return res.json(await updateLeaderboardCompetition(req.params.competitionId, { prizeRanges, competitionStartAt, competitionEndAt }));
+    } catch (error) {
+        return res.status(error.status || 500).json({ message: error.status ? error.message : 'Не вдалося оновити змагання', error: error.message });
+    }
+});
+
+router.patch('/leaderboard/competitions/:competitionId/active', async (req, res, next) => {
+    if (typeof req.body?.isActive !== 'boolean') {
+        return res.status(400).json({ message: 'Вкажи статус змагання' });
+    }
+    try {
+        return res.json(await setLeaderboardCompetitionActive(req.params.competitionId, req.body.isActive));
+    } catch (error) {
+        return res.status(error.status || 500).json({ message: error.status ? error.message : 'Не вдалося змінити статус змагання', error: error.message });
+    }
+});
+
+router.delete('/leaderboard/competitions/:competitionId', async (req, res, next) => {
+    try {
+        return res.json(await deleteLeaderboardCompetition(req.params.competitionId));
+    } catch (error) {
+        return res.status(error.status || 500).json({ message: error.status ? error.message : 'Не вдалося видалити змагання', error: error.message });
+    }
+});
+
+router.put('/leaderboard/prizes', async (req, res) => {
+    const prizeRanges = req.body?.prizeRanges;
+    const { competitionStartAt, competitionEndAt } = req.body || {};
+    if (!Array.isArray(prizeRanges) || prizeRanges.length > 100) {
+        return res.status(400).json({ message: 'Додай не більше 100 діапазонів призів' });
+    }
+    if (typeof competitionStartAt !== 'string' || typeof competitionEndAt !== 'string' ||
+        !Number.isFinite(new Date(competitionStartAt).getTime()) ||
+        !Number.isFinite(new Date(competitionEndAt).getTime()) ||
+        new Date(competitionEndAt) <= new Date(competitionStartAt)) {
+        return res.status(400).json({ message: 'Вкажи коректний час початку та завершення змагання' });
+    }
+    const sortedRanges = [...prizeRanges].sort((left, right) => left.rankFrom - right.rankFrom);
+    let previousRankTo = 0;
+    for (const range of sortedRanges) {
+        if (!range || !Number.isSafeInteger(range.rankFrom) || !Number.isSafeInteger(range.rankTo) ||
+            range.rankFrom < 1 || range.rankTo < range.rankFrom || range.rankTo > 1_000_000 ||
+            range.rankFrom <= previousRankTo || !Array.isArray(range.rewards) || range.rewards.length < 1 || range.rewards.length > 20) {
+            return res.status(400).json({ message: 'Перевір діапазони місць і склад призів: місця не мають перетинатися' });
+        }
+        previousRankTo = range.rankTo;
+        for (const reward of range.rewards) {
+            if (!reward || !Number.isSafeInteger(reward.amount) || reward.amount < 1 || reward.amount > 100_000) {
+                return res.status(400).json({ message: 'Кількість призу має бути цілим числом від 1 до 100 000' });
+            }
+            if (reward.kind === 'item') {
+                if (typeof reward.itemId !== 'string' || !getGameItem(reward.itemId)) {
+                    return res.status(400).json({ message: 'Предмет для призу відсутній у каталозі' });
+                }
+            } else if (!['coins', 'rubies'].includes(reward.kind)) {
+                return res.status(400).json({ message: 'Невідомий тип призу' });
+            }
+        }
+    }
+    try {
+        const prizeRangesToSave = sortedRanges.map((range) => ({
+            rankFrom: range.rankFrom,
+            rankTo: range.rankTo,
+            rewards: range.rewards.map(({ kind, amount, itemId = '' }) => ({ kind, amount, itemId })),
+        }));
+        return res.json(await saveLeaderboardSettings({
+            prizeRanges: prizeRangesToSave,
+            competitionStartAt,
+            competitionEndAt,
+        }));
+    } catch (error) {
+        return res.status(error.status || 500).json({ message: error.status ? error.message : 'Не вдалося зберегти призи рейтингу', error: error.message });
     }
 });
 

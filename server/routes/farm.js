@@ -7,8 +7,17 @@ import { getGameItem, listGameItems } from '../services/gameCatalog.js';
 import { getTreeHarvestReadyAt } from '../services/treeMechanics.js';
 import { getMovedOccupiedCells, getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 import { getFarmTilesWithOccupiedCells, getTileOccupiedCells } from '../services/farmTiles.js';
+import { recordLeaderboardXp } from '../services/leaderboard.js';
 
 const router = express.Router();
+
+async function recordLeaderboardXpSafely(userId, amount) {
+    try {
+        await recordLeaderboardXp(userId, amount);
+    } catch (error) {
+        console.error('Не вдалося записати XP у рейтинг змагання:', error);
+    }
+}
 
 router.use(async (req, res, next) => {
     try {
@@ -631,6 +640,7 @@ router.post('/housing/collect', async (req, res) => {
         user.level = getLevelProgress(user.xp).level;
         for (const animal of readyAnimals) animal.lastHarvestedAt = now;
         await Promise.all([farm.save(), user.save()]);
+        await recordLeaderboardXpSafely(user._id, readyAnimals.length);
 
         return res.json({
             success: true,
@@ -776,6 +786,7 @@ router.post('/place', async (req, res) => {
         const newTile = { x, y, quadrant, occupiedQuadrants: occupiedQuadrants ?? [quadrant], occupiedCells, itemId, isDirt: false, stage: 0, placedAt: new Date() };
         farm.tiles.push(newTile);
         await farm.save();
+        await recordLeaderboardXpSafely(user._id, item.plantingXp);
 
         res.json({ 
             success: true, 
@@ -992,8 +1003,6 @@ router.post('/harvest', async (req, res) => {
         user.inventory = inventory;
         user.xp += 1;
         user.level = getLevelProgress(user.xp).level;
-        await user.save();
-
         const harvestedAt = new Date();
         const isCrop = item.type === 'CROP';
         if (isCrop) {
@@ -1001,7 +1010,8 @@ router.post('/harvest', async (req, res) => {
         } else {
             farm.tiles[tileIndex].lastHarvestedAt = harvestedAt;
         }
-        await farm.save();
+        await Promise.all([farm.save(), user.save()]);
+        await recordLeaderboardXpSafely(user._id, 1);
 
         res.json({ 
             success: true, 

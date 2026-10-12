@@ -1,6 +1,12 @@
 import MediaSettings from '../models/MediaSettings.js';
 
 const SETTINGS_ID = 'assets';
+export const DEFAULT_LEVEL_ICONS = [
+    { minLevel: 21, icon: '/assets/ui/lvl_ico1.png' },
+    { minLevel: 36, icon: '/assets/ui/lvl_ico2.png' },
+    { minLevel: 51, icon: '/assets/ui/lvl_ico3.png' },
+    { minLevel: 66, icon: '/assets/ui/lvl_ico4.png' },
+];
 
 const cleanBaseUrl = (value) => {
     if (typeof value !== 'string' || !value.trim()) return '';
@@ -28,6 +34,27 @@ const publicSettings = (settings) => ({
 export const getMediaSettings = async () => {
     const settings = await MediaSettings.findById(SETTINGS_ID).lean();
     return publicSettings(settings ?? {});
+};
+
+export const getLevelIcons = async () => {
+    const settings = await MediaSettings.findById(SETTINGS_ID).lean();
+    const levelIcons = settings?.levelIcons ?? DEFAULT_LEVEL_ICONS;
+    return levelIcons.map(({ minLevel, icon }) => ({
+        minLevel,
+        icon: resolveAssetSource(icon, publicSettings(settings ?? {})),
+    }));
+};
+
+export const setLevelIcons = async (levelIcons) => {
+    const settings = await MediaSettings.findOneAndUpdate(
+        { _id: SETTINGS_ID },
+        { $set: { levelIcons } },
+        { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+    ).lean();
+    return (settings.levelIcons ?? []).map(({ minLevel, icon }) => ({
+        minLevel,
+        icon: resolveAssetSource(icon, publicSettings(settings)),
+    }));
 };
 
 export const setAssetBaseUrl = async (value) => {

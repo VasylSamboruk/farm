@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { ArrowLeft, Bell, Check, ChevronDown, ChevronUp, ClipboardCheck, Copy, Gift, House, MoreVertical, Search, UserRoundMinus, UserRoundPlus, Users, X } from 'lucide-react';
 import { getLevelProgress } from '../../config/progression';
+import { getLevelIcon } from '../../config/levelIcons';
 import { socialApi, type FriendFarm, type ReceivedSocialGift, type SocialGiftProduct, type SocialPlayer } from '../../api/social.api';
 import { loadGameImage, preloadGameImages } from '../../game/sprites';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
@@ -84,8 +85,11 @@ const toTileMap = (tiles: FriendFarm['tiles']): Record<string, TileData> => {
 export const FriendsPanel: React.FC<{
   isInGame?: boolean;
   onRequestCountChange?: (count: number) => void;
-}> = ({ isInGame = false, onRequestCountChange }) => {
+  initialVisitUserId?: string | null;
+  onInitialVisitHandled?: () => void;
+}> = ({ isInGame = false, onRequestCountChange, initialVisitUserId, onInitialVisitHandled }) => {
   const gameItems = useGameConfigStore((state) => state.items);
+  const levelIcons = useGameConfigStore((state) => state.levelIcons);
   const loadGameItems = useGameConfigStore((state) => state.loadItems);
   const [friends, setFriends] = useState<SocialPlayer[]>([]);
   const [requests, setRequests] = useState<SocialPlayer[]>([]);
@@ -246,7 +250,7 @@ export const FriendsPanel: React.FC<{
     }
   };
 
-  const openFriendFarm = async (friend: SocialPlayer) => {
+  const openFriendFarm = useCallback(async (friend: SocialPlayer) => {
     setOpeningFriend(true);
     setNotice('');
     try {
@@ -266,7 +270,16 @@ export const FriendsPanel: React.FC<{
     } finally {
       setOpeningFriend(false);
     }
-  };
+  }, [loadGameItems]);
+
+  useEffect(() => {
+    if (!initialVisitUserId) return;
+    const timer = window.setTimeout(() => {
+      void openFriendFarm({ id: initialVisitUserId, username: 'Гравець', avatar: '', xp: 0, level: 1 });
+      onInitialVisitHandled?.();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [initialVisitUserId, onInitialVisitHandled, openFriendFarm]);
 
   const copyFriendId = async (id: string) => {
     try {
@@ -336,7 +349,7 @@ export const FriendsPanel: React.FC<{
         <div className="social-list search-results" aria-label="Результати пошуку">
           {searchResults.map((player) => (
             <div className="social-player-row" key={player.id}>
-              <PlayerIdentity player={player} hideId={isInGame} />
+              <PlayerIdentity player={player} hideId={isInGame} levelIcons={levelIcons} />
               {player.relation === 'none' && (
                 <button className="social-icon-button" type="button" onClick={() => void runPlayerAction(player, 'send')} disabled={busyPlayerId === player.id} aria-label={`Надіслати запит ${player.username}`} title="Додати в друзі"><UserRoundPlus size={17} /></button>
               )}
@@ -355,7 +368,7 @@ export const FriendsPanel: React.FC<{
           <div className="social-list">
             {requests.map((player) => (
               <div className="social-player-row" key={player.id}>
-                <PlayerIdentity player={player} hideId={isInGame} />
+                <PlayerIdentity player={player} hideId={isInGame} levelIcons={levelIcons} />
                 <button className="social-icon-button accept-button" type="button" onClick={() => void runPlayerAction(player, 'accept')} disabled={busyPlayerId === player.id} aria-label={`Прийняти запит від ${player.username}`} title="Прийняти"><Check size={17} /></button>
                 <button className="social-icon-button reject-button" type="button" onClick={() => void runPlayerAction(player, 'decline')} disabled={busyPlayerId === player.id} aria-label={`Відхилити запит від ${player.username}`} title="Відхилити"><X size={17} /></button>
               </div>
@@ -381,7 +394,7 @@ export const FriendsPanel: React.FC<{
                       <small>ПОДАРУНОК ВІД</small>
                       <strong>{gift.senderName}</strong>
                     </span>
-                    <span className="received-gift-level"><img src="/assets/ui/lvl_ico.png" alt="" /> Рівень {gift.senderLevel}</span>
+                    <span className="received-gift-level"><img src={getLevelIcon(gift.senderLevel, levelIcons)} alt="" /> Рівень {gift.senderLevel}</span>
                   </div>
                   <div className="received-gift-card-content">
                     <div className="received-gift-image">{gift.image ? <img src={gift.image} alt="" draggable={false} /> : <Gift size={28} />}</div>
@@ -408,7 +421,7 @@ export const FriendsPanel: React.FC<{
           <div className="social-list friends-grid">
             {friends.map((friend) => (
               <div className="social-player-row" key={friend.id}>
-                <PlayerIdentity player={friend} hideId={isInGame} />
+                <PlayerIdentity player={friend} hideId={isInGame} levelIcons={levelIcons} />
                 {friendToRemoveId === friend.id ? (
                   <div className="remove-friend-confirm" aria-label={`Підтвердити видалення ${friend.username}`}>
                     <span className="remove-friend-prompt">Видалити?</span>
@@ -495,7 +508,7 @@ export const FriendsPanel: React.FC<{
               </div>
               <div className="friend-farm-stats">
                 <div className="friend-level-medallion">
-                  <img src="/assets/ui/lvl_ico.png" alt="" />
+                  <img src={getLevelIcon(getLevelProgress(selectedFarm.profile.xp).level, levelIcons)} alt="" />
                   <strong>{getLevelProgress(selectedFarm.profile.xp).level}</strong>
                 </div>
                 <span className="friend-total-xp">{selectedFarm.profile.xp.toLocaleString('uk-UA')} XP</span>
@@ -524,7 +537,7 @@ export const FriendsPanel: React.FC<{
   );
 };
 
-const PlayerIdentity: React.FC<{ player: SocialPlayer; hideId?: boolean }> = ({ player, hideId = false }) => (
+const PlayerIdentity: React.FC<{ player: SocialPlayer; hideId?: boolean; levelIcons: ReturnType<typeof useGameConfigStore.getState>['levelIcons'] }> = ({ player, hideId = false, levelIcons }) => (
   <div className="social-player-identity">
     <div className={`social-avatar${player.isOnline ? ' is-online' : ''}`} title={formatLastOnline(player)}>
       {player.avatar ? <img src={player.avatar} alt="" /> : <span>{player.username.slice(0, 1).toUpperCase()}</span>}
@@ -535,7 +548,7 @@ const PlayerIdentity: React.FC<{ player: SocialPlayer; hideId?: boolean }> = ({ 
       {!hideId && <small>ID: {player.id}</small>}
     </div>
     <span className="social-player-level" aria-label={`Рівень ${getLevelProgress(player.xp).level}`}>
-      <img src="/assets/ui/lvl_ico.png" alt="" />
+      <img src={getLevelIcon(getLevelProgress(player.xp).level, levelIcons)} alt="" />
       <strong>{getLevelProgress(player.xp).level}</strong>
     </span>
   </div>

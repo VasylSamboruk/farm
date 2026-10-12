@@ -1,9 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Camera, Check, Copy, LogOut, Moon, Package, Play, ShieldCheck, Sparkles, Sprout, Sun, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { getLevelProgress } from '../../config/progression';
+import { getLevelIcon } from '../../config/levelIcons';
 import type { User } from '../../types/auth';
 import { useAuthStore } from '../../store/authStore';
+import { useFarmStore } from '../../store/useFarmStore';
+import { useGameConfigStore } from '../../store/useGameConfigStore';
 import { socialApi } from '../../api/social.api';
 import { FriendsPanel } from './FriendsPanel';
 
@@ -18,16 +21,32 @@ interface PlayerProfileProps {
 export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onToggleTheme, onPlay, onOpenAdmin }) => {
   const logout = useAuthStore((state) => state.logout);
   const updateUser = useAuthStore((state) => state.updateUser);
+  const backgroundStyle = useFarmStore((state) => state.backgroundStyle);
+  const backgroundIsNight = useFarmStore((state) => state.backgroundIsNight);
+  const loadFarm = useFarmStore((state) => state.loadFarm);
+  const gameItems = useGameConfigStore((state) => state.items);
+  const levelIcons = useGameConfigStore((state) => state.levelIcons);
+  const loadGameItems = useGameConfigStore((state) => state.loadItems);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [avatarError, setAvatarError] = useState('');
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [idCopied, setIdCopied] = useState(false);
+  useEffect(() => {
+    void Promise.all([loadFarm(user.id), loadGameItems()]).catch((error: unknown) => {
+      console.error('Не вдалося завантажити оформлення ферми для профілю:', error);
+    });
+  }, [loadFarm, loadGameItems, user.id]);
+
   const progression = getLevelProgress(user.xp ?? 0);
   const progressPercent = (progression.xpInLevel / progression.xpToNextLevel) * 100;
   const inventoryCount = Object.values(user.inventory ?? {}).reduce((total, amount) => total + amount, 0) +
     Object.values(user.itemInventory ?? {}).reduce((total, amount) => total + amount, 0);
   const defaultAvatars = Array.from({ length: 6 }, (_, index) => `/assets/ui/avatar/ava${index + 1}.png`);
+  const activeBackground = gameItems[backgroundStyle];
+  const profileBackground = backgroundIsNight
+    ? activeBackground?.backgroundNightImage ?? '/assets/fonik1n.png'
+    : activeBackground?.backgroundImage ?? '/assets/fonik1.png';
 
   const saveAvatar = async (avatar: string) => {
     try {
@@ -91,7 +110,8 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
   };
 
   return (
-    <main className="profile-screen scenic-screen farmer-lobby">
+    <main className="profile-screen scenic-screen farmer-lobby" data-background-night={backgroundIsNight}>
+      <img className="farmer-world-background" src={profileBackground} alt="" aria-hidden="true" />
       <div className="farmer-main">
         <header className="farmer-topbar">
           <div className="farmer-wallet">
@@ -135,7 +155,7 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
 
               <div className="farmer-level-card">
                 <div className="level-medallion">
-                  <img src="/assets/ui/lvl_ico.png" alt="" />
+                  <img src={getLevelIcon(progression.level, levelIcons)} alt="" />
                   <strong>{progression.level}</strong>
                 </div>
                 <div className="level-progress-content">

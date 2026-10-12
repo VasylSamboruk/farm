@@ -35,6 +35,21 @@ const socialGiftSchema = new mongoose.Schema({
     resolvedAt: { type: Date, default: null },
 }, { _id: true });
 
+const weeklyLeaderboardRewardSchema = new mongoose.Schema({
+    competitionId: { type: String, default: '' },
+    weekId: { type: String, default: '' },
+    rank: { type: Number, required: true },
+    rewards: {
+        type: [{
+            kind: { type: String, enum: ['coins', 'rubies', 'item'], required: true },
+            amount: { type: Number, min: 1, max: 100000, required: true },
+            itemId: { type: String, default: '' },
+        }],
+        required: true,
+    },
+    claimed: { type: Boolean, default: false },
+}, { _id: false });
+
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -48,6 +63,7 @@ const userSchema = new mongoose.Schema({
     rubies: { type: Number, default: USER_STARTING_RUBIES },
     xp: { type: Number, default: 0 },
     level: { type: Number, default: 1 },
+    leaderboardHidden: { type: Boolean, default: false },
     lastSeenAt: { type: Date, default: null },
     inventory: { type: Map, of: Number, default: {} },
     itemInventory: { type: Map, of: Number, default: {} },
@@ -55,6 +71,7 @@ const userSchema = new mongoose.Schema({
     unlockedBackgroundStyles: { type: [String], default: ['classic'] },
     unlockedSkins: { type: [String], default: [] },
     claimedLevelRewards: { type: [Number], default: [] },
+    pendingLeaderboardRewards: { type: [weeklyLeaderboardRewardSchema], default: [] },
     adminGifts: { type: [adminGiftSchema], default: [] },
     pendingSocialGifts: { type: [socialGiftSchema], default: [] },
     socialGiftCooldowns: { type: Map, of: Date, default: {} },

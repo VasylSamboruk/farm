@@ -1,5 +1,5 @@
 import { api } from './axios';
-import type { ItemSkin, LevelRewardEntry } from '../types/game';
+import type { ItemSkin, LevelIconEntry, LevelRewardEntry } from '../types/game';
 import type { AdminGiftReward } from '../types/game';
 
 export interface AdminFarmItem {
@@ -102,6 +102,52 @@ export interface AdminMediaSettings {
   previousAssetBaseUrl: string;
 }
 
+export interface LeaderboardPrizeRange {
+  rankFrom: number;
+  rankTo: number;
+  rewards: import('../types/game').LevelReward[];
+}
+
+export interface LeaderboardSettings {
+  prizeRanges: LeaderboardPrizeRange[];
+  competitionId: string;
+  competitionStartAt: string | null;
+  competitionEndAt: string | null;
+}
+
+export interface AdminLeaderboardCompetition {
+  competitionId: string;
+  competitionStartAt: string | null;
+  competitionEndAt: string | null;
+  prizeRanges: LeaderboardPrizeRange[];
+  prizesApplied: boolean;
+  isActive: boolean;
+}
+
+export interface AdminLeaderboardCompetitions {
+  activeCompetitionId: string;
+  competitions: AdminLeaderboardCompetition[];
+}
+
+export interface AdminLeaderboardPlayer {
+  id: string;
+  username: string;
+  avatar: string;
+  xp: number;
+  level: number;
+  rank: number | null;
+  hidden: boolean;
+  isOnline: boolean;
+  lastOnlineAt: string | null;
+}
+
+export interface AdminLeaderboardPlayers {
+  entries: AdminLeaderboardPlayer[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
 export const adminApi = {
   getUsers: async (search = '', page = 1) => {
     const response = await api.get<{ users: AdminUser[]; page: number; limit: number; total: number; pages: number }>(
@@ -118,6 +164,14 @@ export const adminApi = {
     const response = await api.get<{ levels: LevelRewardEntry[] }>('/admin/level-rewards');
     return response.data.levels;
   },
+  getLevelIcons: async (): Promise<LevelIconEntry[]> => {
+    const response = await api.get<{ levelIcons: LevelIconEntry[] }>('/admin/level-icons');
+    return response.data.levelIcons;
+  },
+  saveLevelIcons: async (levelIcons: LevelIconEntry[]): Promise<LevelIconEntry[]> => {
+    const response = await api.put<{ levelIcons: LevelIconEntry[] }>('/admin/level-icons', { levelIcons });
+    return response.data.levelIcons;
+  },
   getGiftShop: async (): Promise<AdminGiftShopItem[]> => {
     const response = await api.get<{ items: AdminGiftShopItem[] }>('/admin/gift-shop');
     return response.data.items;
@@ -132,6 +186,75 @@ export const adminApi = {
   },
   deleteLevelRewards: async (level: number): Promise<void> => {
     await api.delete(`/admin/level-rewards/${level}`);
+  },
+  getLeaderboardPrizes: async (): Promise<LeaderboardSettings> => {
+    const response = await api.get<LeaderboardSettings>('/admin/leaderboard/prizes');
+    return response.data;
+  },
+  getLeaderboardCompetitions: async (): Promise<AdminLeaderboardCompetitions> => {
+    const response = await api.get<AdminLeaderboardCompetitions>('/admin/leaderboard/competitions');
+    return response.data;
+  },
+  getLeaderboardPlayers: async (params: {
+    type: 'total' | 'competition';
+    competitionId?: string;
+    page?: number;
+    search?: string;
+  }): Promise<AdminLeaderboardPlayers> => {
+    const response = await api.get<AdminLeaderboardPlayers>('/admin/leaderboard/players', { params });
+    return response.data;
+  },
+  setLeaderboardPlayerVisibility: async (userId: string, params: {
+    type: 'total' | 'competition';
+    competitionId?: string;
+    hidden: boolean;
+  }): Promise<void> => {
+    await api.patch(`/admin/leaderboard/players/${encodeURIComponent(userId)}/visibility`, params);
+  },
+  createLeaderboardCompetition: async (
+    prizeRanges: LeaderboardPrizeRange[],
+    competitionStartAt: string,
+    competitionEndAt: string,
+  ): Promise<AdminLeaderboardCompetitions> => {
+    const response = await api.post<AdminLeaderboardCompetitions>('/admin/leaderboard/competitions', {
+      prizeRanges,
+      competitionStartAt,
+      competitionEndAt,
+    });
+    return response.data;
+  },
+  updateLeaderboardCompetition: async (
+    competitionId: string,
+    prizeRanges: LeaderboardPrizeRange[],
+    competitionStartAt: string,
+    competitionEndAt: string,
+  ): Promise<AdminLeaderboardCompetitions> => {
+    const response = await api.put<AdminLeaderboardCompetitions>(`/admin/leaderboard/competitions/${encodeURIComponent(competitionId)}`, {
+      prizeRanges,
+      competitionStartAt,
+      competitionEndAt,
+    });
+    return response.data;
+  },
+  setLeaderboardCompetitionActive: async (competitionId: string, isActive: boolean): Promise<AdminLeaderboardCompetitions> => {
+    const response = await api.patch<AdminLeaderboardCompetitions>(`/admin/leaderboard/competitions/${encodeURIComponent(competitionId)}/active`, { isActive });
+    return response.data;
+  },
+  deleteLeaderboardCompetition: async (competitionId: string): Promise<AdminLeaderboardCompetitions> => {
+    const response = await api.delete<AdminLeaderboardCompetitions>(`/admin/leaderboard/competitions/${encodeURIComponent(competitionId)}`);
+    return response.data;
+  },
+  saveLeaderboardPrizes: async (
+    prizeRanges: LeaderboardPrizeRange[],
+    competitionStartAt: string,
+    competitionEndAt: string,
+  ): Promise<LeaderboardSettings> => {
+    const response = await api.put<LeaderboardSettings>('/admin/leaderboard/prizes', {
+      prizeRanges,
+      competitionStartAt,
+      competitionEndAt,
+    });
+    return response.data;
   },
   getMediaSettings: async () => {
     const response = await api.get<AdminMediaSettings>('/admin/media/settings');

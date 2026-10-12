@@ -424,8 +424,9 @@ router.get('/profile/:friendId', async (req, res) => {
     try {
         if (!mongoose.isValidObjectId(req.params.friendId)) return res.status(404).json({ message: 'Профіль не знайдено' });
         const currentUser = await getCurrentUser(req.authUserId);
-        if (!currentUser || !hasId(currentUser.friends ?? [], req.params.friendId)) {
-            return res.status(403).json({ message: 'Профіль доступний лише друзям' });
+        if (!currentUser) return res.status(401).json({ message: 'Гравця не знайдено' });
+        if (!hasId(currentUser.friends ?? [], req.params.friendId) && !await User.exists({ _id: req.params.friendId })) {
+            return res.status(403).json({ message: 'Профіль недоступний' });
         }
 
         const [friend, farm] = await Promise.all([

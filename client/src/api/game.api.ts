@@ -1,11 +1,15 @@
 import { api } from './axios';
-import type { AdminGiftEntry, GameItemConfig, LevelRewardEntry } from '../types/game';
+import type { AdminGiftEntry, GameItemConfig, LevelIconEntry, LevelRewardEntry } from '../types/game';
 import type { User } from '../types/auth';
 
 export const gameApi = {
   getItems: async (): Promise<GameItemConfig[]> => {
     const response = await api.get<GameItemConfig[]>('/game-config');
     return response.data;
+  },
+  getLevelIcons: async (): Promise<LevelIconEntry[]> => {
+    const response = await api.get<{ levelIcons: LevelIconEntry[] }>('/game-config/level-icons');
+    return response.data.levelIcons;
   },
   getPendingLevelRewards: async (): Promise<LevelRewardEntry[]> => {
     const response = await api.get<{ rewards: LevelRewardEntry[] }>('/auth/level-rewards/pending');

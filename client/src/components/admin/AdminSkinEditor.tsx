@@ -14,8 +14,8 @@ interface AdminSkinEditorProps {
   onSkinsChange: (skins: ItemSkin[]) => void;
 }
 
-const makeSkinId = (name: string, fallback: string) =>
-  name.toLowerCase().trim().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || fallback;
+const normalizeSkinId = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
 
 export const AdminSkinEditor: React.FC<AdminSkinEditorProps> = ({
   type,
@@ -42,11 +42,11 @@ export const AdminSkinEditor: React.FC<AdminSkinEditorProps> = ({
       </header>
       {enabled && <>
         {skins.map((skin, index) => (
-          <article className="admin-skin-card" key={skin.id || `skin-${index}`}>
+          <article className="admin-skin-card" key={`skin-${index}`}>
             <header><strong>Скін {index + 1}</strong><button type="button" onClick={() => onSkinsChange(skins.filter((_, skinIndex) => skinIndex !== index))} aria-label={`Видалити скін ${index + 1}`}><Trash2 size={15} /></button></header>
             <div className="admin-skin-fields">
-              <label>Назва<input value={skin.name} maxLength={80} onChange={(event) => updateSkin(index, { name: event.target.value, id: makeSkinId(event.target.value, `skin_${index + 1}`) })} placeholder="Золотиста" /></label>
-              <label>ID скіна<input value={skin.id} maxLength={40} onChange={(event) => updateSkin(index, { id: event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_') })} placeholder="golden" /></label>
+              <label>Назва скіна<input value={skin.name} maxLength={80} onChange={(event) => updateSkin(index, { name: event.target.value })} placeholder="Золотиста" /><small>Так назву побачать гравці. ID не змінюється разом із назвою.</small></label>
+              <label>ID скіна<input value={skin.id} maxLength={40} onChange={(event) => updateSkin(index, { id: event.target.value })} onBlur={(event) => updateSkin(index, { id: normalizeSkinId(event.target.value) })} placeholder="golden" autoComplete="off" spellCheck={false} /><small>Латиниця, цифри, дефіс або _. Наприклад: golden</small></label>
               <label>Ціна<input type="number" min="0" max="1000000000" step="1" value={skin.price} onChange={(event) => updateSkin(index, { price: Number(event.target.value) })} /></label>
               <label>Валюта<select value={skin.priceCurrency ?? 'coins'} onChange={(event) => updateSkin(index, { priceCurrency: event.target.value as ItemSkin['priceCurrency'] })}><option value="coins">Монети</option><option value="rubies">Рубіни</option></select></label>
               <label>Рідкість<select value={skin.rarity ?? 'common'} onChange={(event) => updateSkin(index, { rarity: event.target.value as NonNullable<ItemSkin['rarity']> })}><option value="common">Звичайний</option><option value="rare">Рідкісний</option><option value="exclusive">Ексклюзивний</option></select></label>
@@ -59,7 +59,7 @@ export const AdminSkinEditor: React.FC<AdminSkinEditorProps> = ({
               />
               {imageLabels.map((label, imageIndex) => (
                 <AdminImageUrlInput
-                  key={`${skin.id}-${imageIndex}`}
+                  key={`skin-${index}-image-${imageIndex}`}
                   className="admin-skin-image-field"
                   label={label}
                   value={skin.images[imageIndex] ?? ''}

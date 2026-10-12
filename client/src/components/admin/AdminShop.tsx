@@ -453,13 +453,14 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
               <article
                 className={`admin-product${item.disabled ? ' is-disabled' : ''}${editingItemId === item.id ? ' is-editing' : ''}`}
                 key={item.id}
+                onClick={editingItemId === item.id ? (event) => event.stopPropagation() : undefined}
                 role={editingItemId === item.id ? 'dialog' : undefined}
                 aria-modal={editingItemId === item.id ? true : undefined}
                 aria-labelledby={editingItemId === item.id ? `admin-product-title-${item.id}` : undefined}
               >
                 <header className="admin-product-header">
                   <div className="admin-product-image">{item.shopImage ? <img src={item.shopImage} alt="" /> : <span>{item.shopIcon ?? item.yieldIcon ?? '🌱'}</span>}</div>
-                  <div className="admin-product-title"><span>{item.type} · {item.id}{item.permanentlyDeleted ? ' · ВИДАЛЕНО НАЗАВЖДИ' : item.disabled ? ' · ПРИХОВАНО' : ''}</span><strong id={`admin-product-title-${item.id}`}>{item.name}</strong></div>
+                  <div className="admin-product-title">{editingItemId === item.id && <span className="admin-product-editor-kicker">РЕДАГУВАННЯ ТОВАРУ</span>}<span>{item.type} · {item.id}{item.permanentlyDeleted ? ' · ВИДАЛЕНО НАЗАВЖДИ' : item.disabled ? ' · ПРИХОВАНО' : ''}</span><strong id={`admin-product-title-${item.id}`}>{item.name}</strong></div>
                   {editingItemId === item.id && <button className="admin-product-modal-close" type="button" onClick={() => setEditingItemId(null)} aria-label="Закрити редагування"><X size={19} /></button>}
                 </header>
                 {item.permanentlyDeleted ? (
@@ -658,7 +659,9 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                 </>}
               </article>
             );
-            return editingItemId === item.id ? createPortal(productEditor, document.body, item.id) : productEditor;
+            return editingItemId === item.id
+              ? createPortal(<div className="admin-product-modal-backdrop" onClick={() => setEditingItemId(null)}>{productEditor}</div>, document.body, item.id)
+              : productEditor;
           })}
         </div>
       )}

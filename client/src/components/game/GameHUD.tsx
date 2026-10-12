@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Bell, Gift, Moon, Sparkles, Sun, X } from 'lucide-react';
+import { ArrowLeft, Bell, Gift, Moon, Sparkles, Sun, Trophy, X } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
@@ -13,6 +13,9 @@ import { formatGameDuration } from '../../game/trees';
 import { gameApi } from '../../api/game.api';
 import type { AdminGiftEntry, LevelRewardEntry } from '../../types/game';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
+import { getLevelIcon } from '../../config/levelIcons';
+import { LeaderboardModal } from './LeaderboardModal';
+import { leaderboardApi, type CompetitionReward, type LeaderboardPlayer } from '../../api/leaderboard.api';
 
 type ToolType = 'shovel' | 'trash' | 'move' | 'rotate' | null;
 
@@ -30,11 +33,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
   const notifyGameMessage = useFarmStore((state) => state.notifyGameMessage);
   const updateUser = useAuthStore((state) => state.updateUser);
   const gameItems = useGameConfigStore((state) => state.items);
+  const levelIcons = useGameConfigStore((state) => state.levelIcons);
   
   const [showXpBar, setShowXpBar] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false); // Стан для модалки
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [isFriendsOpen, setIsFriendsOpen] = useState(false);
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  const [visitPlayerId, setVisitPlayerId] = useState<string | null>(null);
   const [friendRequestCount, setFriendRequestCount] = useState(0);
   const [newFriendCount, setNewFriendCount] = useState(0);
   const friendsModalOpenRef = useRef(false);
@@ -42,6 +48,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
   const [claimingReward, setClaimingReward] = useState(false);
   const [pendingAdminGifts, setPendingAdminGifts] = useState<AdminGiftEntry[]>([]);
   const [claimingAdminGift, setClaimingAdminGift] = useState(false);
+  const [pendingCompetitionRewards, setPendingCompetitionRewards] = useState<CompetitionReward[]>([]);
+  const [claimingCompetitionReward, setClaimingCompetitionReward] = useState(false);
 
   const toggleTool = (tool: ToolType) => {
     if (activeTool === tool) {
@@ -66,6 +74,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
     setIsShopOpen(false);
     setIsInventoryOpen(false);
     setIsFriendsOpen(false);
+    setIsLeaderboardOpen(false);
     friendsModalOpenRef.current = false;
     onReturnToProfile();
   };
@@ -76,6 +85,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
     friendsModalOpenRef.current = true;
     setIsFriendsOpen(true);
   };
+
+  const visitLeaderboardPlayer = useCallback((player: LeaderboardPlayer) => {
+    setIsLeaderboardOpen(false);
+    setVisitPlayerId(player.id);
+    friendsModalOpenRef.current = true;
+    setIsFriendsOpen(true);
+  }, []);
+
+  const clearVisitPlayer = useCallback(() => setVisitPlayerId(null), []);
 
   const closeFriends = () => {
     friendsModalOpenRef.current = false;
@@ -127,6 +145,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
       active = false;
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshAdminGifts);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    const refreshCompetitionRewards = async () => {
+      try {
+        const rewards = await leaderboardApi.getPendingRewards();
+        if (active) setPendingCompetitionRewards(rewards);
+      } catch (error) {
+        console.error('Не вдалося завантажити нагороди змагання:', error);
+      }
+    };
+    void refreshCompetitionRewards();
+    const intervalId = window.setInterval(() => void refreshCompetitionRewards(), 30_000);
+    window.addEventListener('focus', refreshCompetitionRewards);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshCompetitionRewards);
     };
   }, [user?.id]);
 
@@ -195,6 +234,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
     }
   };
 
+  const claimCompetitionReward = async () => {
+    const reward = pendingCompetitionRewards[0];
+    if (!reward || claimingCompetitionReward) return;
+    setClaimingCompetitionReward(true);
+    try {
+      const result = await leaderboardApi.claimReward(reward.competitionId);
+      updateUser({
+        coins: result.coins,
+        rubies: result.rubies,
+        xp: result.xp,
+        inventory: result.inventory,
+        itemInventory: result.itemInventory,
+      });
+      setPendingCompetitionRewards((current) => current.filter((entry) => entry.competitionId !== reward.competitionId));
+    } catch (error) {
+      notifyGameMessage(error instanceof Error ? error.message : 'Не вдалося забрати нагороду змагання.');
+    } finally {
+      setClaimingCompetitionReward(false);
+    }
+  };
+
   const progression = getLevelProgress(user?.xp ?? 0);
   const xpPercent = (progression.xpInLevel / progression.xpToNextLevel) * 100;
   const friendActivityCount = friendRequestCount + newFriendCount;
@@ -232,7 +292,39 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
           </section>
         </div>
       )}
-      {!pendingRewards[0] && pendingAdminGifts[0] && (
+      {!pendingRewards[0] && pendingCompetitionRewards[0] && (
+        <div className="level-reward-overlay competition-reward-overlay">
+          <section className="level-reward-dialog competition-reward-dialog" role="dialog" aria-modal="true" aria-labelledby="competition-reward-title">
+            <div className="competition-reward-place">
+              {pendingCompetitionRewards[0].rank <= 3
+                ? <img src={`/assets/ui/top${pendingCompetitionRewards[0].rank}.png`} alt="" draggable={false} />
+                : <Trophy size={30} />}
+            </div>
+            <span className="level-reward-kicker">ПІДСУМКИ ЗМАГАННЯ</span>
+            <h2 id="competition-reward-title">Твоє місце — #{pendingCompetitionRewards[0].rank}!</h2>
+            <p className="competition-reward-caption">Ти чудово попрацював — ось твоя нагорода.</p>
+            <div className="level-reward-items">
+              {pendingCompetitionRewards[0].rewards.map((reward, index) => {
+                const item = reward.kind === 'item' ? gameItems[reward.itemId] : undefined;
+                const icon = reward.kind === 'coins' ? '/assets/ui/coin.png'
+                  : reward.kind === 'rubies' ? '/assets/ui/rubin.png'
+                    : item?.shopImage ?? item?.growthImages?.at(-1) ?? item?.yieldImage;
+                const label = reward.kind === 'coins' ? 'Монети'
+                  : reward.kind === 'rubies' ? 'Рубіни'
+                    : item?.name ?? reward.itemId;
+                return <div className="level-reward-item competition-reward-item" key={`${reward.kind}-${reward.kind === 'item' ? reward.itemId : index}`}>
+                  <span className="level-reward-item-icon">{icon ? <img src={icon} alt="" draggable={false} /> : <span>{item?.shopIcon ?? '🎁'}</span>}</span>
+                  <strong>{label}</strong><span>× {reward.amount}</span>
+                </div>;
+              })}
+            </div>
+            <button className="level-reward-claim" type="button" onClick={() => void claimCompetitionReward()} disabled={claimingCompetitionReward}>
+              {claimingCompetitionReward ? 'Забираємо…' : 'Забрати приз'}
+            </button>
+          </section>
+        </div>
+      )}
+      {!pendingRewards[0] && !pendingCompetitionRewards[0] && pendingAdminGifts[0] && (
         <div className="level-reward-overlay">
           <section className="level-reward-dialog admin-gift-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-gift-title">
             <div className="level-reward-gift"><Gift size={30} /></div>
@@ -244,7 +336,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
                 const item = giftItem.kind === 'item' ? gameItems[giftItem.itemId] : undefined;
                 const icon = giftItem.kind === 'coins' ? '/assets/ui/coin.png'
                   : giftItem.kind === 'rubies' ? '/assets/ui/rubin.png'
-                    : giftItem.kind === 'level' ? '/assets/ui/lvl_ico.png'
+                    : giftItem.kind === 'level' ? getLevelIcon(giftItem.amount, levelIcons)
                       : item?.shopImage ?? item?.growthImages?.at(-1);
                 const label = giftItem.kind === 'coins' ? 'Монети'
                   : giftItem.kind === 'rubies' ? 'Рубіни'
@@ -283,7 +375,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
       {/* ВЕРХНІЙ ЛІВИЙ КУТОК */}
       <div style={styles.topLeftWrapper}>
         <div className="game-level-control" style={styles.levelContainer} onClick={handleSunflowerClick} onMouseEnter={() => setShowXpBar(true)} onMouseLeave={() => setShowXpBar(false)} onContextMenu={(event) => event.preventDefault()}>
-          <img src="/assets/ui/lvl_ico.png" alt="Рівень" style={styles.sunflowerImg} draggable={false} />
+          <img src={getLevelIcon(progression.level, levelIcons)} alt="Рівень" style={styles.sunflowerImg} draggable={false} />
           <span style={styles.levelNumberCenter}>{progression.level}</span>
         </div>
 
@@ -333,17 +425,6 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
 
       {/* НИЖНЯ ПАНЕЛЬ ІКОНОК */}
       <div style={styles.bottomPanelNoBg}>
-        <button 
-          className="hud-pressable"
-          style={activeTool === 'shovel' ? { ...styles.cleanIconBtn, ...styles.activeToolGlow } : styles.cleanIconBtn}
-          onClick={() => toggleTool('shovel')}
-          aria-label={activeTool === 'shovel' ? 'Скасувати створення грядки' : 'Лопата'}
-          title={activeTool === 'shovel' ? 'Скасувати' : 'Створити грядку'}
-        >
-          <img src="/assets/ui/lopata_ico.png" alt="Лопата" style={styles.bottomIconImg} draggable={false} />
-          {activeTool === 'shovel' && <span style={styles.toolCancelBadge}>×</span>}
-        </button>
-
         <div className="settings-tool-anchor">
           <button
             className="hud-pressable"
@@ -356,6 +437,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
             {isSettingsOpen && <span style={styles.toolCancelBadge}>×</span>}
           </button>
           <div className="settings-tool-popover" style={{ opacity: isSettingsOpen ? 1 : 0, transform: isSettingsOpen ? 'translate(-50%, 0)' : 'translate(-50%, 10px)', pointerEvents: isSettingsOpen ? 'auto' : 'none' }}>
+            <button
+              className="hud-pressable"
+              style={activeTool === 'shovel' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
+              onClick={() => toggleTool('shovel')}
+              aria-label={activeTool === 'shovel' ? 'Скасувати створення грядки' : 'Лопата'}
+              title="Створити грядку"
+            >
+              <img src="/assets/ui/lopata_ico.png" alt="Лопата" style={styles.bottomIconImg} draggable={false} />
+              {activeTool === 'shovel' && <span style={styles.toolCancelBadge}>×</span>}
+            </button>
             <button
               className="hud-pressable"
               style={activeTool === 'move' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
@@ -388,6 +479,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
             </button>
           </div>
         </div>
+
+        <button className="hud-pressable rating-open-button" style={styles.cleanIconBtn} type="button" onClick={() => { cancelInteraction(); setIsLeaderboardOpen(true); }} aria-label="Відкрити рейтинг гравців" title="Рейтинг гравців">
+          <img src="/assets/ui/rating.png" alt="Рейтинг" style={styles.bottomIconImg} draggable={false} />
+        </button>
 
         <button
           className={`hud-pressable friends-open-button${friendActivityCount > 0 ? ' has-friend-requests' : ''}`}
@@ -438,7 +533,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
         isOpen={isFriendsOpen}
         onClose={closeFriends}
         onRequestCountChange={setFriendRequestCount}
+        visitPlayerId={visitPlayerId}
+        onVisitHandled={clearVisitPlayer}
       />
+      <LeaderboardModal isOpen={isLeaderboardOpen} onClose={() => setIsLeaderboardOpen(false)} onVisitPlayer={visitLeaderboardPlayer} />
     </div>
   );
 };

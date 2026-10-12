@@ -5,9 +5,11 @@ interface FriendsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRequestCountChange: (count: number) => void;
+  visitPlayerId?: string | null;
+  onVisitHandled?: () => void;
 }
 
-export const FriendsModal: React.FC<FriendsModalProps> = ({ isOpen, onClose, onRequestCountChange }) => {
+export const FriendsModal: React.FC<FriendsModalProps> = ({ isOpen, onClose, onRequestCountChange, visitPlayerId, onVisitHandled }) => {
   if (!isOpen) return null;
 
   return (
@@ -30,7 +32,7 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({ isOpen, onClose, onR
           <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити друзів">✕</button>
         </header>
         <div className="social-modal-content">
-          <FriendsPanel isInGame onRequestCountChange={onRequestCountChange} />
+          <FriendsPanel isInGame onRequestCountChange={onRequestCountChange} initialVisitUserId={visitPlayerId} onInitialVisitHandled={onVisitHandled} />
         </div>
       </section>
     </div>

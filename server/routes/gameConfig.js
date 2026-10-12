@@ -1,6 +1,6 @@
 import express from 'express';
 import { listGameItems } from '../services/gameCatalog.js';
-import { getMediaSettings, resolveGameItemImages } from '../services/mediaStorage.js';
+import { getLevelIcons, getMediaSettings, resolveGameItemImages } from '../services/mediaStorage.js';
 
 const router = express.Router();
 
@@ -15,6 +15,15 @@ router.get('/', async (_req, res, next) => {
     })));
     } catch (error) {
         next(error);
+    }
+});
+
+router.get('/level-icons', async (_req, res, next) => {
+    try {
+        res.set('Cache-Control', 'no-store');
+        return res.json({ levelIcons: await getLevelIcons() });
+    } catch (error) {
+        return next(error);
     }
 });
 

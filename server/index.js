@@ -7,7 +7,9 @@ import farmRoutes from './routes/farm.js'; // ДОДАНО: імпорт мар�
 import gameConfigRoutes from './routes/gameConfig.js';
 import socialRoutes from './routes/social.js';
 import adminRoutes from './routes/admin.js';
+import leaderboardRoutes from './routes/leaderboard.js';
 import { loadGameItemPriceOverrides, restorePermanentlyDeletedGameItem } from './services/gameCatalog.js';
+import { closeExpiredLeaderboardPeriods } from './services/leaderboard.js';
 
 dotenv.config();
 
@@ -32,6 +34,7 @@ app.use('/api/farm', farmRoutes); // ДОДАНО: підключення мар
 app.use('/api/game-config', gameConfigRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 
 app.get('/', (req, res) => {
     res.send('API Ферми працює! 🚜');
@@ -46,6 +49,12 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
     await connectDB();
     await loadGameItemPriceOverrides();
+    await closeExpiredLeaderboardPeriods();
+    setInterval(() => {
+        void closeExpiredLeaderboardPeriods().catch(error => {
+            console.error('Не вдалося завершити змагання рейтингу:', error.message);
+        });
+    }, 60_000);
     const restoredMill = await restorePermanentlyDeletedGameItem('mill');
     if (restoredMill) console.info('Стандартний млин відновлено в каталозі гри.');
     app.listen(PORT, () => {
