@@ -2,6 +2,19 @@ export type GameItemType = 'TREE' | 'CROP' | 'ANIMAL' | 'BUILDING' | 'OTHER';
 export type BuildingCategory = 'DECOR' | 'PEN' | 'FACTORY';
 export type LevelReward = { kind: 'coins'; amount: number } | { kind: 'rubies'; amount: number } | { kind: 'item'; amount: number; itemId: string };
 export interface LevelRewardEntry { level: number; rewards: LevelReward[]; }
+export interface ItemSkin {
+  id: string;
+  name: string;
+  price: number;
+  priceCurrency?: 'coins' | 'rubies';
+  images: string[];
+  shopImage?: string;
+  rarity?: 'common' | 'rare' | 'exclusive';
+  productionTimeBonus?: {
+    enabled: boolean;
+    reductionPercent: number;
+  };
+}
 export interface AdminGiftEntry {
   id: string;
   title: string;
@@ -27,7 +40,15 @@ export interface GameItemConfig {
   canFlip?: boolean;
   price: number;
   priceCurrency?: 'coins' | 'rubies';
-  mechanic?: 'expand_farm' | 'accelerate_growth' | null;
+  mechanic?: 'expand_farm' | 'accelerate_growth' | 'grass_style' | 'background_style' | null;
+  grassTexture?: string;
+  grassEdgeOverlap?: number;
+  grassEdgeBlur?: number;
+  backgroundImage?: string;
+  backgroundNightImage?: string;
+  appearanceAnimation?: 'none' | 'snow' | 'blizzard';
+  skinsEnabled?: boolean;
+  skins?: ItemSkin[];
   accelerationMs?: number | null;
   plantingXp: number;
   requiredLevel?: number;

@@ -8,6 +8,9 @@ export interface User {
   level: number;
   inventory: Record<string, number>;
   itemInventory?: Record<string, number>;
+  unlockedGrassStyles?: string[];
+  unlockedBackgroundStyles?: string[];
+  unlockedSkins?: string[];
   avatar?: string;
 }
 

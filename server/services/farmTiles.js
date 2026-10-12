@@ -21,6 +21,7 @@ export const getFarmTilesWithOccupiedCells = (tiles) => tiles.map((tile) => ({
         housedAnimals: tile.housedAnimals.map((animal) => ({
             id: String(animal._id ?? animal.id),
             itemId: animal.itemId,
+            skinId: animal.skinId ?? null,
             placedAt: animal.placedAt,
             lastHarvestedAt: animal.lastHarvestedAt,
         })),

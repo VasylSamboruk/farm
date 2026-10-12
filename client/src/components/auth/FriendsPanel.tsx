@@ -471,7 +471,14 @@ export const FriendsPanel: React.FC<{
 
       {selectedFarm && createPortal(
         <div className={`friend-farm-overlay${isInGame ? ' game-friend-farm-overlay' : ''}`}>
-          <FarmCanvas readOnly previewTiles={displayedTiles} farmSize={selectedFarm.size} />
+          <FarmCanvas
+            readOnly
+            previewTiles={displayedTiles}
+            farmSize={selectedFarm.size}
+            previewGrassStyle={selectedFarm.grassStyle}
+            previewBackgroundStyle={selectedFarm.backgroundStyle}
+            previewBackgroundIsNight={selectedFarm.backgroundIsNight}
+          />
           <div className="friend-farm-toolbar">
             <button className="friend-back-button" type="button" onClick={() => setSelectedFarm(null)} aria-label="Повернутися до профілю" title="Повернутися до профілю"><ArrowLeft size={20} /></button>
             <div className="friend-farm-player">

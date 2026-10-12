@@ -26,7 +26,7 @@ router.get('/me', async (req, res) => {
         if (!payload) {
             return res.status(401).json({ message: 'Недійсна сесія' });
         }
-        const user = await User.findById(payload.userId).select('username role coins rubies xp level avatar inventory itemInventory');
+        const user = await User.findById(payload.userId).select('username role coins rubies xp level avatar inventory itemInventory unlockedGrassStyles unlockedBackgroundStyles');
         if (!user) return res.status(401).json({ message: 'Гравця не знайдено' });
         await ensureDefaultAvatar(user);
         const progression = getLevelProgress(user.xp ?? 0);
@@ -41,6 +41,8 @@ router.get('/me', async (req, res) => {
             avatar: user.avatar ?? '',
             inventory: Object.fromEntries(user.inventory ?? []),
             itemInventory: Object.fromEntries(user.itemInventory ?? []),
+            unlockedGrassStyles: user.unlockedGrassStyles ?? ['classic'],
+            unlockedBackgroundStyles: user.unlockedBackgroundStyles ?? ['classic'],
         });
     } catch (error) {
         if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
@@ -324,7 +326,9 @@ router.post('/login', async (req, res) => {
                 xp: user.xp,
                 avatar: user.avatar ?? '',
                 inventory: Object.fromEntries(user.inventory ?? []),
-                itemInventory: Object.fromEntries(user.itemInventory ?? [])
+                itemInventory: Object.fromEntries(user.itemInventory ?? []),
+                unlockedGrassStyles: user.unlockedGrassStyles ?? ['classic'],
+                unlockedBackgroundStyles: user.unlockedBackgroundStyles ?? ['classic'],
             }
         });
     } catch (error) {

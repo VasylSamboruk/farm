@@ -31,6 +31,9 @@ export interface SocialFarmTile {
 export interface FriendFarm {
   profile: SocialPlayer;
   size: number;
+  grassStyle?: string;
+  backgroundStyle?: string;
+  backgroundIsNight?: boolean;
   tiles: SocialFarmTile[];
 }
 

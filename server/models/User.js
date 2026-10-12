@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 export const USER_STARTING_COINS = 1000;
+export const USER_STARTING_RUBIES = 25;
 
 const adminGiftSchema = new mongoose.Schema({
     title: { type: String, required: true, trim: true, maxlength: 100 },
@@ -44,12 +45,15 @@ const userSchema = new mongoose.Schema({
     bannedAt: { type: Date, default: null },
     bannedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     coins: { type: Number, default: USER_STARTING_COINS },
-    rubies: { type: Number, default: 25 },
+    rubies: { type: Number, default: USER_STARTING_RUBIES },
     xp: { type: Number, default: 0 },
     level: { type: Number, default: 1 },
     lastSeenAt: { type: Date, default: null },
     inventory: { type: Map, of: Number, default: {} },
     itemInventory: { type: Map, of: Number, default: {} },
+    unlockedGrassStyles: { type: [String], default: ['classic'] },
+    unlockedBackgroundStyles: { type: [String], default: ['classic'] },
+    unlockedSkins: { type: [String], default: [] },
     claimedLevelRewards: { type: [Number], default: [] },
     adminGifts: { type: [adminGiftSchema], default: [] },
     pendingSocialGifts: { type: [socialGiftSchema], default: [] },

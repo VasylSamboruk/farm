@@ -2,14 +2,16 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, ImagePlus, Package, PawPrint, RotateCcw, Sprout, TreePine, Warehouse, X } from 'lucide-react';
 import { adminApi, type AdminCatalogItem } from '../../api/admin.api';
 import { AdminImageUrlInput } from './AdminImageUrlInput';
+import { AdminBackgroundImages } from './AdminBackgroundImages';
 import { AdminDurationInput } from './AdminDurationInput';
+import { AdminSkinEditor } from './AdminSkinEditor';
 import { useAdminToast } from './adminToast';
 import { drawPlacedItem } from '../../game/placedItems';
 import { loadGameImage } from '../../game/sprites';
 import { drawTree } from '../../game/trees';
 import { resolveImageUrl } from '../../game/assetUrls';
 import { durationPartsToMilliseconds, EMPTY_DURATION, type DurationParts } from '../../game/durationInput';
-import type { GameItemConfig } from '../../types/game';
+import type { GameItemConfig, ItemSkin } from '../../types/game';
 
 type FootprintMode = 'mini' | 'large';
 type ItemType = AdminCatalogItem['type'];
@@ -117,8 +119,16 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [plantingXp, setPlantingXp] = useState('10');
   const [requiredLevel, setRequiredLevel] = useState('1');
   const [productionTimeParts, setProductionTimeParts] = useState<DurationParts>({ hours: '00', minutes: '01', seconds: '00' });
-  const [otherMechanic, setOtherMechanic] = useState<'accelerate_growth' | 'expand_farm' | 'none'>('accelerate_growth');
+  const [otherMechanic, setOtherMechanic] = useState<'accelerate_growth' | 'expand_farm' | 'grass_style' | 'background_style' | 'none'>('accelerate_growth');
   const [accelerationParts, setAccelerationParts] = useState<DurationParts>({ hours: '00', minutes: '30', seconds: '00' });
+  const [grassTexture, setGrassTexture] = useState('');
+  const [grassEdgeOverlap, setGrassEdgeOverlap] = useState(12);
+  const [grassEdgeBlur, setGrassEdgeBlur] = useState(0);
+  const [backgroundImage, setBackgroundImage] = useState('');
+  const [backgroundNightImage, setBackgroundNightImage] = useState('');
+  const [appearanceAnimation, setAppearanceAnimation] = useState<NonNullable<GameItemConfig['appearanceAnimation']>>('none');
+  const [skinsEnabled, setSkinsEnabled] = useState(false);
+  const [skins, setSkins] = useState<ItemSkin[]>([]);
   const [yieldItem, setYieldItem] = useState('');
   const [yieldName, setYieldName] = useState('');
   const [yieldIcon, setYieldIcon] = useState('');
@@ -348,6 +358,17 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
       showToast('error', 'Перевір тривалість прискорення добрива.');
       return;
     }
+    if (type === 'OTHER' && otherMechanic === 'grass_style' && !grassTexture.trim()) {
+      setError('Для оформлення трави додай зображення текстури.');
+      showToast('error', 'Вкажи текстуру трави.');
+      return;
+    }
+    if (type === 'OTHER' && otherMechanic === 'background_style' &&
+      (!backgroundImage.trim() || !backgroundNightImage.trim())) {
+      setError('Для фону додай окремі зображення дня і ночі.');
+      showToast('error', 'Вкажи денний і нічний фон.');
+      return;
+    }
 
     const footprint = footprintMode === 'mini'
       ? { width: selectedRectangle.width, height: selectedRectangle.height }
@@ -378,7 +399,18 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
         ...(type === 'OTHER' && otherMechanic !== 'none' ? {
           mechanic: otherMechanic,
           ...(otherMechanic === 'accelerate_growth' ? { accelerationMs } : {}),
+          ...(otherMechanic === 'grass_style' ? {
+            grassTexture: grassTexture.trim(),
+            grassEdgeOverlap,
+            grassEdgeBlur,
+          } : {}),
+          ...(otherMechanic === 'background_style' ? { appearanceAnimation } : {}),
+          ...(otherMechanic === 'background_style' ? {
+            backgroundImage: backgroundImage.trim(),
+            backgroundNightImage: backgroundNightImage.trim(),
+          } : {}),
         } : {}),
+        ...(type === 'TREE' || type === 'ANIMAL' ? { skinsEnabled, skins: skinsEnabled ? skins : [] } : {}),
         placementSurface,
         spriteScale: parsedScale,
         canFlip,
@@ -551,13 +583,34 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
           {type === 'OTHER' && <section className="admin-create-section">
             <div className="admin-create-section-heading"><span>03</span><div><h2>Дія предмета</h2><p>Налаштуй поведінку товару категорії «Інше»</p></div></div>
             <div className="admin-create-fields admin-create-fields-two">
-              <label>Механіка<select value={otherMechanic} onChange={(event) => setOtherMechanic(event.target.value as typeof otherMechanic)}>
+              <label>Механіка<select value={otherMechanic} onChange={(event) => {
+                const mechanic = event.target.value as typeof otherMechanic;
+                setOtherMechanic(mechanic);
+              }}>
                 <option value="accelerate_growth">Добриво — прискорення таймера</option>
                 <option value="expand_farm">Розширення ферми вперед</option>
+                <option value="grass_style">Оформлення трави</option>
+                <option value="background_style">Оформлення фону · день/ніч</option>
                 <option value="none">Без активної механіки</option>
               </select></label>
               {otherMechanic === 'accelerate_growth' && <div className="admin-duration-form-field"><span>На скільки прискорює</span><AdminDurationInput label="Тривалість прискорення добрива" value={accelerationParts} onChange={setAccelerationParts} /></div>}
+              {otherMechanic === 'grass_style' && <>
+                <AdminImageUrlInput key={`grass-${assetBaseUrl}`} className="admin-create-field-wide" label="Текстура трави для ферми" value={grassTexture} assetBaseUrl={assetBaseUrl} onChange={setGrassTexture} />
+                <label>Перекриття країв (px)<input type="number" min="0" max="24" step="1" value={grassEdgeOverlap} onChange={(event) => setGrassEdgeOverlap(Number(event.target.value))} /></label>
+                <label>М’якість краю (px)<input type="number" min="0" max="4" step="0.1" value={grassEdgeBlur} onChange={(event) => setGrassEdgeBlur(Number(event.target.value))} /></label>
+              </>}
             </div>
+            {otherMechanic === 'background_style' && <AdminBackgroundImages
+              backgroundImage={backgroundImage}
+              backgroundNightImage={backgroundNightImage}
+              shopImage={shopImage}
+              assetBaseUrl={assetBaseUrl}
+              onBackgroundImageChange={setBackgroundImage}
+              onBackgroundNightImageChange={setBackgroundNightImage}
+              onShopImageChange={setShopImage}
+              appearanceAnimation={appearanceAnimation}
+              onAppearanceAnimationChange={setAppearanceAnimation}
+            />}
           </section>}
 
           {(!isBuilding || isFactory) && <section className="admin-create-section">
@@ -574,10 +627,23 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
             </div>
           </section>}
 
+          {(type === 'TREE' || type === 'ANIMAL') && <section className="admin-create-section">
+            <div className="admin-create-section-heading"><span>04</span><div><h2>Скіни</h2><p>Додай альтернативні образи, які можна придбати окремо</p></div></div>
+            <AdminSkinEditor
+              type={type}
+              enabled={skinsEnabled}
+              skins={skins}
+              assetBaseUrl={assetBaseUrl}
+              productionTimeMs={productionTimeMs}
+              onEnabledChange={setSkinsEnabled}
+              onSkinsChange={setSkins}
+            />
+          </section>}
+
           <section className="admin-create-section">
             <div className="admin-create-section-heading"><span>{isBuilding ? '03' : '04'}</span><div><h2>Зображення</h2><p>Картинки товару та стадій росту</p></div></div>
             <div className="admin-create-fields admin-create-fields-two">
-              <AdminImageUrlInput key={`shop-${assetBaseUrl}`} label={type === 'ANIMAL' ? 'Зображення тварини в магазині' : 'Зображення магазину'} value={shopImage} assetBaseUrl={assetBaseUrl} onChange={setShopImage} />
+              {otherMechanic !== 'background_style' && <AdminImageUrlInput key={`shop-${assetBaseUrl}`} label={type === 'ANIMAL' ? 'Зображення тварини в магазині' : 'Зображення магазину'} value={shopImage} assetBaseUrl={assetBaseUrl} onChange={setShopImage} />}
               <label>{type === 'ANIMAL' ? 'Запасна іконка тварини' : 'Іконка-запасний варіант'}<input value={shopIcon} maxLength={16} onChange={(event) => setShopIcon(event.target.value)} placeholder={selectedIcon} /></label>
               <div className="admin-create-field-wide admin-new-stage-editor">
                 <div className="admin-new-stage-heading"><div><strong>{type === 'ANIMAL' ? 'Зображення тварини на фермі та в курнику' : 'Стадії зображення на полі'}</strong><small>Вибери тип джерела й укажи шлях або URL</small></div><button type="button" onClick={() => { setGrowthImageSources((current) => [...current, '']); restartPreviewCycle(); }}>Додати стадію</button></div>

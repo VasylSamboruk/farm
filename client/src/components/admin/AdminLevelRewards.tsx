@@ -29,6 +29,7 @@ export const AdminLevelRewards: React.FC = () => {
   const [levelInput, setLevelInput] = useState('2');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingLevel, setDeletingLevel] = useState<number | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -83,6 +84,29 @@ export const AdminLevelRewards: React.FC = () => {
     }
   };
 
+  const deleteLevel = async (levelToDelete: number) => {
+    if (!window.confirm(`Видалити всі нагороди для рівня ${levelToDelete}?`)) return;
+    setDeletingLevel(levelToDelete);
+    setError('');
+    try {
+      await adminApi.deleteLevelRewards(levelToDelete);
+      setSavedLevels((current) => current.filter((entry) => entry.level !== levelToDelete));
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[levelToDelete];
+        return next;
+      });
+      if (level === levelToDelete) setLevelInput('2');
+      showToast('success', `Нагороди рівня ${levelToDelete} видалено.`);
+    } catch (deleteError) {
+      const message = getErrorMessage(deleteError);
+      setError(message);
+      showToast('error', message);
+    } finally {
+      setDeletingLevel(null);
+    }
+  };
+
   return (
     <section className="admin-level-rewards-page" aria-labelledby="admin-level-rewards-title">
       <header className="admin-shop-heading">
@@ -118,7 +142,7 @@ export const AdminLevelRewards: React.FC = () => {
           </div>
         </form>
       )}
-      {savedLevels.length > 0 && <div className="admin-level-reward-saved-list"><h2>Налаштовані рівні</h2>{savedLevels.map((entry) => <button type="button" key={entry.level} onClick={() => setLevelInput(String(entry.level))}><strong>Рівень {entry.level}</strong><span>{entry.rewards.length} {entry.rewards.length === 1 ? 'подарунок' : 'подарунків'}</span></button>)}</div>}
+      {savedLevels.length > 0 && <div className="admin-level-reward-saved-list"><h2>Налаштовані рівні</h2>{savedLevels.map((entry) => <div className="admin-level-reward-saved-entry" key={entry.level}><button type="button" onClick={() => setLevelInput(String(entry.level))}><strong>Рівень {entry.level}</strong><span>{entry.rewards.length} {entry.rewards.length === 1 ? 'подарунок' : 'подарунків'}</span></button><button className="admin-level-reward-delete-level" type="button" aria-label={`Видалити налаштування нагород рівня ${entry.level}`} disabled={deletingLevel !== null} onClick={() => void deleteLevel(entry.level)}><Trash2 size={15} /></button></div>)}</div>}
     </section>
   );
 };

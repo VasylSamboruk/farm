@@ -27,6 +27,7 @@ import type { TileData } from '../../store/useFarmStore';
 import type { GameItemConfig } from '../../types/game';
 import { HousingModal } from './HousingModal';
 import { FactoryModal } from './FactoryModal';
+import { ItemSkinsModal } from './ItemSkinsModal';
 
 // Тип для вилітаючих текстів
 interface FloatingText {
@@ -54,9 +55,19 @@ interface FarmCanvasProps {
   readOnly?: boolean;
   previewTiles?: Record<string, TileData>;
   farmSize?: number;
+  previewGrassStyle?: string;
+  previewBackgroundStyle?: string;
+  previewBackgroundIsNight?: boolean;
 }
 
-export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previewTiles, farmSize: previewFarmSize }) => {
+export const FarmCanvas: React.FC<FarmCanvasProps> = ({
+  readOnly = false,
+  previewTiles,
+  farmSize: previewFarmSize,
+  previewGrassStyle,
+  previewBackgroundStyle,
+  previewBackgroundIsNight,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [pendingSale, setPendingSale] = useState<{
     row: number;
@@ -69,6 +80,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     refundCurrency: 'coins' | 'rubies';
   } | null>(null);
   const [housingToast, setHousingToast] = useState<{ title: string; message: string } | null>(null);
+  const [skinModalTarget, setSkinModalTarget] = useState<{ row: number; col: number; quadrant: number } | null>(null);
 
   useEffect(() => {
     if (!housingToast) return;
@@ -79,6 +91,9 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
   const {
     tiles,
     farmSize: storedFarmSize,
+    grassStyle: storedGrassStyle,
+    backgroundStyle: storedBackgroundStyle,
+    backgroundIsNight: storedBackgroundIsNight,
     digTile,
     removeTile,
     placeItem,
@@ -99,6 +114,17 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
   const gameItems = useGameConfigStore((state) => state.items);
   const displayedTiles = previewTiles ?? tiles;
   const farmSize = previewFarmSize ?? storedFarmSize;
+  const grassStyleConfig = gameItems[previewGrassStyle ?? storedGrassStyle];
+  const grassTexture = grassStyleConfig?.grassTexture;
+  const grassEdgeOverlap = grassStyleConfig?.grassEdgeOverlap ?? 12;
+  const grassEdgeBlur = grassStyleConfig?.grassEdgeBlur ?? 0;
+  const backgroundStyle = previewBackgroundStyle ?? storedBackgroundStyle;
+  const backgroundIsNight = previewBackgroundIsNight ?? storedBackgroundIsNight;
+  const backgroundConfig = gameItems[backgroundStyle];
+  const appearanceAnimation = backgroundConfig?.appearanceAnimation ?? 'none';
+  const backgroundImagePath = backgroundIsNight
+    ? backgroundConfig?.backgroundNightImage ?? '/assets/fonik1n.png'
+    : backgroundConfig?.backgroundImage ?? '/assets/fonik1.png';
   const gridConfig = useMemo(() => ({ ...GRID_TILE_SIZE, cols: farmSize, rows: farmSize }), [farmSize]);
 
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1, minZoom: 0.5, maxZoom: 2.2 });
@@ -120,6 +146,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
   const movingItemRef = useRef<{ row: number; col: number; quadrant: number; isDirt?: boolean } | null>(null);
   const hoveredTrashItemRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
   const hoveredHousingItemRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
+  const contextTargetRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
   const [housingPosition, setHousingPosition] = useState<{ row: number; col: number; quadrant: number } | null>(null);
   const [housingOpen, setHousingOpen] = useState(false);
   const [factoryPosition, setFactoryPosition] = useState<{ row: number; col: number; quadrant: number } | null>(null);
@@ -147,6 +174,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
 
   useEffect(() => {
     if (activeTool !== 'move') movingItemRef.current = null;
+    if (activeTool !== null) contextTargetRef.current = null;
   }, [activeTool]);
 
   useEffect(() => {
@@ -175,8 +203,11 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
 
     let animationFrameId: number;
 
-    const backgroundImage = getLoadedGameImage('/assets/fonik1.png');
+    const backgroundImage = getLoadedGameImage(backgroundImagePath) ?? getLoadedGameImage('/assets/fonik1.png');
     const grassImage = getLoadedGameImage('/assets/tiles/grass_tile.png');
+    const selectedGrassImage = getLoadedGameImage(grassTexture);
+    const grassEdgeFeather = grassEdgeOverlap;
+    let featheredGrassTexture: HTMLCanvasElement | null = null;
     const dirtImage = getLoadedGameImage('/assets/tiles/dirt_tile.png');
     const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
     const hardwareConcurrency = navigator.hardwareConcurrency ?? 0;
@@ -189,6 +220,18 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     let viewportWidth = 1;
     let viewportHeight = 1;
     let lastRenderedAt = 0;
+    let lastWeatherFrameAt = 0;
+    const weatherParticles = Array.from(
+      { length: appearanceAnimation === 'blizzard' ? 150 : appearanceAnimation === 'snow' ? 72 : 0 },
+      () => ({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        radius: appearanceAnimation === 'blizzard' ? 1 + Math.random() * 2.2 : 0.8 + Math.random() * 1.5,
+        velocityX: appearanceAnimation === 'blizzard' ? -70 + Math.random() * 140 : -10 + Math.random() * 20,
+        velocityY: appearanceAnimation === 'blizzard' ? 75 + Math.random() * 130 : 24 + Math.random() * 48,
+        phase: Math.random() * Math.PI * 2,
+      })
+    );
 
     const resizeCanvas = () => {
       const bounds = canvas.getBoundingClientRect();
@@ -413,7 +456,42 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           const isoY = (c + r) * halfH;
 
           // 1. Трава
-          if (grassImage?.complete && grassImage.naturalWidth !== 0) {
+          if (grassTexture && selectedGrassImage?.complete && selectedGrassImage.naturalWidth !== 0) {
+            if (!featheredGrassTexture) {
+              const featheredContext = document.createElement('canvas').getContext('2d');
+              if (featheredContext) {
+                featheredGrassTexture = featheredContext.canvas;
+                featheredGrassTexture.width = tileWidth + grassEdgeFeather * 2;
+                featheredGrassTexture.height = tileHeight + grassEdgeFeather * 2;
+                featheredContext.drawImage(
+                  selectedGrassImage,
+                  0,
+                  0,
+                  featheredGrassTexture.width,
+                  featheredGrassTexture.height
+                );
+                featheredContext.globalCompositeOperation = 'destination-in';
+                featheredContext.filter = grassEdgeBlur > 0 ? `blur(${grassEdgeBlur}px)` : 'none';
+                featheredContext.fillStyle = '#fff';
+                featheredContext.beginPath();
+                featheredContext.moveTo(halfW + grassEdgeFeather, grassEdgeFeather);
+                featheredContext.lineTo(tileWidth + grassEdgeFeather * 2, halfH + grassEdgeFeather);
+                featheredContext.lineTo(halfW + grassEdgeFeather, tileHeight + grassEdgeFeather);
+                featheredContext.lineTo(0, halfH + grassEdgeFeather);
+                featheredContext.closePath();
+                featheredContext.fill();
+                featheredContext.filter = 'none';
+                featheredContext.globalCompositeOperation = 'source-over';
+              }
+            }
+            if (featheredGrassTexture) {
+              ctx.drawImage(
+                featheredGrassTexture,
+                isoX - halfW - grassEdgeFeather,
+                isoY - grassEdgeFeather
+              );
+            }
+          } else if (grassImage?.complete && grassImage.naturalWidth !== 0) {
             ctx.drawImage(grassImage, isoX - halfW, isoY, tileWidth, tileHeight);
           } else {
             drawIsometricDiamond(isoX, isoY, halfW, halfH);
@@ -557,19 +635,20 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
               ctx.lineWidth = 2;
               ctx.stroke();
             } else if (previewItem && (activeToolRef.current?.startsWith('place_') || isMovePreview || isHousingReleasePreview)) {
+              const previewQuadrant = hoveredTile.current.quadrant;
               const calculatedPreviewCells = (isMovePreview && movingTile
                 ? getMovedOccupiedCells(
                   movingTile.occupiedCells ?? [],
                   r,
                   c,
-                  hoveredTile.current.quadrant,
+                  previewQuadrant,
                   movingItemRef.current!.row,
                   movingItemRef.current!.col,
                   movingItemRef.current!.quadrant,
                   previewItem,
                   movingTile.flipX ?? false
                 )
-                : getOccupiedCells(r, c, hoveredTile.current.quadrant, previewItem)) ??
+                : getOccupiedCells(r, c, previewQuadrant, previewItem)) ??
                 null;
               const previewCells = calculatedPreviewCells ??
                 [{ row: r, col: c, quadrant: hoveredTile.current.quadrant }];
@@ -1034,6 +1113,60 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
         );
       }
       ctx.restore();
+
+      if (backgroundIsNight) {
+        ctx.fillStyle = 'rgba(8, 14, 34, 0.46)';
+        ctx.fillRect(0, 0, viewportWidth, viewportHeight);
+      }
+
+      if (weatherParticles.length > 0) {
+        const deltaSeconds = Math.min(0.05, Math.max(0, (frameTime - lastWeatherFrameAt) / 1000));
+        lastWeatherFrameAt = frameTime;
+        const isBlizzard = appearanceAnimation === 'blizzard';
+        ctx.save();
+        ctx.lineCap = 'round';
+        for (const particle of weatherParticles) {
+          particle.phase += deltaSeconds * (isBlizzard ? 1.7 : 0.8);
+          particle.x += (particle.velocityX + Math.sin(particle.phase) * (isBlizzard ? 42 : 10)) * deltaSeconds;
+          particle.y += particle.velocityY * deltaSeconds;
+          if (particle.y > viewportHeight + 8) {
+            particle.y = -8;
+            particle.x = Math.random() * viewportWidth;
+          }
+          if (particle.x < -12) particle.x = viewportWidth + 8;
+          if (particle.x > viewportWidth + 12) particle.x = -8;
+
+          ctx.globalAlpha = isBlizzard ? 0.42 + Math.min(0.35, particle.radius * 0.12) : 0.72;
+          ctx.fillStyle = '#f4f8ff';
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      const contextTarget = contextTargetRef.current;
+      const contextButtons = contextTarget && activeToolRef.current === null
+        ? getContextActionButtons(contextTarget)
+        : [];
+      for (const button of contextButtons) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(30, 57, 32, 0.38)';
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = 'rgba(248, 255, 238, 0.97)';
+        ctx.strokeStyle = '#6eaa62';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(button.x, button.y, 17, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        const icon = getLoadedGameImage(button.icon);
+        if (icon) {
+          ctx.shadowBlur = 0;
+          ctx.drawImage(icon, button.x - 10, button.y - 10, 20, 20);
+        }
+        ctx.restore();
+      }
     };
 
     animationFrameId = requestAnimationFrame(render);
@@ -1094,7 +1227,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
         const centerX = occupiedPositions.reduce((sum, position) => sum + position.x, 0) / occupiedPositions.length;
         const groundY = Math.max(...occupiedPositions.map((position) => position.groundY));
         const isProductClicked = item.type === 'TREE'
-          ? isPointOnReadyTree(worldX, worldY, item, getTreeGrowthStage(treeData, item, now), centerX, groundY, now)
+          ? isPointOnReadyTree(worldX, worldY, item, getTreeGrowthStage(treeData, item, now), centerX, groundY, now, treeData)
           : isPointOnReadyPlacedItem(worldX, worldY, item, treeData, centerX, groundY, now);
         const objectCenterY = groundY - (item.type === 'TREE' ? getTreeRenderHeight(item) / 2 : 41);
         const hitDistance = Math.hypot(worldX - centerX, worldY - objectCenterY);
@@ -1116,6 +1249,64 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       }
 
       return topmostHit;
+    };
+
+    const getItemActionAnchor = (target: { row: number; col: number; quadrant: number }) => {
+      const key = `${target.row},${target.col},${target.quadrant}`;
+      const tile = tilesRef.current[key];
+      const item = tile?.itemId ? gameItemsRef.current[tile.itemId] : undefined;
+      const now = Date.now();
+      if (
+        !tile || tile.type !== 'item' || !item
+      ) return null;
+
+      const halfW = gridConfig.tileWidth / 2;
+      const halfH = gridConfig.tileHeight / 2;
+      const occupiedCells = tile.occupiedCells?.length
+        ? tile.occupiedCells
+        : getOccupiedCells(target.row, target.col, target.quadrant, item) ?? [{ ...target }];
+      const positions = occupiedCells.map((cell) => {
+        const cellIsoX = (cell.col - cell.row) * halfW;
+        const cellIsoY = (cell.col + cell.row) * halfH;
+        const offset = getQuadrantOffset(cell.quadrant, halfW, halfH);
+        return { x: cellIsoX + offset.dx, groundY: cellIsoY + halfH + offset.dy };
+      });
+      const centerX = positions.reduce((sum, position) => sum + position.x, 0) / positions.length;
+      const groundY = Math.max(...positions.map((position) => position.groundY));
+      const image = item.type === 'ANIMAL' ? getPlacedItemImage(item, tile, now) : undefined;
+      const objectHeight = item.type === 'TREE'
+        ? getTreeRenderHeight(item)
+        : image ? getGameSpriteSize(image, item).height : 82;
+      return {
+        x: cameraRef.current.x + centerX * cameraRef.current.zoom,
+        y: cameraRef.current.y + (groundY - objectHeight - 28) * cameraRef.current.zoom,
+      };
+    };
+
+    const getContextActionButtons = (target: { row: number; col: number; quadrant: number }) => {
+      const tile = tilesRef.current[`${target.row},${target.col},${target.quadrant}`];
+      const item = tile?.itemId ? gameItemsRef.current[tile.itemId] : undefined;
+      const anchor = getItemActionAnchor(target);
+      if (!tile || tile.type !== 'item' || !item || !anchor) return [];
+      if (item.yieldItem && item.productionTimeMs && Date.now() >= getTreeHarvestReadyAt(tile, item)) return [];
+
+      const actions = [
+        { action: 'trash' as const, icon: '/assets/ui/musor_ico.png' },
+        ...(item.type !== 'CROP' || Date.now() >= getTreeHarvestReadyAt(tile, item)
+          ? [{ action: 'move' as const, icon: '/assets/ui/drapdrog.png' }]
+          : []),
+        ...(item.canFlip === false ? [] : [{ action: 'rotate' as const, icon: '/assets/ui/rotate.png' }]),
+        ...(item.skinsEnabled && item.skins?.length && ['TREE', 'ANIMAL'].includes(item.type)
+          ? [{ action: 'skins' as const, icon: '/assets/ui/skins.png' }]
+          : []),
+      ];
+      const spacing = 40;
+      const firstX = anchor.x - ((actions.length - 1) * spacing) / 2;
+      return actions.map((entry, index) => ({
+        ...entry,
+        x: firstX + index * spacing,
+        y: anchor.y,
+      }));
     };
 
     const getHousingOverlayHitAtScreen = (screenX: number, screenY: number) => {
@@ -1220,11 +1411,55 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       if (readOnly) return;
 
       if (wasPointerDown && !wasDragging) {
+        const canvasBounds = canvas.getBoundingClientRect();
+        const screenX = e.clientX - canvasBounds.left;
+        const screenY = e.clientY - canvasBounds.top;
+        const contextButton = activeToolRef.current === null && contextTargetRef.current
+          ? getContextActionButtons(contextTargetRef.current).find(
+            (button) => Math.hypot(screenX - button.x, screenY - button.y) <= 20
+          )
+          : undefined;
+        if (contextButton && contextTargetRef.current && userRef.current?.id) {
+          const target = contextTargetRef.current;
+          const targetTile = tilesRef.current[`${target.row},${target.col},${target.quadrant}`];
+          const targetItem = targetTile?.itemId ? gameItemsRef.current[targetTile.itemId] : undefined;
+          if (contextButton.action === 'skins') {
+            setSkinModalTarget(target);
+            return;
+          }
+          if (contextButton.action === 'trash' && targetItem) {
+            setPendingSale({
+              row: target.row,
+              col: target.col,
+              quadrant: target.quadrant,
+              name: targetItem.name,
+              image: targetItem.shopImage ?? targetItem.growthImages?.at(-1),
+              icon: targetItem.shopIcon ?? targetItem.yieldIcon ?? '📦',
+              refund: Math.floor(targetItem.price / 2),
+              refundCurrency: targetItem.priceCurrency ?? 'coins',
+            });
+            return;
+          }
+          if (contextButton.action === 'move' && targetItem) {
+            if (targetItem.type === 'CROP' && targetTile && Date.now() < getTreeHarvestReadyAt(targetTile, targetItem)) {
+              notifyGameMessage('Культуру можна переміщати лише після дозрівання');
+              return;
+            }
+            movingItemRef.current = target;
+            contextTargetRef.current = null;
+            setActiveTool('move');
+            return;
+          }
+          if (contextButton.action === 'rotate' && targetItem?.canFlip !== false) {
+            await rotateTile(target.row, target.col, target.quadrant, userRef.current.id);
+            return;
+          }
+        }
         const housingOverlayHit = activeToolRef.current === null
           ? getHousingOverlayHitAtScreen(e.clientX, e.clientY)
           : null;
         const yieldIconTile = activeToolRef.current === null
-          ? getReadyItemAtScreen(e.clientX, e.clientY)
+          ? getReadyItemAtScreen(e.clientX, e.clientY, false)
           : null;
         const tool = activeToolRef.current;
         const isMoving = tool === 'move' && movingItemRef.current;
@@ -1413,19 +1648,20 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           } else if (tool && tool.startsWith('place_')) {
             const itemId = getPlacementItemId(tool);
             const fromInventory = isInventoryPlacement(tool);
+            const item = gameItemsRef.current[itemId];
             const success = await placeItem(tile.row, tile.col, tile.quadrant, itemId, userRef.current.id, fromInventory);
             
             // Якщо посадка успішна, малюємо вилітаючий текст!
             if (success) {
-              const item = gameItemsRef.current[itemId];
               if (fromInventory) setActiveTool(null);
               addFloatingText(tile.row, tile.col, tile.quadrant, [
                 ...(!fromInventory ? [{ msg: `-${item?.price ?? 0}`, image: item?.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png', color: '#ff5252' }] : []),
-                { msg: `+${item?.plantingXp ?? 0} XP`, color: "#b388ff" }
+                ...(item?.plantingXp ? [{ msg: `+${item.plantingXp} XP`, color: "#b388ff" }] : [])
                ]);
             }
 
           } else if (tool === null) {
+            contextTargetRef.current = null;
             const placedItem = findPlacedItemAtQuadrant(tilesRef.current, tile.row, tile.col, tile.quadrant);
             const treeData = placedItem?.tile;
             const item = treeData?.itemId ? gameItemsRef.current[treeData.itemId] : undefined;
@@ -1447,6 +1683,16 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
 
             setHousingPosition(null);
             setHousingOpen(false);
+            if (placedItem && treeData?.type === 'item') {
+              const [row, col] = placedItem.key.split(',').map(Number);
+              const isReadyToHarvest = Boolean(
+                item?.yieldItem && item.productionTimeMs &&
+                Date.now() >= getTreeHarvestReadyAt(treeData, item)
+              );
+              contextTargetRef.current = isReadyToHarvest
+                ? null
+                : { row, col, quadrant: placedItem.quadrant };
+            }
             if (
               placedItem &&
               treeData?.type === 'item' &&
@@ -1618,7 +1864,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [digTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, houseAnimal, releaseHousedAnimal, collectHousedAnimals, collectFactory, fertilizeItem, readOnly, gridConfig, setActiveTool]);
+  }, [digTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, houseAnimal, releaseHousedAnimal, collectHousedAnimals, collectFactory, fertilizeItem, readOnly, gridConfig, setActiveTool, grassTexture, grassEdgeOverlap, grassEdgeBlur, backgroundImagePath, backgroundIsNight, appearanceAnimation]);
 
   const canvas = (
     <canvas
@@ -1638,6 +1884,10 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
     ? displayedTiles[`${housingPosition.row},${housingPosition.col},${housingPosition.quadrant}`]
     : undefined;
   const housingBuilding = housingTile?.itemId ? gameItems[housingTile.itemId] : undefined;
+  const skinModalTile = skinModalTarget
+    ? displayedTiles[`${skinModalTarget.row},${skinModalTarget.col},${skinModalTarget.quadrant}`]
+    : undefined;
+  const skinModalItem = skinModalTile?.itemId ? gameItems[skinModalTile.itemId] : undefined;
   const stopHousingInteraction = () => {
     setHousingMode(null);
     setReleaseAnimalId(null);
@@ -1691,6 +1941,15 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({ readOnly = false, previe
           }}
         />
       )}
+      {skinModalTarget && skinModalTile && skinModalItem &&
+        ['TREE', 'ANIMAL'].includes(skinModalItem.type) && skinModalItem.skinsEnabled && (skinModalItem.skins?.length ?? 0) > 0 && (
+          <ItemSkinsModal
+            item={skinModalItem}
+            tile={skinModalTile}
+            target={skinModalTarget}
+            onClose={() => setSkinModalTarget(null)}
+          />
+        )}
       {factoryOpen && factoryPosition && displayedTiles[`${factoryPosition.row},${factoryPosition.col},${factoryPosition.quadrant}`] &&
         gameItems[displayedTiles[`${factoryPosition.row},${factoryPosition.col},${factoryPosition.quadrant}`].itemId ?? '']?.buildingCategory === 'FACTORY' && (
           <FactoryModal

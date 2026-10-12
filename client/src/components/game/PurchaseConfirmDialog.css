@@ -1,0 +1,123 @@
+.purchase-confirm-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(22, 31, 39, .58);
+  backdrop-filter: blur(4px);
+}
+
+.purchase-confirm-dialog {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  width: min(360px, 100%);
+  padding: 25px 22px 20px;
+  border: 1px solid rgba(193, 161, 100, .58);
+  border-radius: 18px;
+  color: #293a4a;
+  background: linear-gradient(145deg, #fffdf4, #f1e4c7);
+  box-shadow: 0 18px 50px rgba(12, 20, 28, .4), inset 0 1px rgba(255, 255, 255, .9);
+  text-align: center;
+}
+
+.purchase-confirm-close {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(92, 110, 123, .22);
+  border-radius: 50%;
+  color: #60717b;
+  background: rgba(255, 255, 255, .68);
+  cursor: pointer;
+}
+
+.purchase-confirm-icon {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  border: 1px solid rgba(191, 150, 72, .42);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #fff9e9, #ead6a8);
+  box-shadow: 0 4px 12px rgba(100, 76, 35, .14);
+}
+
+.purchase-confirm-icon img,
+.purchase-confirm-price img {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+}
+
+.purchase-confirm-dialog h3 {
+  margin: 13px 0 5px;
+  font: 900 18px FarmBody, sans-serif;
+}
+
+.purchase-confirm-dialog p {
+  margin: 0;
+  color: #657483;
+  font: 600 13px/1.45 FarmBody, sans-serif;
+}
+
+.purchase-confirm-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  color: #3d563d;
+  font: 900 19px FarmBody, sans-serif;
+}
+
+.purchase-confirm-actions {
+  display: flex;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  margin-top: 18px;
+}
+
+.purchase-confirm-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 39px;
+  padding: 0 14px;
+  border: 1px solid rgba(94, 116, 132, .3);
+  border-radius: 10px;
+  color: #526575;
+  background: rgba(255, 255, 255, .72);
+  font: 800 12px FarmBody, sans-serif;
+  cursor: pointer;
+}
+
+.purchase-confirm-actions button.is-confirm {
+  border-color: #457e57;
+  color: #fff;
+  background: linear-gradient(180deg, #64a86d, #438354);
+  box-shadow: 0 3px 8px rgba(55, 113, 68, .24);
+}
+
+.purchase-confirm-actions button:disabled,
+.purchase-confirm-close:disabled {
+  opacity: .65;
+  cursor: wait;
+}
+
+.app-shell[data-theme='dark'] .purchase-confirm-dialog {
+  border-color: rgba(202, 174, 120, .36);
+  color: #edf1e9;
+  background: linear-gradient(145deg, #303940, #252e35);
+}
+
+.app-shell[data-theme='dark'] .purchase-confirm-dialog p { color: #b5c0c3; }
+.app-shell[data-theme='dark'] .purchase-confirm-icon { border-color: rgba(212, 177, 103, .32); background: linear-gradient(145deg, #514b3c, #3e3a32); }
+.app-shell[data-theme='dark'] .purchase-confirm-actions button:not(.is-confirm) { border-color: rgba(187, 200, 204, .2); color: #d0d9d9; background: rgba(227, 237, 237, .08); }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Gift, Minus, PackageOpen, Plus } from 'lucide-react';
+import { Gift, Minus, Moon, PackageOpen, Plus, Sun } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
@@ -14,15 +14,23 @@ interface InventoryModalProps {
 }
 
 export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose }) => {
-  const [activeCategory, setActiveCategory] = useState<'harvest' | 'farm' | 'other' | null>(null);
+  const [activeCategory, setActiveCategory] = useState<'harvest' | 'farm' | 'other' | 'styles' | null>(null);
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [sellingItemId, setSellingItemId] = useState<string | null>(null);
+  const [applyingGrassStyle, setApplyingGrassStyle] = useState<string | null>(null);
+  const [applyingBackgroundStyle, setApplyingBackgroundStyle] = useState<string | null>(null);
+  const [styleSection, setStyleSection] = useState<'grass' | 'background'>('grass');
   const repeatTimeoutRef = useRef<number | null>(null);
   const repeatIntervalRef = useRef<number | null>(null);
   const user = useAuthStore((state) => state.user);
   const sellItem = useFarmStore((state) => state.sellItem);
   const sellFarmItem = useFarmStore((state) => state.sellFarmItem);
   const expandFarm = useFarmStore((state) => state.expandFarm);
+  const grassStyle = useFarmStore((state) => state.grassStyle);
+  const setGrassStyle = useFarmStore((state) => state.setGrassStyle);
+  const backgroundStyle = useFarmStore((state) => state.backgroundStyle);
+  const backgroundIsNight = useFarmStore((state) => state.backgroundIsNight);
+  const setBackgroundStyle = useFarmStore((state) => state.setBackgroundStyle);
   const notifyGameMessage = useFarmStore((state) => state.notifyGameMessage);
   const setActiveTool = useToolStore((state) => state.setActiveTool);
   const items = useGameConfigStore((state) => state.items);
@@ -36,13 +44,28 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
     .filter((entry) => entry.item);
   const stockedOtherItems = stockedFarmItems.filter(({ item }) => item?.type === 'OTHER');
   const stockedPlaceableItems = stockedFarmItems.filter(({ item }) => item?.type !== 'OTHER');
+  const unlockedGrassStyles = user?.unlockedGrassStyles ?? ['classic'];
+  const unlockedBackgroundStyles = user?.unlockedBackgroundStyles ?? ['classic'];
+  const grassStyles: { id: string; name: string; image: string }[] = [
+    { id: 'classic', name: 'Класична трава', image: '/assets/tiles/grass_tile.png' },
+    ...Object.values(items)
+      .filter((item) => item.mechanic === 'grass_style' && unlockedGrassStyles.includes(item.id))
+      .map((item) => ({ id: item.id, name: item.name, image: item.grassTexture ?? item.shopImage ?? '/assets/tiles/grass_tile1.png' })),
+  ];
+  const backgroundStyles: { id: string; name: string; image: string }[] = [
+    { id: 'classic', name: 'Класичний фон', image: '/assets/fonik1.png' },
+    ...Object.values(items)
+      .filter((item) => item.mechanic === 'background_style' && unlockedBackgroundStyles.includes(item.id))
+      .map((item) => ({ id: item.id, name: item.name, image: item.backgroundImage ?? item.shopImage ?? '/assets/fonik1.png' })),
+  ];
   const categoryCounts = {
     harvest: stockedItems.reduce((total, item) => total + (inventory[item.yieldItem!] ?? 0), 0),
     farm: stockedPlaceableItems.reduce((total, entry) => total + entry.amount, 0),
     other: stockedOtherItems.reduce((total, entry) => total + entry.amount, 0),
+    styles: grassStyles.length + backgroundStyles.length,
   };
   const visibleCategory = activeCategory ?? (
-    categoryCounts.other > 0 ? 'other' : categoryCounts.farm > 0 ? 'farm' : 'harvest'
+    categoryCounts.other > 0 ? 'other' : categoryCounts.farm > 0 ? 'farm' : categoryCounts.harvest > 0 ? 'harvest' : 'styles'
   );
 
   const stopAmountHold = () => {
@@ -108,6 +131,26 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
     setSellingItemId(null);
   };
 
+  const applyGrassStyle = async (styleId: string) => {
+    if (!user || applyingGrassStyle) return;
+    setApplyingGrassStyle(styleId);
+    const success = await setGrassStyle(user.id, styleId);
+    setApplyingGrassStyle(null);
+    if (success) notifyGameMessage(styleId === 'classic' ? 'Повернуто класичний вигляд трави.' : 'Вигляд трави змінено для всієї ферми.');
+  };
+
+  const applyBackgroundStyle = async (styleId: string, isNight = backgroundIsNight) => {
+    if (!user || applyingBackgroundStyle) return;
+    setApplyingBackgroundStyle(styleId);
+    const success = await setBackgroundStyle(user.id, styleId, isNight);
+    setApplyingBackgroundStyle(null);
+    if (success) {
+      notifyGameMessage(styleId !== backgroundStyle
+        ? 'Фон змінено для всієї ферми.'
+        : isNight ? 'Увімкнено нічний режим.' : 'Увімкнено денний режим.');
+    }
+  };
+
   return (
     <div style={styles.overlay} onClick={onClose}>
       <section className="game-modal-window inventory-modal-window" style={styles.window} onClick={(event) => event.stopPropagation()}>
@@ -130,6 +173,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
             ['harvest', 'Урожай'],
             ['farm', 'Ферма'],
             ['other', 'Інше'],
+            ['styles', 'Оформлення'],
           ] as const).map(([category, label]) => (
             <button
               key={category}
@@ -141,7 +185,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
             </button>
           ))}
         </div>
-        {stockedItems.length === 0 && stockedFarmItems.length === 0 ? (
+        {stockedItems.length === 0 && stockedFarmItems.length === 0 && grassStyles.length === 0 ? (
           <div className="inventory-modal-empty" style={styles.empty}>Поки що склад порожній</div>
         ) : (
           <div className="modal-scrollbar-hidden" style={styles.grid}>
@@ -297,9 +341,74 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                   </article>
                 );
               })}
+              {visibleCategory === 'styles' && (
+                <div className="shop-building-subcategories inventory-style-subcategories">
+                  <button type="button" className={`shop-building-subcategory${styleSection === 'grass' ? ' is-active' : ''}`} onClick={() => setStyleSection('grass')}>Тайли трави</button>
+                  <button type="button" className={`shop-building-subcategory${styleSection === 'background' ? ' is-active' : ''}`} onClick={() => setStyleSection('background')}>Фони</button>
+                </div>
+              )}
+              {visibleCategory === 'styles' && styleSection === 'grass' && grassStyles.map((style) => {
+                const isActive = (grassStyle ?? 'classic') === style.id;
+                return (
+                  <article key={style.id} className="game-modal-card" style={styles.card}>
+                    <h3 className="inventory-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(style.name)}px` }}>{style.name}</h3>
+                    <div className="inventory-image-box" style={styles.imageBox}>
+                      <img src={style.image} alt="" style={styles.farmItemImage} draggable={false} />
+                    </div>
+                    <div className="inventory-stock-line" style={styles.stockLine}>
+                      <span>{isActive ? 'Застосовано на фермі' : 'Відкрито'}</span>
+                      <strong>✓</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="inventory-sell-button"
+                      style={styles.sellButton}
+                      onClick={() => void applyGrassStyle(style.id)}
+                      disabled={isActive || applyingGrassStyle !== null}
+                    >
+                      {applyingGrassStyle === style.id ? 'Застосовуємо…' : isActive ? 'Активний вигляд' : 'Застосувати'}
+                    </button>
+                  </article>
+                );
+              })}
+              {visibleCategory === 'styles' && styleSection === 'background' && backgroundStyles.map((style) => {
+                const isActive = backgroundStyle === style.id;
+                return (
+                  <article key={style.id} className="game-modal-card" style={styles.card}>
+                    <h3 className="inventory-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(style.name)}px` }}>{style.name}</h3>
+                    <div className="inventory-image-box" style={{ ...styles.imageBox, position: 'relative' }}>
+                      <img src={style.image} alt="" style={styles.farmItemImage} draggable={false} />
+                      <button
+                        type="button"
+                        className="inventory-background-mode-toggle"
+                        aria-label={backgroundIsNight ? 'Перемкнути на день' : 'Перемкнути на ніч'}
+                        title={backgroundIsNight ? 'День' : 'Ніч'}
+                        onClick={() => void applyBackgroundStyle(style.id, !backgroundIsNight)}
+                        disabled={applyingBackgroundStyle !== null}
+                      >
+                        {backgroundIsNight ? <Sun size={16} /> : <Moon size={16} />}
+                      </button>
+                    </div>
+                    <div className="inventory-stock-line" style={styles.stockLine}>
+                      <span>{isActive ? `Активний · ${backgroundIsNight ? 'Ніч' : 'День'}` : 'Відкрито'}</span>
+                      <strong>{isActive ? (backgroundIsNight ? <Moon size={15} /> : <Sun size={15} />) : '✓'}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="inventory-sell-button"
+                      style={styles.sellButton}
+                      onClick={() => void applyBackgroundStyle(style.id)}
+                      disabled={isActive || applyingBackgroundStyle !== null}
+                    >
+                      {applyingBackgroundStyle === style.id ? 'Застосовуємо…' : isActive ? 'Активний фон' : 'Застосувати'}
+                    </button>
+                  </article>
+                );
+              })}
               {((visibleCategory === 'harvest' && stockedItems.length === 0) ||
                 (visibleCategory === 'farm' && stockedPlaceableItems.length === 0) ||
-                (visibleCategory === 'other' && stockedOtherItems.length === 0)) && (
+                (visibleCategory === 'other' && stockedOtherItems.length === 0) ||
+                (visibleCategory === 'styles' && (styleSection === 'grass' ? grassStyles.length === 0 : backgroundStyles.length === 0))) && (
                 <div className="inventory-category-empty">
                   <span className="inventory-category-empty-icon"><PackageOpen size={30} strokeWidth={1.8} /></span>
                   <strong>У цій категорії поки що порожньо</strong>

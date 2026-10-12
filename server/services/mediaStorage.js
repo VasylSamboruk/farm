@@ -117,6 +117,16 @@ export const resolveAssetSource = (source, settings) => {
 export const resolveGameItemImages = (item, settings) => ({
     ...item,
     ...(item.shopImage ? { shopImage: resolveAssetSource(item.shopImage, settings) } : {}),
+    ...(item.grassTexture ? { grassTexture: resolveAssetSource(item.grassTexture, settings) } : {}),
+    ...(item.backgroundImage ? { backgroundImage: resolveAssetSource(item.backgroundImage, settings) } : {}),
+    ...(item.backgroundNightImage ? { backgroundNightImage: resolveAssetSource(item.backgroundNightImage, settings) } : {}),
+    ...(item.skins ? {
+        skins: item.skins.map((skin) => ({
+            ...skin,
+            ...(skin.shopImage ? { shopImage: resolveAssetSource(skin.shopImage, settings) } : {}),
+            images: skin.images.map((source) => resolveAssetSource(source, settings)),
+        })),
+    } : {}),
     ...(item.yieldImage ? { yieldImage: resolveAssetSource(item.yieldImage, settings) } : {}),
     ...(item.growthImages ? { growthImages: item.growthImages.map((source) => resolveAssetSource(source, settings)) } : {}),
 });

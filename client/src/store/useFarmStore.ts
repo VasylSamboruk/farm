@@ -5,7 +5,9 @@ import { API_BASE_URL } from '../api/axios';
 export interface TileData {
   type: 'dirt' | 'item';
   itemId?: string;
-  itemType?: 'TREE' | 'CROP' | 'ANIMAL' | 'BUILDING';
+  skinId?: string | null;
+  unlockedSkinIds?: string[];
+  itemType?: 'TREE' | 'CROP' | 'ANIMAL' | 'BUILDING' | 'OTHER';
   stage?: number;
   quadrant?: number;
   occupiedQuadrants?: number[];
@@ -22,6 +24,7 @@ export interface TileData {
 export interface HousedAnimal {
   id: string;
   itemId: string;
+  skinId?: string | null;
   placedAt: string;
   lastHarvestedAt?: string;
 }
@@ -42,6 +45,8 @@ interface FarmTileResponse {
   quadrant: number;
   isDirt: boolean;
   itemId: string;
+  skinId?: string | null;
+  unlockedSkinIds?: string[];
   stage: number;
   occupiedQuadrants?: number[];
   occupiedCells?: { x: number; y: number; quadrant: number }[];
@@ -56,12 +61,20 @@ interface FarmTileResponse {
 
 interface FarmResponse {
   size?: number;
+  grassStyle?: string;
+  backgroundStyle?: string;
+  backgroundIsNight?: boolean;
+  unlockedSkins?: string[];
   tiles: FarmTileResponse[];
 }
 
 interface FarmState {
   tiles: Record<string, TileData>;
   farmSize: number;
+  grassStyle: string;
+  backgroundStyle: string;
+  backgroundIsNight: boolean;
+  unlockedSkins: string[];
   harvestQueue: HarvestQueueEntry[];
   activeHarvestStartedAt: number | null;
   gameMessage: string | null;
@@ -69,6 +82,11 @@ interface FarmState {
   notifyGameMessage: (message: string) => void;
   dismissGameMessage: () => void;
   loadFarm: (userId: string) => Promise<void>;
+  setGrassStyle: (userId: string, styleId: string) => Promise<boolean>;
+  setBackgroundStyle: (userId: string, styleId: string, isNight: boolean) => Promise<boolean>;
+  purchaseSkin: (userId: string, target: { row: number; col: number; quadrant: number }, itemId: string, skinId: string) => Promise<boolean>;
+  applySkin: (userId: string, target: { row: number; col: number; quadrant: number }, itemId: string, skinId: string | null) => Promise<boolean>;
+  buyStyle: (userId: string, itemId: string) => Promise<boolean>;
   expandFarm: (userId: string, itemId: string, fromInventory?: boolean) => Promise<boolean>;
   houseAnimal: (userId: string, building: { row: number; col: number; quadrant: number }, animal: { row: number; col: number; quadrant: number }) => Promise<boolean>;
   releaseHousedAnimal: (userId: string, building: { row: number; col: number; quadrant: number }, animalId: string, destination: { row: number; col: number; quadrant: number }) => Promise<boolean>;
@@ -101,6 +119,8 @@ const convertToDbArray = (tiles: Record<string, TileData>) => {
       stage: data.stage || 0,
       placedAt: data.placedAt,
       lastHarvestedAt: data.lastHarvestedAt,
+      skinId: data.skinId ?? null,
+      unlockedSkinIds: data.unlockedSkinIds ?? [],
       housedAnimals: data.housedAnimals?.map(({ id, ...animal }) => ({ _id: id, ...animal })),
       factoryQueuedUnits: data.factoryQueuedUnits,
       factoryStartedAt: data.factoryStartedAt,
@@ -123,6 +143,8 @@ const toFarmTileMap = (tiles: FarmTileResponse[]) => {
       flipX: tile.flipX ?? false,
       placedAt: tile.placedAt,
       lastHarvestedAt: tile.lastHarvestedAt,
+      skinId: tile.skinId ?? null,
+      unlockedSkinIds: tile.unlockedSkinIds ?? [],
       housedAnimals: tile.housedAnimals,
       factoryQueuedUnits: tile.factoryQueuedUnits,
       factoryStartedAt: tile.factoryStartedAt,
@@ -167,7 +189,11 @@ export const useFarmStore = create<FarmState>((set, get) => {
 
   return {
   tiles: {},
-  farmSize: 15,
+  farmSize: 10,
+  grassStyle: 'classic',
+  backgroundStyle: 'classic',
+  backgroundIsNight: false,
+  unlockedSkins: [],
   harvestQueue: [],
   activeHarvestStartedAt: null,
   gameMessage: null,
@@ -191,7 +217,14 @@ export const useFarmStore = create<FarmState>((set, get) => {
       const response = await fetch(`${API_BASE_URL}/farm/${userId}`);
       if (!response.ok) throw new Error(`Не вдалося завантажити ферму (${response.status})`);
       const data = await response.json() as FarmResponse;
-      set({ tiles: toFarmTileMap(data.tiles), farmSize: data.size ?? 15 });
+      set({
+        tiles: toFarmTileMap(data.tiles),
+        farmSize: data.size ?? 10,
+        grassStyle: data.grassStyle ?? 'classic',
+        backgroundStyle: data.backgroundStyle ?? 'classic',
+        backgroundIsNight: data.backgroundIsNight ?? false,
+        unlockedSkins: data.unlockedSkins ?? [],
+      });
     } catch (error) {
       console.error('Не вдалося завантажити ферму:', error);
       throw error;
@@ -440,6 +473,135 @@ export const useFarmStore = create<FarmState>((set, get) => {
     }
   },
 
+  buyStyle: async (userId, itemId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/buy-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, itemId }),
+      });
+      const data = await response.json() as {
+        message?: string;
+        user?: { coins: number; rubies: number; unlockedGrassStyles?: string[]; unlockedBackgroundStyles?: string[] };
+      };
+      if (!response.ok || !data.user) {
+        set({ gameMessage: data.message || 'Не вдалося придбати оформлення' });
+        return false;
+      }
+      useAuthStore.getState().updateUser(data.user);
+      return true;
+    } catch (error) {
+      console.error('Не вдалося придбати оформлення:', error);
+      set({ gameMessage: 'Не вдалося придбати оформлення. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
+  setGrassStyle: async (userId, styleId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/grass-style`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, styleId }),
+      });
+      const data = await response.json() as { message?: string; grassStyle?: string };
+      if (!response.ok || !data.grassStyle) {
+        set({ gameMessage: data.message || 'Не вдалося змінити вигляд ферми' });
+        return false;
+      }
+      set({ grassStyle: data.grassStyle });
+      return true;
+    } catch (error) {
+      console.error('Не вдалося змінити вигляд ферми:', error);
+      set({ gameMessage: 'Не вдалося змінити вигляд ферми. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
+  setBackgroundStyle: async (userId, styleId, isNight) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/background-style`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, styleId, isNight }),
+      });
+      const data = await response.json() as {
+        message?: string;
+        backgroundStyle?: string;
+        backgroundIsNight?: boolean;
+      };
+      if (!response.ok || !data.backgroundStyle || typeof data.backgroundIsNight !== 'boolean') {
+        set({ gameMessage: data.message || 'Не вдалося змінити фон ферми' });
+        return false;
+      }
+      set({ backgroundStyle: data.backgroundStyle, backgroundIsNight: data.backgroundIsNight });
+      return true;
+    } catch (error) {
+      console.error('Не вдалося змінити фон ферми:', error);
+      set({ gameMessage: 'Не вдалося змінити фон ферми. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
+  purchaseSkin: async (userId, target, itemId, skinId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/skin/purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, itemId, skinId, x: target.col, y: target.row, quadrant: target.quadrant }),
+      });
+      const data = await response.json() as {
+        message?: string;
+        unlockedSkinIds?: string[];
+        user?: { coins: number; rubies: number };
+      };
+      if (!response.ok || !data.unlockedSkinIds || !data.user) {
+        set({ gameMessage: data.message || 'Не вдалося придбати скін' });
+        return false;
+      }
+      const key = `${target.row},${target.col},${target.quadrant}`;
+      set((state) => ({
+        tiles: {
+          ...state.tiles,
+          [key]: { ...state.tiles[key], unlockedSkinIds: data.unlockedSkinIds },
+        },
+      }));
+      useAuthStore.getState().updateUser(data.user);
+      return true;
+    } catch (error) {
+      console.error('Не вдалося придбати скін:', error);
+      set({ gameMessage: 'Не вдалося придбати скін. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
+  applySkin: async (userId, target, itemId, skinId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/skin/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, itemId, skinId, x: target.col, y: target.row, quadrant: target.quadrant }),
+      });
+      const data = await response.json() as { message?: string; skinId?: string | null };
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося застосувати скін' });
+        return false;
+      }
+      const key = `${target.row},${target.col},${target.quadrant}`;
+      set((state) => ({
+        tiles: {
+          ...state.tiles,
+          [key]: { ...state.tiles[key], skinId: data.skinId ?? null },
+        },
+      }));
+      return true;
+    } catch (error) {
+      console.error('Не вдалося застосувати скін:', error);
+      set({ gameMessage: 'Не вдалося застосувати скін. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
   fertilizeItem: async (userId, itemId, target) => {
     try {
       const response = await fetch(`${API_BASE_URL}/farm/fertilize`, {
@@ -554,7 +716,8 @@ export const useFarmStore = create<FarmState>((set, get) => {
         level: data.user.level 
       });
 
-      const key = `${row},${col},${quadrant}`;
+      const placedTile = data.newTile as FarmTileResponse;
+      const key = `${placedTile.y},${placedTile.x},${placedTile.quadrant}`;
       set((state) => ({
         tiles: {
           ...state.tiles,
@@ -562,10 +725,10 @@ export const useFarmStore = create<FarmState>((set, get) => {
             type: 'item',
             itemId,
             stage: 0,
-            quadrant,
-            occupiedQuadrants: data.newTile.occupiedQuadrants,
-            occupiedCells: data.newTile.occupiedCells?.map((cell: { x: number; y: number; quadrant: number }) => ({ row: cell.y, col: cell.x, quadrant: cell.quadrant })),
-            placedAt: data.newTile.placedAt
+            quadrant: placedTile.quadrant,
+            occupiedQuadrants: placedTile.occupiedQuadrants,
+            occupiedCells: placedTile.occupiedCells?.map((cell) => ({ row: cell.y, col: cell.x, quadrant: cell.quadrant })),
+            placedAt: placedTile.placedAt
           }
         }
       }));
@@ -623,7 +786,9 @@ export const useFarmStore = create<FarmState>((set, get) => {
       }
 
       const fromKey = `${fromRow},${fromCol},${fromQuadrant}`;
-      const toKey = `${row},${col},${quadrant}`;
+      const movedTile = data.tile as { x?: number; y?: number; quadrant?: number };
+      const movedQuadrant = movedTile.quadrant ?? quadrant;
+      const toKey = `${movedTile.y ?? row},${movedTile.x ?? col},${movedQuadrant}`;
       set((state) => {
         const source = state.tiles[fromKey];
         if (!source) return state;
@@ -638,7 +803,7 @@ export const useFarmStore = create<FarmState>((set, get) => {
         }
         newTiles[toKey] = {
           ...source,
-          quadrant,
+          quadrant: movedQuadrant,
           occupiedQuadrants: data.tile.occupiedQuadrants,
           occupiedCells: data.tile.occupiedCells?.map((cell: { x: number; y: number; quadrant: number }) => ({ row: cell.y, col: cell.x, quadrant: cell.quadrant })),
           flipX: data.tile.flipX ?? source.flipX

@@ -26,13 +26,106 @@ router.use(async (req, res, next) => {
 
 router.get('/:userId', async (req, res) => {
     try {
-        const farm = await Farm.findOne({ userId: req.params.userId });
-        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        const [farm, user] = await Promise.all([
+            Farm.findOne({ userId: req.params.userId }),
+            User.findById(req.params.userId).select('unlockedSkins'),
+        ]);
+        if (!farm || !user) return res.status(404).json({ message: 'Ферму або гравця не знайдено' });
         const responseFarm = farm.toObject();
         responseFarm.tiles = getFarmTilesWithOccupiedCells(responseFarm.tiles);
+        responseFarm.unlockedSkins = user.unlockedSkins ?? [];
         res.json(responseFarm);
     } catch (error) {
         res.status(500).json({ message: 'Помилка сервера', error: error.message });
+    }
+});
+
+router.post('/skin/purchase', async (req, res) => {
+    try {
+        const { userId, itemId, skinId, x, y, quadrant } = req.body ?? {};
+        if (!mongoose.isValidObjectId(userId) || typeof itemId !== 'string' || typeof skinId !== 'string' ||
+            !Number.isSafeInteger(x) || !Number.isSafeInteger(y) ||
+            !Number.isSafeInteger(quadrant) || quadrant < 0 || quadrant > 3) {
+            return res.status(400).json({ message: 'Некоректні дані для покупки скіна' });
+        }
+        const item = getGameItem(itemId);
+        const skin = item?.skinsEnabled ? item.skins?.find((entry) => entry.id === skinId) : null;
+        if (!skin || !['TREE', 'ANIMAL'].includes(item.type)) {
+            return res.status(404).json({ message: 'Скін не знайдено або він недоступний' });
+        }
+        const farm = await Farm.findOne({ userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        const tile = farm.tiles.find((entry) => !entry.isDirt && entry.x === x && entry.y === y && entry.quadrant === quadrant);
+        if (!tile || tile.itemId !== itemId) {
+            return res.status(404).json({ message: 'Об’єкт для цього скіна не знайдено' });
+        }
+        if (tile.unlockedSkinIds?.includes(skinId)) {
+            return res.status(409).json({ message: 'Цей скін уже придбано для цього об’єкта' });
+        }
+        const placementId = tile.placedAt
+            ? new Date(tile.placedAt).getTime()
+            : `${tile.x}:${tile.y}:${tile.quadrant}`;
+        const purchaseKey = `${itemId}:${skinId}:${placementId}:${tile.x}:${tile.y}:${tile.quadrant}`;
+        const currencyField = skin.priceCurrency === 'rubies' ? 'rubies' : 'coins';
+        const user = await User.findOneAndUpdate(
+            { _id: userId, unlockedSkins: { $ne: purchaseKey }, [currencyField]: { $gte: skin.price } },
+            { $inc: { [currencyField]: -skin.price }, $addToSet: { unlockedSkins: purchaseKey } },
+            { new: true }
+        );
+        if (!user) {
+            const currentUser = await User.findById(userId).select('coins rubies unlockedSkins');
+            if (!currentUser) return res.status(404).json({ message: 'Гравця не знайдено' });
+            if (currentUser.unlockedSkins?.includes(purchaseKey)) return res.status(409).json({ message: 'Цей скін уже придбано для цього об’єкта' });
+            return res.status(400).json({ message: `Недостатньо ${currencyField === 'coins' ? 'монет' : 'рубінів'}` });
+        }
+        tile.unlockedSkinIds = [...new Set([...(tile.unlockedSkinIds ?? []), skinId])];
+        try {
+            await farm.save();
+        } catch (error) {
+            await User.updateOne(
+                { _id: userId },
+                { $inc: { [currencyField]: skin.price }, $pull: { unlockedSkins: purchaseKey } }
+            );
+            throw error;
+        }
+        return res.json({
+            success: true,
+            unlockedSkinIds: tile.unlockedSkinIds,
+            user: { coins: user.coins, rubies: user.rubies },
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося придбати скін', error: error.message });
+    }
+});
+
+router.post('/skin/apply', async (req, res) => {
+    try {
+        const { userId, x, y, quadrant, itemId, skinId } = req.body ?? {};
+        if (!mongoose.isValidObjectId(userId) || !Number.isSafeInteger(x) || !Number.isSafeInteger(y) ||
+            !Number.isSafeInteger(quadrant) || quadrant < 0 || quadrant > 3 ||
+            typeof itemId !== 'string' || (skinId !== null && typeof skinId !== 'string')) {
+            return res.status(400).json({ message: 'Некоректні дані для застосування скіна' });
+        }
+        const farm = await Farm.findOne({ userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        const tile = farm.tiles.find((entry) => !entry.isDirt && entry.x === x && entry.y === y && entry.quadrant === quadrant);
+        const item = tile ? getGameItem(tile.itemId) : null;
+        if (!tile || tile.itemId !== itemId || !item || !['TREE', 'ANIMAL'].includes(item.type) || !item.skinsEnabled) {
+            return res.status(404).json({ message: 'Об’єкт зі скінами не знайдено' });
+        }
+        if (skinId !== null) {
+            const skin = item.skins?.find((entry) => entry.id === skinId);
+            if (!skin || !tile.unlockedSkinIds?.includes(skinId)) {
+                return res.status(403).json({ message: 'Цей скін не придбано для цього об’єкта' });
+            }
+            tile.skinId = skinId;
+        } else {
+            tile.skinId = null;
+        }
+        await farm.save();
+        return res.json({ success: true, skinId: tile.skinId });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося застосувати скін', error: error.message });
     }
 });
 
@@ -76,9 +169,7 @@ router.post('/buy-item', async (req, res) => {
     try {
         const { userId, itemId } = req.body;
         const item = getGameItem(itemId);
-        if (!item || item.type !== 'OTHER' || item.mechanic !== 'accelerate_growth' || item.disabled) {
-            return res.status(400).json({ message: 'Це добриво зараз недоступне' });
-        }
+        if (!item || item.type !== 'OTHER' || item.disabled) return res.status(400).json({ message: 'Цей товар зараз недоступний' });
         const currentUser = await User.findById(userId);
         if (!currentUser) return res.status(404).json({ message: 'Гравця не знайдено' });
         if (getLevelProgress(currentUser.xp ?? 0).level < (item.requiredLevel ?? 1)) {
@@ -88,6 +179,39 @@ router.post('/buy-item', async (req, res) => {
             return res.status(403).json({ message: 'Цей товар доступний лише адміністратору' });
         }
 
+        if (item.mechanic === 'grass_style' || item.mechanic === 'background_style') {
+            const unlockField = item.mechanic === 'grass_style' ? 'unlockedGrassStyles' : 'unlockedBackgroundStyles';
+            if (currentUser[unlockField]?.includes(item.id)) {
+                return res.status(409).json({ message: 'Це оформлення вже придбано' });
+            }
+            const styleBuyer = await User.findOneAndUpdate(
+                { _id: userId, [item.priceCurrency === 'rubies' ? 'rubies' : 'coins']: { $gte: item.price }, [unlockField]: { $ne: item.id } },
+                {
+                    $inc: { [item.priceCurrency === 'rubies' ? 'rubies' : 'coins']: -item.price },
+                    $addToSet: { [unlockField]: item.id },
+                },
+                { new: true }
+            );
+            if (!styleBuyer) {
+                const latestUser = await User.findById(userId).select(unlockField);
+                if (latestUser?.[unlockField]?.includes(item.id)) {
+                    return res.status(409).json({ message: 'Це оформлення вже придбано' });
+                }
+                return res.status(400).json({ message: `Недостатньо ${item.priceCurrency === 'rubies' ? 'рубінів' : 'монет'}!` });
+            }
+            return res.json({
+                success: true,
+                user: {
+                    coins: styleBuyer.coins,
+                    rubies: styleBuyer.rubies,
+                    [unlockField]: styleBuyer[unlockField],
+                },
+            });
+        }
+
+        if (item.mechanic !== 'accelerate_growth') {
+            return res.status(400).json({ message: 'Механіка цього товару ще не доступна' });
+        }
         const currencyField = item.priceCurrency === 'rubies' ? 'rubies' : 'coins';
         const user = await User.findOneAndUpdate(
             { _id: userId, [currencyField]: { $gte: item.price } },
@@ -104,7 +228,69 @@ router.post('/buy-item', async (req, res) => {
             },
         });
     } catch (error) {
-        return res.status(500).json({ message: 'Не вдалося купити добриво', error: error.message });
+        return res.status(500).json({ message: 'Не вдалося купити товар', error: error.message });
+    }
+});
+
+router.post('/background-style', async (req, res) => {
+    try {
+        const { userId, styleId, isNight } = req.body;
+        if (!mongoose.isValidObjectId(userId) || typeof styleId !== 'string' || typeof isNight !== 'boolean') {
+            return res.status(400).json({ message: 'Некоректний гравець або фон' });
+        }
+        const [user, farm] = await Promise.all([
+            User.findById(userId).select('unlockedBackgroundStyles'),
+            Farm.findOne({ userId }),
+        ]);
+        if (!user || !farm) return res.status(404).json({ message: 'Гравця або ферму не знайдено' });
+        if (styleId !== 'classic' && !user.unlockedBackgroundStyles?.includes(styleId)) {
+            return res.status(403).json({ message: 'Цей фон ще не придбано' });
+        }
+        if (styleId !== 'classic') {
+            const style = getGameItem(styleId);
+            if (!style || style.type !== 'OTHER' || style.mechanic !== 'background_style' ||
+                !style.backgroundImage || !style.backgroundNightImage) {
+                return res.status(400).json({ message: 'Такий фон недоступний' });
+            }
+        }
+        farm.backgroundStyle = styleId;
+        farm.backgroundIsNight = isNight;
+        await farm.save();
+        return res.json({
+            success: true,
+            backgroundStyle: farm.backgroundStyle,
+            backgroundIsNight: farm.backgroundIsNight,
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося змінити фон ферми', error: error.message });
+    }
+});
+
+router.post('/grass-style', async (req, res) => {
+    try {
+        const { userId, styleId } = req.body;
+        if (!mongoose.isValidObjectId(userId) || typeof styleId !== 'string') {
+            return res.status(400).json({ message: 'Некоректний гравець або вигляд трави' });
+        }
+        const [user, farm] = await Promise.all([
+            User.findById(userId).select('unlockedGrassStyles'),
+            Farm.findOne({ userId }),
+        ]);
+        if (!user || !farm) return res.status(404).json({ message: 'Гравця або ферму не знайдено' });
+        if (styleId !== 'classic' && !user.unlockedGrassStyles?.includes(styleId)) {
+            return res.status(403).json({ message: 'Цей вигляд трави ще не придбано' });
+        }
+        if (styleId !== 'classic') {
+            const style = getGameItem(styleId);
+            if (!style || style.type !== 'OTHER' || style.mechanic !== 'grass_style') {
+                return res.status(400).json({ message: 'Такий вигляд трави недоступний' });
+            }
+        }
+        farm.grassStyle = styleId;
+        await farm.save();
+        return res.json({ success: true, grassStyle: farm.grassStyle });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося змінити вигляд ферми', error: error.message });
     }
 });
 
@@ -319,6 +505,7 @@ router.post('/housing/store', async (req, res) => {
         const animalTileSnapshot = animalTile.toObject();
         const housedAnimal = {
             itemId: animalTile.itemId,
+            skinId: animalTile.skinId ?? null,
             placedAt: animalTile.placedAt ?? new Date(),
             lastHarvestedAt: animalTile.lastHarvestedAt,
         };
@@ -394,6 +581,7 @@ router.post('/housing/release', async (req, res) => {
             occupiedQuadrants: getOccupiedQuadrants(quadrant, item) ?? [quadrant],
             occupiedCells,
             itemId: animal.itemId,
+            skinId: animal.skinId ?? null,
             isDirt: false,
             stage: 0,
             placedAt: animal.placedAt,
@@ -707,13 +895,15 @@ router.post('/move', async (req, res) => {
 
         const tile = farm.tiles.find(t => t.x === fromX && t.y === fromY && t.quadrant === fromQuadrant);
         if (!tile) return res.status(404).json({ message: 'Предмет не знайдено' });
+        const isSourceTile = (candidate) =>
+            candidate.x === fromX && candidate.y === fromY && candidate.quadrant === fromQuadrant;
 
         if (tile.isDirt) {
             const hasCrop = farm.tiles.some(t =>
                 !t.isDirt && t.x === tile.x && t.y === tile.y && getGameItem(t.itemId)?.type === 'CROP'
             );
             if (hasCrop) return res.status(400).json({ message: 'Грядку з культурою не можна переміщати' });
-            const destinationOccupied = farm.tiles.some(t => t !== tile && t.x === x && t.y === y);
+            const destinationOccupied = farm.tiles.some(t => !isSourceTile(t) && t.x === x && t.y === y);
             if (quadrant !== -1 || x < 0 || x >= farm.size || y < 0 || y >= farm.size || destinationOccupied) {
                 return res.status(400).json({ message: 'Ця грядка не поміщається в це місце' });
             }
@@ -730,12 +920,13 @@ router.post('/move', async (req, res) => {
         if (item.type === 'CROP' && Date.now() < getTreeHarvestReadyAt(tile, item)) {
             return res.status(400).json({ message: 'Культуру можна переміщати лише після дозрівання' });
         }
-        const occupiedQuadrants = getOccupiedQuadrants(quadrant, item);
+        const destinationQuadrant = quadrant;
+        const occupiedQuadrants = getOccupiedQuadrants(destinationQuadrant, item);
         const occupiedCells = getMovedOccupiedCells(
             getTileOccupiedCells(tile),
             x,
             y,
-            quadrant,
+            destinationQuadrant,
             { ...item, flipX: tile.flipX ?? false }
         );
         if (!occupiedCells || occupiedCells.some(cell => cell.x < 0 || cell.x >= farm.size || cell.y < 0 || cell.y >= farm.size)) {
@@ -747,7 +938,7 @@ router.post('/move', async (req, res) => {
             return res.status(400).json({ message: 'Цей товар можна ставити лише на грядку' });
         }
         if (item.type === 'CROP' && farm.tiles.some(t =>
-            !t.isDirt && t !== tile && t.x === x && t.y === y && getGameItem(t.itemId)?.type === 'CROP'
+            !t.isDirt && !isSourceTile(t) && t.x === x && t.y === y && getGameItem(t.itemId)?.type === 'CROP'
         )) {
             return res.status(400).json({ message: 'На цій грядці вже росте культура' });
         }
@@ -756,7 +947,7 @@ router.post('/move', async (req, res) => {
         }
 
         const isOccupied = farm.tiles.some(t =>
-            t !== tile && !t.isDirt && getTileOccupiedCells(t).some(existingCell =>
+            !isSourceTile(t) && !t.isDirt && getTileOccupiedCells(t).some(existingCell =>
                 occupiedCells.some(cell => cell.x === existingCell.x && cell.y === existingCell.y && cell.quadrant === existingCell.quadrant)
             )
         );
@@ -764,8 +955,8 @@ router.post('/move', async (req, res) => {
 
         tile.x = x;
         tile.y = y;
-        tile.quadrant = quadrant;
-        tile.occupiedQuadrants = occupiedQuadrants ?? [quadrant];
+        tile.quadrant = destinationQuadrant;
+        tile.occupiedQuadrants = occupiedQuadrants ?? [destinationQuadrant];
         tile.occupiedCells = occupiedCells;
         await farm.save();
         res.json({ success: true, tile });
@@ -916,7 +1107,7 @@ router.post('/sell-item', async (req, res) => {
 router.post('/save', async (req, res) => {
     try {
         const { userId, tiles } = req.body;
-        const user = await User.findById(userId).select('role xp');
+        const user = await User.findById(userId).select('role xp unlockedSkins');
         if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
         if (!Array.isArray(tiles)) return res.status(400).json({ message: 'Некоректні дані ферми' });
         const playerLevel = getLevelProgress(user.xp ?? 0).level;
@@ -928,10 +1119,18 @@ router.post('/save', async (req, res) => {
         );
         const existingFarm = await Farm.findOne({ userId }).select('tiles');
         const existingHousing = new Map();
+        const existingSkins = new Map();
+        const getTileIdentity = (tile) => `${tile.x},${tile.y},${tile.quadrant},${tile.itemId},${new Date(tile.placedAt ?? '').getTime()}`;
         const submittedTileKeys = new Set(tiles
             .filter(tile => !tile.isDirt)
             .map(tile => `${tile.x},${tile.y},${tile.quadrant},${tile.itemId}`));
         for (const tile of existingFarm?.tiles ?? []) {
+            if (!tile.isDirt) {
+                existingSkins.set(getTileIdentity(tile), {
+                    skinId: tile.skinId,
+                    unlockedSkinIds: tile.unlockedSkinIds ?? [],
+                });
+            }
             if (!tile.isDirt && tile.housedAnimals?.length) {
                 const key = `${tile.x},${tile.y},${tile.quadrant},${tile.itemId}`;
                 if (!submittedTileKeys.has(key)) {
@@ -942,8 +1141,22 @@ router.post('/save', async (req, res) => {
         }
         const tilesToSave = tiles.map((tile) => {
             const normalizedTile = { ...tile };
+            delete normalizedTile.skinId;
+            delete normalizedTile.unlockedSkinIds;
             delete normalizedTile.housedAnimals;
             if (!tile.isDirt) {
+                const existingOwnership = existingSkins.get(getTileIdentity(tile));
+                const existingSkinId = existingOwnership?.skinId;
+                const item = getGameItem(tile.itemId);
+                const existingSkin = item?.skins?.find((skin) => skin.id === existingSkinId);
+                normalizedTile.unlockedSkinIds = existingOwnership?.unlockedSkinIds ?? [];
+                if (
+                    item?.skinsEnabled && existingSkin &&
+                    (existingOwnership?.unlockedSkinIds.includes(existingSkinId) ||
+                        user.unlockedSkins?.includes(`${item.id}:${existingSkinId}`))
+                ) {
+                    normalizedTile.skinId = existingSkinId;
+                }
                 const housedAnimals = existingHousing.get(`${tile.x},${tile.y},${tile.quadrant},${tile.itemId}`);
                 if (housedAnimals) normalizedTile.housedAnimals = housedAnimals;
             }

@@ -139,7 +139,8 @@ export const AdminUsers: React.FC = () => {
 
   const selectedUser = users.find((entry) => entry.id === selectedUserId) ?? null;
   const productCatalog = catalog.filter((item) => item.yieldItem);
-  const farmCatalog = catalog.filter((item) => !item.disabled && ['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type));
+  const farmCatalog = catalog.filter((item) => !item.disabled &&
+    ['TREE', 'CROP', 'ANIMAL', 'BUILDING'].includes(item.type));
   const giftCatalog = catalog.filter((item) => !item.disabled);
 
   const handleSearch = async (event: React.FormEvent) => {
@@ -500,7 +501,7 @@ export const AdminUsers: React.FC = () => {
 
                   <section className="admin-action-card admin-progress-reset">
                     <div className="admin-action-title"><RotateCcw size={18} /><h3>Скинути ігровий прогрес</h3></div>
-                    <p>Поверне гравцеві 1000 монет, рівень 1, 0 XP, порожній інвентар і стартову ферму. Логін, пароль, роль та соціальні зв’язки залишаться.</p>
+                    <p>Поверне гравцеві стартові баланси (1000 монет і 25 рубінів), рівень 1, 0 XP, порожні інвентарі та нагороди рівнів і стартову ферму 10×10. Логін, пароль, роль та соціальні зв’язки залишаться.</p>
                     {confirmProgressReset ? (
                       <div className="admin-inline-confirm">
                         <span>Скинути прогрес гравця {selectedUser.username}? Його ферма та інвентар будуть замінені стартовими.</span>
@@ -526,7 +527,7 @@ export const AdminUsers: React.FC = () => {
           </section>
 
         </div>
-        {showFarmPreview && selectedUser && <div className="admin-farm-overlay"><FarmCanvas readOnly previewTiles={toFarmPreviewTiles(selectedUser.farmItems)} farmSize={selectedUser.farmSize} /><header className="admin-farm-overlay-header"><div><strong>{selectedUser.username}</strong><small>ID: {selectedUser.id}</small></div><button type="button" onClick={() => setShowFarmPreview(false)} aria-label="Закрити перегляд ферми"><X size={18} /></button></header></div>}
+        {showFarmPreview && selectedUser && <div className="admin-farm-overlay"><FarmCanvas readOnly previewTiles={toFarmPreviewTiles(selectedUser.farmItems)} farmSize={selectedUser.farmSize} previewGrassStyle={selectedUser.grassStyle} previewBackgroundStyle={selectedUser.backgroundStyle} previewBackgroundIsNight={selectedUser.backgroundIsNight} /><header className="admin-farm-overlay-header"><div><strong>{selectedUser.username}</strong><small>ID: {selectedUser.id}</small></div><button type="button" onClick={() => setShowFarmPreview(false)} aria-label="Закрити перегляд ферми"><X size={18} /></button></header></div>}
     </>
   );
 };

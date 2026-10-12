@@ -1,5 +1,5 @@
 import { api } from './axios';
-import type { LevelRewardEntry } from '../types/game';
+import type { ItemSkin, LevelRewardEntry } from '../types/game';
 import type { AdminGiftReward } from '../types/game';
 
 export interface AdminFarmItem {
@@ -30,6 +30,9 @@ export interface AdminUser {
   level: number;
   inventory: Record<string, number>;
   farmSize: number;
+  grassStyle?: string;
+  backgroundStyle?: string;
+  backgroundIsNight?: boolean;
   createdAt?: string;
   isBanned: boolean;
   banUntil: string | null;
@@ -56,7 +59,15 @@ export interface AdminCatalogItem {
   requiredLevel: number;
   sortOrder: number;
   productionTimeMs?: number | null;
-  mechanic?: 'expand_farm' | 'accelerate_growth' | null;
+  mechanic?: 'expand_farm' | 'accelerate_growth' | 'grass_style' | 'background_style' | null;
+  grassTexture?: string | null;
+  grassEdgeOverlap?: number;
+  grassEdgeBlur?: number;
+  backgroundImage?: string | null;
+  backgroundNightImage?: string | null;
+  appearanceAnimation?: 'none' | 'snow' | 'blizzard';
+  skinsEnabled?: boolean;
+  skins?: ItemSkin[];
   accelerationMs?: number | null;
   canFlip?: boolean;
   flipX?: boolean;
@@ -118,6 +129,9 @@ export const adminApi = {
   saveLevelRewards: async (level: number, rewards: LevelRewardEntry['rewards']): Promise<LevelRewardEntry> => {
     const response = await api.put<LevelRewardEntry>(`/admin/level-rewards/${level}`, { rewards });
     return response.data;
+  },
+  deleteLevelRewards: async (level: number): Promise<void> => {
+    await api.delete(`/admin/level-rewards/${level}`);
   },
   getMediaSettings: async () => {
     const response = await api.get<AdminMediaSettings>('/admin/media/settings');

@@ -873,6 +873,16 @@ html, body, #root {
 .shop-building-subcategory { min-height: 29px; padding: 5px 13px; border: 1px solid rgba(132, 83, 39, 0.28); border-radius: 999px; color: #67513a; background: rgba(255, 249, 234, 0.9); font-size: 11px; font-weight: 800; cursor: pointer; }
 .shop-building-subcategory.is-active { border-color: #347865; color: #fff; background: linear-gradient(180deg, #43886c, #2e6d54); }
 .app-shell[data-theme='dark'] .shop-building-subcategory { border-color: rgba(177, 165, 197, 0.3); color: #e4deef; background: rgba(44, 42, 57, 0.9); }
+.shop-modal-icon-box.is-background-preview { overflow: hidden; isolation: isolate; border-radius: 12px; }
+.shop-modal-icon-box.is-background-preview img { border-radius: inherit; }
+.shop-modal-stats.is-background-style { gap: 7px !important; margin: 0 0 12px !important; }
+.shop-modal-stat-row.is-background-style-stat { display: grid !important; grid-template-columns: minmax(70px, .72fr) minmax(0, 1fr); align-items: start; gap: 6px; line-height: 1.25; }
+.shop-modal-stat-label { color: inherit; font-weight: inherit; }
+.shop-modal-stat-description { min-width: 0; color: inherit; font-weight: inherit; line-height: 1.25; overflow-wrap: anywhere; }
+.inventory-style-subcategories { grid-column: 1 / -1; }
+.inventory-background-mode-toggle { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid rgba(255,255,255,.78); border-radius: 50%; color: #fff6c8; background: linear-gradient(145deg, #304766, #17283e); box-shadow: 0 2px 8px rgba(13, 25, 40, .38), inset 0 1px 0 rgba(255,255,255,.24); cursor: pointer; }
+.inventory-background-mode-toggle:hover:not(:disabled) { transform: scale(1.08); }
+.inventory-background-mode-toggle:disabled { opacity: .55; cursor: wait; }
 .app-shell[data-theme='dark'] .shop-building-subcategory.is-active { border-color: #6b568c; color: #fff; background: linear-gradient(180deg, #665284, #4e3e68); }
 .inventory-modal-tabs { display: flex; flex-direction: row; align-items: center; box-sizing: border-box; width: 100%; gap: 7px; padding: 8px 12px; overflow-x: auto; scrollbar-width: none; background: linear-gradient(180deg, rgba(143, 94, 43, 0.09), rgba(143, 94, 43, 0.025)); border-bottom: 1px solid rgba(132, 83, 39, 0.18); }
 .inventory-modal-tabs::-webkit-scrollbar { display: none; }

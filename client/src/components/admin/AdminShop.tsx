@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { ArrowDown, ArrowUp, PackagePlus, PackageSearch, RotateCcw, Save, ShoppingBasket, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, PackagePlus, PackageSearch, RotateCcw, Save, ShoppingBasket, Trash2, X } from 'lucide-react';
 import { adminApi, type AdminCatalogItem, type AdminGiftShopItem } from '../../api/admin.api';
 import { AdminImageUrlInput } from './AdminImageUrlInput';
+import { AdminBackgroundImages } from './AdminBackgroundImages';
 import { AdminDurationInput } from './AdminDurationInput';
+import { AdminSkinEditor } from './AdminSkinEditor';
 import { useAdminToast } from './adminToast';
 import { resolveImageUrl } from '../../game/assetUrls';
 import { durationPartsToMilliseconds, millisecondsToDurationParts, type DurationParts } from '../../game/durationInput';
@@ -31,7 +34,7 @@ interface ItemDraft {
   requiredLevel: string;
   sortOrder: string;
   productionTime: DurationParts;
-  mechanic: 'expand_farm' | 'accelerate_growth' | 'none';
+  mechanic: 'expand_farm' | 'accelerate_growth' | 'grass_style' | 'background_style' | 'none';
   acceleration: DurationParts;
   yieldItem: string;
   yieldName: string;
@@ -46,6 +49,14 @@ interface ItemDraft {
   largeFootprintHeight: string;
   access: 'all' | 'admin' | 'gift';
   shopImage: string;
+  grassTexture: string;
+  grassEdgeOverlap: string;
+  grassEdgeBlur: string;
+  backgroundImage: string;
+  backgroundNightImage: string;
+  appearanceAnimation: NonNullable<AdminCatalogItem['appearanceAnimation']>;
+  skinsEnabled: boolean;
+  skins: NonNullable<AdminCatalogItem['skins']>;
   shopIcon: string;
   yieldImage: string;
   spriteScale: string;
@@ -83,6 +94,14 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => {
   largeFootprintHeight: String(item.largeFootprint?.height ?? ''),
   access: item.giftOnly ? 'gift' : item.access ?? 'all',
   shopImage: item.shopImage ?? '',
+  grassTexture: item.grassTexture ?? '',
+  grassEdgeOverlap: String(item.grassEdgeOverlap ?? 12),
+  grassEdgeBlur: String(item.grassEdgeBlur ?? 0),
+  backgroundImage: item.backgroundImage ?? '',
+  backgroundNightImage: item.backgroundNightImage ?? '',
+  appearanceAnimation: item.appearanceAnimation ?? 'none',
+  skinsEnabled: item.skinsEnabled ?? false,
+  skins: (item.skins ?? []).map((skin) => ({ ...skin, images: [...skin.images] })),
   shopIcon: item.shopIcon ?? '',
   yieldImage: item.yieldImage ?? '',
   spriteScale: String(item.spriteScale ?? 1),
@@ -124,8 +143,23 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
   const [confirmPermanentDeleteId, setConfirmPermanentDeleteId] = useState<string | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    if (!editingItemId) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setEditingItemId(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [editingItemId]);
 
   const refreshCatalog = async (savedItemId: string) => {
     const [items, giftItems] = await Promise.all([adminApi.getCatalog(), adminApi.getGiftShop()]);
@@ -191,6 +225,8 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     const largeWidth = draft.largeFootprintWidth.trim() ? Number(draft.largeFootprintWidth) : null;
     const largeHeight = draft.largeFootprintHeight.trim() ? Number(draft.largeFootprintHeight) : null;
     const spriteScale = Number(draft.spriteScale);
+    const grassEdgeOverlap = Number(draft.grassEdgeOverlap);
+    const grassEdgeBlur = Number(draft.grassEdgeBlur);
     const housingCapacity = Number(draft.housingCapacity);
     const factoryCapacity = Number(draft.factoryCapacity);
     const isFactory = item.type === 'BUILDING' && item.buildingCategory === 'FACTORY';
@@ -212,6 +248,12 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
       !validOptionalFootprint(largeWidth) || !validOptionalFootprint(largeHeight) ||
       ((largeWidth === null) !== (largeHeight === null)) ||
       !Number.isFinite(spriteScale) || spriteScale < 0.1 || spriteScale > 5 ||
+      (item.type === 'OTHER' && draft.mechanic === 'grass_style' &&
+        (!Number.isInteger(grassEdgeOverlap) || grassEdgeOverlap < 0 || grassEdgeOverlap > 24 ||
+          !Number.isFinite(grassEdgeBlur) || grassEdgeBlur < 0 || grassEdgeBlur > 4)) ||
+      (item.type === 'OTHER' && draft.mechanic === 'background_style' &&
+        (!draft.backgroundImage.trim() || !isImageSource(draft.backgroundImage.trim()) ||
+          !draft.backgroundNightImage.trim() || !isImageSource(draft.backgroundNightImage.trim()))) ||
       (draft.housingEnabled && (!Number.isSafeInteger(housingCapacity) || housingCapacity < 1 || housingCapacity > 1000 ||
         draft.housingAnimalTypes.length === 0 ||
         draft.housingAnimalTypes.some((animalId) => !catalog.some((entry) => entry.id === animalId && entry.type === 'ANIMAL')))) ||
@@ -244,6 +286,22 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
         placementSurface: draft.placementSurface, flipX: draft.flipX, canFlip: draft.canFlip,
         spriteScale,
         shopImage: draft.shopImage.trim() || null,
+        ...(item.type === 'OTHER' && draft.mechanic === 'grass_style' ? {
+          grassTexture: draft.grassTexture.trim() || null,
+          grassEdgeOverlap,
+          grassEdgeBlur,
+        } : {}),
+        ...(item.type === 'OTHER' && draft.mechanic === 'background_style' ? {
+          backgroundImage: draft.backgroundImage.trim(),
+          backgroundNightImage: draft.backgroundNightImage.trim(),
+        } : {}),
+        ...(item.type === 'OTHER' && draft.mechanic === 'background_style'
+          ? { appearanceAnimation: draft.appearanceAnimation }
+          : {}),
+        ...(['TREE', 'ANIMAL'].includes(item.type) ? {
+          skinsEnabled: draft.skinsEnabled,
+          skins: draft.skinsEnabled ? draft.skins : [],
+        } : {}),
         shopIcon: draft.shopIcon.trim(),
         yieldImage: draft.yieldImage.trim() || null,
         growthImages: draft.growthImages.map((source) => source.trim()),
@@ -267,6 +325,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
         setGiftSettings((current) => ({ ...current, [item.id]: savedGift }));
       }
       await refreshCatalog(item.id);
+      setEditingItemId(null);
       setNotice(`Зміни для «${updated.name}» збережено.`);
       showToast('success', `Зміни для «${updated.name}» збережено.`);
     } catch (saveError) {
@@ -390,11 +449,18 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
             const draft = drafts[item.id] ?? createDraft(item);
             const giftSetting = giftSettings[item.id];
             const isGiftItem = draft.access === 'gift';
-            return (
-              <article className={`admin-product${item.disabled ? ' is-disabled' : ''}`} key={item.id}>
+            const productEditor = (
+              <article
+                className={`admin-product${item.disabled ? ' is-disabled' : ''}${editingItemId === item.id ? ' is-editing' : ''}`}
+                key={item.id}
+                role={editingItemId === item.id ? 'dialog' : undefined}
+                aria-modal={editingItemId === item.id ? true : undefined}
+                aria-labelledby={editingItemId === item.id ? `admin-product-title-${item.id}` : undefined}
+              >
                 <header className="admin-product-header">
                   <div className="admin-product-image">{item.shopImage ? <img src={item.shopImage} alt="" /> : <span>{item.shopIcon ?? item.yieldIcon ?? '🌱'}</span>}</div>
-                  <div className="admin-product-title"><span>{item.type} · {item.id}{item.permanentlyDeleted ? ' · ВИДАЛЕНО НАЗАВЖДИ' : item.disabled ? ' · ПРИХОВАНО' : ''}</span><strong>{item.name}</strong></div>
+                  <div className="admin-product-title"><span>{item.type} · {item.id}{item.permanentlyDeleted ? ' · ВИДАЛЕНО НАЗАВЖДИ' : item.disabled ? ' · ПРИХОВАНО' : ''}</span><strong id={`admin-product-title-${item.id}`}>{item.name}</strong></div>
+                  {editingItemId === item.id && <button className="admin-product-modal-close" type="button" onClick={() => setEditingItemId(null)} aria-label="Закрити редагування"><X size={19} /></button>}
                 </header>
                 {item.permanentlyDeleted ? (
                   <div className="admin-product-actions">
@@ -409,6 +475,8 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                       <option value="none">Без активної механіки</option>
                       <option value="expand_farm">Розширення ферми вперед</option>
                       <option value="accelerate_growth">Добриво — прискорення таймера</option>
+                      <option value="grass_style">Оформлення трави</option>
+                      <option value="background_style">Оформлення фону · день/ніч</option>
                     </select></label>
                     {draft.mechanic === 'accelerate_growth' && <div className="admin-duration-form-field admin-product-duration"><span>Прискорення часу</span><AdminDurationInput label={`Прискорення добрива для ${item.name}`} value={draft.acceleration} onChange={(acceleration) => updateDraft(item.id, { acceleration })} /></div>}
                   </>}
@@ -425,8 +493,22 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                   <label>Мінімальний рівень<input type="number" min="1" max="999" value={draft.requiredLevel} onChange={(event) => updateDraft(item.id, { requiredLevel: event.target.value })} /></label>
                   <label>Позиція у списку<input type="number" min="1" max="9999" value={draft.sortOrder} onChange={(event) => updateDraft(item.id, { sortOrder: event.target.value })} /></label>
                 </div>
-                <details className="admin-product-advanced">
-                  <summary>Додаткові параметри</summary>
+                {item.type === 'OTHER' && draft.mechanic === 'background_style' && <AdminBackgroundImages
+                  backgroundImage={draft.backgroundImage}
+                  backgroundNightImage={draft.backgroundNightImage}
+                  shopImage={draft.shopImage}
+                  assetBaseUrl={assetBaseUrl}
+                  appearanceAnimation={draft.appearanceAnimation}
+                  onBackgroundImageChange={(backgroundImage) => updateDraft(item.id, { backgroundImage })}
+                  onBackgroundNightImageChange={(backgroundNightImage) => updateDraft(item.id, { backgroundNightImage })}
+                  onShopImageChange={(shopImage) => updateDraft(item.id, { shopImage })}
+                  onAppearanceAnimationChange={(appearanceAnimation) => updateDraft(item.id, { appearanceAnimation })}
+                />}
+                <details className="admin-product-advanced" open={editingItemId === item.id}>
+                  <summary onClick={(event) => {
+                    event.preventDefault();
+                    setEditingItemId((current) => current === item.id ? null : item.id);
+                  }}>Додаткові параметри · редагування товару</summary>
                   <div className="admin-product-fields">
                     <label>Досвід за посадку<input type="number" min="0" value={draft.plantingXp} onChange={(event) => updateDraft(item.id, { plantingXp: event.target.value })} /></label>
                     <div className="admin-duration-form-field admin-product-duration"><span>{item.buildingCategory === 'FACTORY' ? 'Час на 1 одиницю' : 'Час до врожаю'}</span><AdminDurationInput label={`${item.buildingCategory === 'FACTORY' ? 'Час переробки одиниці' : 'Час до врожаю'} для ${item.name}`} value={draft.productionTime} onChange={(productionTime) => updateDraft(item.id, { productionTime })} /></div>
@@ -527,7 +609,21 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                       <label>Місткість черги<input type="number" min="1" max="1000" value={draft.factoryCapacity} onChange={(event) => updateDraft(item.id, { factoryCapacity: event.target.value })} /></label>
                     </>}
                     <label>Масштаб зображення<input type="number" min="0.1" max="5" step="0.1" value={draft.spriteScale} onChange={(event) => updateDraft(item.id, { spriteScale: event.target.value })} /></label>
-                    <AdminImageUrlInput key={`${item.id}-shop-${assetBaseUrl}`} label={item.type === 'ANIMAL' ? 'Зображення тварини в магазині' : 'Зображення магазину'} value={draft.shopImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { shopImage: value })} />
+                    {(item.type === 'TREE' || item.type === 'ANIMAL') && <AdminSkinEditor
+                      type={item.type}
+                      enabled={draft.skinsEnabled}
+                      skins={draft.skins}
+                      assetBaseUrl={assetBaseUrl}
+                      productionTimeMs={durationPartsToMilliseconds(draft.productionTime)}
+                      onEnabledChange={(skinsEnabled) => updateDraft(item.id, { skinsEnabled })}
+                      onSkinsChange={(skins) => updateDraft(item.id, { skins })}
+                    />}
+                    {!(item.type === 'OTHER' && draft.mechanic === 'background_style') && <AdminImageUrlInput key={`${item.id}-shop-${assetBaseUrl}`} label={item.type === 'ANIMAL' ? 'Зображення тварини в магазині' : 'Зображення магазину'} value={draft.shopImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { shopImage: value })} />}
+                    {item.type === 'OTHER' && draft.mechanic === 'grass_style' && <>
+                      <AdminImageUrlInput key={`${item.id}-grass-${assetBaseUrl}`} className="admin-create-field-wide" label="Текстура трави для ферми" value={draft.grassTexture} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { grassTexture: value })} />
+                      <label>Перекриття країв (px)<input type="number" min="0" max="24" step="1" value={draft.grassEdgeOverlap} onChange={(event) => updateDraft(item.id, { grassEdgeOverlap: event.target.value })} /></label>
+                      <label>М’якість краю (px)<input type="number" min="0" max="4" step="0.1" value={draft.grassEdgeBlur} onChange={(event) => updateDraft(item.id, { grassEdgeBlur: event.target.value })} /></label>
+                    </>}
                     <label>{item.type === 'ANIMAL' ? 'Запасна іконка тварини' : 'Іконка магазину'}<input value={draft.shopIcon} maxLength={16} onChange={(event) => updateDraft(item.id, { shopIcon: event.target.value })} placeholder={item.type === 'ANIMAL' ? '🐔' : '🌱'} /></label>
                     <AdminImageUrlInput key={`${item.id}-yield-${assetBaseUrl}`} label={item.type === 'ANIMAL' ? 'Зображення продукції (яйце, молоко тощо)' : 'Зображення врожаю'} value={draft.yieldImage} assetBaseUrl={assetBaseUrl} onChange={(value) => updateDraft(item.id, { yieldImage: value })} />
                     <label className="admin-check-field"><input type="checkbox" checked={draft.flipX} onChange={(event) => updateDraft(item.id, { flipX: event.target.checked })} /> Дзеркальний спрайт</label>
@@ -562,6 +658,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                 </>}
               </article>
             );
+            return editingItemId === item.id ? createPortal(productEditor, document.body, item.id) : productEditor;
           })}
         </div>
       )}

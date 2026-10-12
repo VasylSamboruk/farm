@@ -27,7 +27,19 @@ export const getTreeHarvestReadyAt = (tile, item) => {
         : null;
     const baseTime = lastHarvestedAt ?? new Date(tile.placedAt).getTime();
 
-    return Number.isFinite(baseTime) && Number.isFinite(item.productionTimeMs)
-        ? baseTime + item.productionTimeMs
+    const skin = item.skinsEnabled
+        ? item.skins?.find(entry => entry.id === tile.skinId)
+        : null;
+    const bonus = skin?.productionTimeBonus;
+    const reductionPercent = bonus?.enabled &&
+        Number.isSafeInteger(bonus.reductionPercent) &&
+        bonus.reductionPercent >= 1 &&
+        bonus.reductionPercent <= 90
+        ? bonus.reductionPercent
+        : 0;
+    const productionTimeMs = item.productionTimeMs * (100 - reductionPercent) / 100;
+
+    return Number.isFinite(baseTime) && Number.isFinite(productionTimeMs)
+        ? baseTime + productionTimeMs
         : Number.POSITIVE_INFINITY;
 };

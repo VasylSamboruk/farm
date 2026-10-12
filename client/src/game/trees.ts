@@ -5,6 +5,7 @@ export interface TreeTileTiming {
   placedAt?: string;
   lastHarvestedAt?: string;
   flipX?: boolean;
+  skinId?: string | null;
 }
 
 export const TREE_RENDER_HEIGHT = 256;
@@ -32,8 +33,18 @@ export const getTreeHarvestReadyAt = (tile: TreeTileTiming, item: GameItemConfig
     : null;
   const baseTime = lastHarvestedAt ?? new Date(tile.placedAt ?? '').getTime();
 
-  return Number.isFinite(baseTime) && item.productionTimeMs !== undefined
-    ? baseTime + item.productionTimeMs
+  const skin = item.skinsEnabled ? item.skins?.find((entry) => entry.id === tile.skinId) : undefined;
+  const bonus = skin?.productionTimeBonus;
+  const reductionPercent = bonus?.enabled &&
+    Number.isSafeInteger(bonus.reductionPercent) &&
+    bonus.reductionPercent >= 1 &&
+    bonus.reductionPercent <= 90
+    ? bonus.reductionPercent
+    : 0;
+  const productionTimeMs = (item.productionTimeMs ?? Number.NaN) * (100 - reductionPercent) / 100;
+
+  return Number.isFinite(baseTime) && Number.isFinite(productionTimeMs)
+    ? baseTime + productionTimeMs
     : Number.POSITIVE_INFINITY;
 };
 
@@ -61,7 +72,11 @@ export const getTreeGrowthStage = (tile: TreeTileTiming, item: GameItemConfig, n
   return Math.min(growthStageCount - 1, Math.floor(elapsed / stageDuration));
 };
 
-const getTreeStageImage = (item: GameItemConfig, stage: number) => {
+const getTreeStageImage = (item: GameItemConfig, tile: TreeTileTiming, stage: number) => {
+  const skin = item.skinsEnabled ? item.skins?.find((entry) => entry.id === tile.skinId) : undefined;
+  const lastStage = (item.growthImages?.length ?? 0) - 1;
+  if (skin && stage === lastStage) return getLoadedGameImage(skin.images[1]);
+  if (skin && stage === lastStage - 1) return getLoadedGameImage(skin.images[0]);
   return getLoadedGameImage(item.growthImages?.[stage]);
 };
 
@@ -116,7 +131,7 @@ export const drawTree = (
   const stage = getTreeGrowthStage(tile, item, now);
   const readyAt = getTreeHarvestReadyAt(tile, item);
   const isReady = now >= readyAt;
-  const image = getTreeStageImage(item, stage);
+  const image = getTreeStageImage(item, tile, stage);
   const renderHeight = getTreeRenderHeight(item);
 
   ctx.save();
@@ -157,7 +172,7 @@ export const drawTreePreview = (
   groundY: number,
   isValidPlacement: boolean
 ) => {
-  const image = getTreeStageImage(item, 0);
+  const image = getTreeStageImage(item, {}, 0);
   const renderHeight = getTreeRenderHeight(item);
   ctx.save();
   ctx.globalAlpha = 0.68;
@@ -219,9 +234,10 @@ export const isPointOnReadyTree = (
   stage: number,
   centerX: number,
   groundY: number,
-  now: number
+  now: number,
+  tile: TreeTileTiming = {}
 ) => {
-  const image = getTreeStageImage(item, stage);
+  const image = getTreeStageImage(item, tile, stage);
   if (image) {
     const renderHeight = getTreeRenderHeight(item);
     const width = renderHeight * image.naturalWidth / image.naturalHeight;

@@ -1,7 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
-import Farm from '../models/Farm.js';
+import Farm, { FARM_STARTING_SIZE } from '../models/Farm.js';
 import User from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
 import { getFarmTilesWithOccupiedCells } from '../services/farmTiles.js';
@@ -436,7 +436,10 @@ router.get('/profile/:friendId', async (req, res) => {
         await ensureDefaultAvatar(friend);
         return res.json({
             profile: publicProfile(friend),
-            size: farm.size ?? 15,
+            size: farm.size ?? FARM_STARTING_SIZE,
+            grassStyle: farm.grassStyle ?? 'classic',
+            backgroundStyle: farm.backgroundStyle ?? 'classic',
+            backgroundIsNight: farm.backgroundIsNight ?? false,
             tiles: getFarmTilesWithOccupiedCells(farm.tiles ?? []),
         });
     } catch (error) {

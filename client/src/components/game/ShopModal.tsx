@@ -6,6 +6,7 @@ import { useToolStore } from '../../store/useToolStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import type { GameItemConfig, GameItemType } from '../../types/game';
 import { formatGameDuration } from '../../game/trees';
+import { PurchaseConfirmDialog } from './PurchaseConfirmDialog';
 
 interface ShopModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface ShopModalProps {
 
 type ShopCategory = GameItemType;
 type BuildingSubcategory = 'FACTORIES' | 'PENS' | 'DECOR';
+type OtherSubcategory = 'items' | 'styles';
 
 const CATEGORIES: { type: ShopCategory; label: string }[] = [
   { type: 'TREE', label: '🌳 Дерева' },
@@ -28,7 +30,9 @@ const getTitleFontSize = (name: string) => Math.max(9, Math.min(13, (13 * 14) / 
 export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<ShopCategory>('TREE');
   const [buildingSubcategory, setBuildingSubcategory] = useState<BuildingSubcategory>('PENS');
+  const [otherSubcategory, setOtherSubcategory] = useState<OtherSubcategory>('items');
   const [pendingExpansion, setPendingExpansion] = useState<GameItemConfig | null>(null);
+  const [pendingPurchase, setPendingPurchase] = useState<GameItemConfig | null>(null);
   const [expanding, setExpanding] = useState(false);
   const [purchasingItemId, setPurchasingItemId] = useState<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -37,6 +41,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const notifyGameMessage = useFarmStore((state) => state.notifyGameMessage);
   const expandFarm = useFarmStore((state) => state.expandFarm);
   const buyFertilizer = useFarmStore((state) => state.buyFertilizer);
+  const buyStyle = useFarmStore((state) => state.buyStyle);
   const { items, loading, error } = useGameConfigStore();
 
   if (!isOpen) return null;
@@ -48,10 +53,16 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
         : buildingSubcategory === 'PENS'
           ? item.buildingCategory === 'PEN' || (!item.buildingCategory && Boolean(item.housing))
           : (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR'))) &&
-    !item.giftOnly && !item.disabled && (item.access !== 'admin' || user?.role === 'admin')
+    (activeCategory !== 'OTHER' ||
+      (otherSubcategory === 'styles'
+        ? item.mechanic === 'grass_style' || item.mechanic === 'background_style'
+        : item.mechanic !== 'grass_style' && item.mechanic !== 'background_style')) &&
+    !item.giftOnly && !item.disabled && (item.access !== 'admin' || user?.role === 'admin') &&
+    (item.mechanic !== 'grass_style' || !user?.unlockedGrassStyles?.includes(item.id)) &&
+    (item.mechanic !== 'background_style' || !user?.unlockedBackgroundStyles?.includes(item.id))
   ).sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0));
 
-  const handleBuy = async (item: (typeof filteredItems)[number]) => {
+  const handleBuy = async (item: (typeof filteredItems)[number], confirmed = false) => {
     const requiredLevel = item.requiredLevel ?? 1;
     if ((user?.level ?? 1) < requiredLevel) {
       notifyGameMessage(`Цей товар доступний з ${requiredLevel} рівня.`);
@@ -62,6 +73,11 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
     if (balance < item.price) {
       notifyGameMessage(`Не вистачає ${currency === 'rubies' ? 'рубінів' : 'монет'} для цього предмета.`);
       onClose();
+      return;
+    }
+    if (!confirmed && item.mechanic !== 'expand_farm' &&
+      (currency === 'rubies' || item.price > 5000)) {
+      setPendingPurchase(item);
       return;
     }
     if (item.mechanic === 'expand_farm') {
@@ -77,6 +93,22 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
         notifyGameMessage('Добриво куплено і поміщено на склад!');
         onClose();
       }
+      return;
+    }
+    if (item.mechanic === 'grass_style') {
+      if (!user?.id || purchasingItemId) return;
+      setPurchasingItemId(item.id);
+      const purchased = await buyStyle(user.id, item.id);
+      setPurchasingItemId(null);
+      if (purchased) notifyGameMessage('Вигляд трави придбано! Застосуй його у розділі «Оформлення» складу.');
+      return;
+    }
+    if (item.mechanic === 'background_style') {
+      if (!user?.id || purchasingItemId) return;
+      setPurchasingItemId(item.id);
+      const purchased = await buyStyle(user.id, item.id);
+      setPurchasingItemId(null);
+      if (purchased) notifyGameMessage('Фон придбано! Застосуй його у вкладці «Оформлення» складу.');
       return;
     }
     if (item.type === 'OTHER') {
@@ -107,6 +139,20 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div className="game-modal-window shop-modal-window" style={styles.glassWindow} onClick={(e) => e.stopPropagation()}>
+        {pendingPurchase && (
+          <PurchaseConfirmDialog
+            itemName={pendingPurchase.name}
+            price={pendingPurchase.price}
+            currency={pendingPurchase.priceCurrency ?? 'coins'}
+            busy={purchasingItemId === pendingPurchase.id}
+            onConfirm={() => {
+              const confirmedItem = pendingPurchase;
+              setPendingPurchase(null);
+              void handleBuy(confirmedItem, true);
+            }}
+            onCancel={() => setPendingPurchase(null)}
+          />
+        )}
         
         <div className="shared-modal-header game-modal-header modal-header-single-row" style={styles.header}>
           <div className="modal-header-summary">
@@ -162,6 +208,23 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
             ))}
           </div>
         )}
+        {activeCategory === 'OTHER' && (
+          <div className="shop-building-subcategories">
+            {([
+              ['items', 'Розширення й добрива'],
+              ['styles', 'Оформлення'],
+            ] as const).map(([category, label]) => (
+              <button
+                key={category}
+                type="button"
+                className={`shop-building-subcategory${otherSubcategory === category ? ' is-active' : ''}`}
+                onClick={() => setOtherSubcategory(category)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {pendingExpansion && (
           <div className="shop-confirm-overlay" role="presentation">
@@ -183,14 +246,14 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
               ?? (item.yieldItem === 'flour' ? '/assets/buildings/fabrik/muka.png' : undefined);
             const factoryInput = item.factoryInputItemId ? items[item.factoryInputItemId] : undefined;
             return (
-              <div key={item.id} className="game-modal-card shop-modal-card" style={styles.itemCard}>
+              <div key={item.id} className={`game-modal-card shop-modal-card${item.mechanic === 'background_style' ? ' is-background-style' : ''}`} style={styles.itemCard}>
               <div className="shop-modal-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.name)}px` }} title={item.name}>{item.name}</div>
-              <div className="shop-modal-icon-box" style={styles.iconBox}>
+              <div className={`shop-modal-icon-box${item.mechanic === 'background_style' ? ' is-background-preview' : ''}`} style={styles.iconBox}>
                 {item.shopImage || item.growthImages?.at(-1) ? (
                   <img
                     src={item.shopImage ?? item.growthImages?.at(-1)}
                     alt={item.name}
-                    style={styles.shopImage}
+                    style={item.mechanic === 'background_style' ? styles.backgroundShopImage : styles.shopImage}
                     draggable={false}
                   />
                 ) : (
@@ -218,12 +281,15 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                   </span>
                 )}
               </div>
-              <div className="shop-modal-stats" style={styles.statsContainer}>
-                <div style={styles.statRow}><span>Доступно з:</span><span className="shop-modal-level" style={styles.levelRequirement}>{item.requiredLevel ?? 1} рівня</span></div>
+              <div className={`shop-modal-stats${item.mechanic === 'background_style' ? ' is-background-style' : ''}`} style={styles.statsContainer}>
+                <div className={`shop-modal-stat-row${item.mechanic === 'background_style' ? ' is-background-style-stat' : ''}`} style={styles.statRow}>
+                  <span className={item.mechanic === 'background_style' ? 'shop-modal-stat-label' : undefined}>Доступно з:</span>
+                  <span className="shop-modal-level" style={styles.levelRequirement}>{item.requiredLevel ?? 1} рівня</span>
+                </div>
                 {item.type === 'OTHER' ? (
-                  <div style={styles.statRow}>
-                    <span>{item.mechanic === 'accelerate_growth' ? 'Прискорює:' : 'Механіка:'}</span>
-                    <span>{item.mechanic === 'expand_farm' ? 'Розширення' : item.mechanic === 'accelerate_growth' && item.accelerationMs ? `на ${formatGameDuration(item.accelerationMs)}` : 'Спеціальна дія'}</span>
+                  <div className={`shop-modal-stat-row${item.mechanic === 'background_style' ? ' is-background-style-stat' : ''}`} style={styles.statRow}>
+                    <span className={item.mechanic === 'background_style' ? 'shop-modal-stat-label' : undefined}>{item.mechanic === 'accelerate_growth' ? 'Прискорює:' : 'Механіка:'}</span>
+                    <span className={item.mechanic === 'background_style' ? 'shop-modal-stat-description' : undefined}>{item.mechanic === 'expand_farm' ? 'Розширення' : item.mechanic === 'accelerate_growth' && item.accelerationMs ? `на ${formatGameDuration(item.accelerationMs)}` : item.mechanic === 'grass_style' ? 'Змінює вигляд трави на фермі' : item.mechanic === 'background_style' ? 'День і ніч для фону ферми' : 'Спеціальна дія'}</span>
                   </div>
                 ) : item.type !== 'BUILDING' && typeof item.productionTimeMs === 'number' && item.productionTimeMs > 0 && (
                   <div style={styles.statRow}>
@@ -272,6 +338,7 @@ const styles: Record<string, React.CSSProperties> = {
   cardTitle: { width: '100%', overflow: 'hidden', color: '#2b394d', fontWeight: '900', fontSize: '13px', marginBottom: '8px', textAlign: 'center', whiteSpace: 'nowrap' },
   iconBox: { position: 'relative', width: '100%', height: '82px', background: 'linear-gradient(145deg, rgba(249,250,251,0.96), rgba(220,225,231,0.88))', border: '1px solid rgba(255,255,255,0.94)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.98)' },
   shopImage: { width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 7px rgba(35,51,72,0.18))' },
+  backgroundShopImage: { display: 'block', width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' },
   yieldBadge: { position: 'absolute', zIndex: 2, left: -7, bottom: -8, display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 29, margin: 0, padding: '2px 8px 2px 2px', border: '1px solid rgba(255,255,255,0.98)', borderRadius: 18, color: '#17653c', background: 'linear-gradient(180deg, rgba(235,250,241,0.98), rgba(193,230,207,0.96))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.98), 0 4px 10px rgba(35,86,57,0.2)' },
   yieldCircle: { display: 'grid', placeItems: 'center', flex: '0 0 24px', width: 24, height: 24, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.98)', borderRadius: '50%', background: 'rgba(255,255,255,0.92)', boxShadow: '0 2px 5px rgba(45,70,58,0.12)', fontSize: 15 },
   yieldImage: { width: '76%', height: '76%', objectFit: 'contain' },

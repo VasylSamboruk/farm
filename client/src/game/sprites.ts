@@ -110,10 +110,21 @@ export const preloadGameImages = async (items: GameItemConfig[]) => {
   const sources = new Set(items.flatMap((item) => [
     ...(item.growthImages ?? []),
     ...(item.shopImage ? [item.shopImage] : []),
+    ...(item.grassTexture ? [item.grassTexture] : []),
+    ...(item.backgroundImage ? [item.backgroundImage] : []),
+    ...(item.backgroundNightImage ? [item.backgroundNightImage] : []),
     ...(item.yieldImage ? [item.yieldImage] : []),
+    ...(item.skinsEnabled ? (item.skins ?? []).flatMap((skin) => skin.images) : []),
+    ...(item.skinsEnabled ? (item.skins ?? []).flatMap((skin) => skin.shopImage ? [skin.shopImage] : []) : []),
   ]));
   sources.add('/assets/ui/coin.png');
   sources.add('/assets/ui/rubin.png');
+  sources.add('/assets/ui/skins.png');
+  sources.add('/assets/ui/musor_ico.png');
+  sources.add('/assets/ui/drapdrog.png');
+  sources.add('/assets/ui/rotate.png');
+  sources.add('/assets/fonik1.png');
+  sources.add('/assets/fonik1n.png');
   if (items.some((item) => item.yieldItem === 'flour')) {
     sources.add('/assets/buildings/fabrik/muka.png');
   }
@@ -126,7 +137,12 @@ export const getLoadedGameImage = (src?: string) => {
   return image?.complete && image.naturalWidth > 0 ? image : undefined;
 };
 
-export const getPlacedItemImage = (item: GameItemConfig, tile: { placedAt?: string }, now: number) => {
+export const getPlacedItemImage = (item: GameItemConfig, tile: { placedAt?: string; skinId?: string | null }, now: number) => {
+  if (item.type === 'ANIMAL' && item.skinsEnabled && tile.skinId) {
+    const skin = item.skins?.find((entry) => entry.id === tile.skinId);
+    const skinImage = getLoadedGameImage(skin?.images[0]);
+    if (skinImage) return skinImage;
+  }
   const images = item.growthImages;
   if (!images?.length) return undefined;
 

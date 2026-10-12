@@ -1,10 +1,10 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
-import Farm from '../models/Farm.js';
+import Farm, { FARM_STARTING_SIZE } from '../models/Farm.js';
 import LevelReward from '../models/LevelReward.js';
 import GiftShopItem from '../models/GiftShopItem.js';
-import User, { USER_STARTING_COINS } from '../models/User.js';
+import User, { USER_STARTING_COINS, USER_STARTING_RUBIES } from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
 import { createStarterFarmTiles } from '../services/starterFarm.js';
 import { createCustomGameItem, getGameItem, listGameItems, listPermanentlyDeletedGameItems, permanentlyDeleteGameItem, reorderGameItem, restorePermanentlyDeletedGameItem, updateGameItemConfig, updateGameItemPrices } from '../services/gameCatalog.js';
@@ -14,6 +14,31 @@ import { listGiftShopItems } from '../services/giftShop.js';
 
 const router = express.Router();
 const MAX_PAGE_SIZE = 100;
+const isValidSkinList = (skins, type) => {
+    if (!Array.isArray(skins) || skins.length > 30 || !['TREE', 'ANIMAL'].includes(type)) return false;
+    const ids = new Set();
+    return skins.every((skin) => {
+        const imageCount = type === 'TREE' ? 2 : 1;
+        if (!skin || typeof skin.id !== 'string' || !/^[a-z0-9_-]{1,40}$/.test(skin.id) ||
+            ids.has(skin.id) || typeof skin.name !== 'string' || skin.name.trim().length < 2 ||
+            skin.name.trim().length > 80 || !Number.isSafeInteger(skin.price) || skin.price < 0 ||
+            skin.price > 1_000_000_000 || !['coins', 'rubies'].includes(skin.priceCurrency ?? 'coins') ||
+            (skin.rarity !== undefined && !['common', 'rare', 'exclusive'].includes(skin.rarity)) ||
+            (skin.shopImage !== undefined && skin.shopImage !== null && skin.shopImage !== '' && !isImageSource(skin.shopImage)) ||
+            !Array.isArray(skin.images) || skin.images.length !== imageCount || skin.images.some((source) => !isImageSource(source)) ||
+            (skin.productionTimeBonus !== undefined && (
+                !skin.productionTimeBonus ||
+                typeof skin.productionTimeBonus.enabled !== 'boolean' ||
+                !Number.isSafeInteger(skin.productionTimeBonus.reductionPercent) ||
+                skin.productionTimeBonus.reductionPercent < 1 ||
+                skin.productionTimeBonus.reductionPercent > 90
+            ))) {
+            return false;
+        }
+        ids.add(skin.id);
+        return true;
+    });
+};
 
 router.use(async (req, res, next) => {
     const authorization = req.get('authorization') ?? '';
@@ -55,7 +80,10 @@ const serializeAdminUser = (user, farm, mediaSettings = {}) => ({
     isBanned: user.isBanned ?? false,
     banUntil: user.banUntil ?? null,
     banReason: user.banReason ?? '',
-    farmSize: farm?.size ?? 15,
+    farmSize: farm?.size ?? FARM_STARTING_SIZE,
+    grassStyle: farm?.grassStyle ?? 'classic',
+    backgroundStyle: farm?.backgroundStyle ?? 'classic',
+    backgroundIsNight: farm?.backgroundIsNight ?? false,
     farmItems: (farm?.tiles ?? [])
         .map((tile) => {
             const item = getGameItem(tile.itemId);
@@ -96,6 +124,14 @@ const serializeCatalogItem = (item) => ({
     sortOrder: item.sortOrder,
     productionTimeMs: item.productionTimeMs,
     mechanic: item.mechanic,
+    grassTexture: item.grassTexture,
+    backgroundImage: item.backgroundImage,
+    backgroundNightImage: item.backgroundNightImage,
+    appearanceAnimation: item.appearanceAnimation ?? 'none',
+    skinsEnabled: item.skinsEnabled ?? false,
+    skins: item.skins ?? [],
+    grassEdgeOverlap: item.grassEdgeOverlap,
+    grassEdgeBlur: item.grassEdgeBlur,
     accelerationMs: item.accelerationMs,
     yieldAmount: item.yieldAmount,
     canFlip: item.canFlip,
@@ -251,11 +287,27 @@ router.put('/level-rewards/:level', async (req, res) => {
     }
 });
 
+router.delete('/level-rewards/:level', async (req, res) => {
+    const level = Number(req.params.level);
+    if (!Number.isSafeInteger(level) || level < 2 || level > 999) {
+        return res.status(400).json({ message: 'Рівень має бути від 2 до 999' });
+    }
+    try {
+        const deleted = await LevelReward.findOneAndDelete({ level });
+        if (!deleted) return res.status(404).json({ message: 'Нагороди цього рівня не знайдено' });
+        return res.json({ success: true, level });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося видалити нагороди рівня', error: error.message });
+    }
+});
+
 router.post('/catalog', async (req, res) => {
     const body = req.body ?? {};
     const { id, name, type, price, priceCurrency = 'coins', plantingXp, requiredLevel, productionTimeMs, yieldItem, yieldName,
         yieldIcon, yieldAmount, sellPrice, placementSurface, spriteScale, shopImage, shopIcon, housing,
-        yieldImage, growthImages, footprint, largeFootprint, canFlip, access, mechanic, accelerationMs, giftOnly = false,
+        yieldImage, growthImages, footprint, largeFootprint, canFlip, access, mechanic, accelerationMs, grassTexture,
+        backgroundImage, backgroundNightImage, skinsEnabled = false, skins = [],
+        grassEdgeOverlap = 12, grassEdgeBlur = 0, appearanceAnimation = 'none', giftOnly = false,
         buildingCategory = housing ? 'PEN' : 'DECOR', factoryInputItemId, factoryCapacity = 25 } = body;
     const allowedTypes = ['TREE', 'CROP', 'ANIMAL', 'BUILDING', 'OTHER'];
     const isFactory = type === 'BUILDING' && buildingCategory === 'FACTORY';
@@ -286,6 +338,14 @@ router.post('/catalog', async (req, res) => {
         (isFactory && sellPrice === undefined) ||
         (largeFootprint !== null && largeFootprint !== undefined && !isFootprint(largeFootprint, 8)) ||
         (shopImage !== null && shopImage !== undefined && shopImage !== '' && !isImageSource(shopImage)) ||
+        (grassTexture !== undefined && grassTexture !== null && grassTexture !== '' && !isImageSource(grassTexture)) ||
+        (backgroundImage !== undefined && backgroundImage !== null && backgroundImage !== '' && !isImageSource(backgroundImage)) ||
+        (backgroundNightImage !== undefined && backgroundNightImage !== null && backgroundNightImage !== '' && !isImageSource(backgroundNightImage)) ||
+        (mechanic === 'grass_style' && (!Number.isInteger(grassEdgeOverlap) || grassEdgeOverlap < 0 || grassEdgeOverlap > 24 ||
+            !Number.isFinite(grassEdgeBlur) || grassEdgeBlur < 0 || grassEdgeBlur > 4)) ||
+        !['none', 'snow', 'blizzard'].includes(appearanceAnimation) ||
+        typeof skinsEnabled !== 'boolean' || (skinsEnabled && !isValidSkinList(skins, type)) ||
+        (!skinsEnabled && !Array.isArray(skins)) ||
         (yieldImage !== null && yieldImage !== undefined && yieldImage !== '' && !isImageSource(yieldImage)) ||
         !validImageList ||
         (shopIcon !== undefined && (typeof shopIcon !== 'string' || shopIcon.length > 16)) ||
@@ -296,7 +356,10 @@ router.post('/catalog', async (req, res) => {
             new Set(housing.animalTypes).size !== housing.animalTypes.length ||
             housing.animalTypes.some((animalId) => getGameItem(animalId)?.type !== 'ANIMAL')
         )) ||
-        (type === 'OTHER' && mechanic !== undefined && !['expand_farm', 'accelerate_growth'].includes(mechanic)) ||
+        (type === 'OTHER' && mechanic != null && !['expand_farm', 'accelerate_growth', 'grass_style', 'background_style'].includes(mechanic)) ||
+        (mechanic === 'grass_style' && (type !== 'OTHER' || !isImageSource(grassTexture))) ||
+        (mechanic === 'background_style' && (type !== 'OTHER' || !isImageSource(backgroundImage) || !isImageSource(backgroundNightImage))) ||
+        (mechanic != null && type !== 'OTHER') ||
         (mechanic === 'accelerate_growth' && (type !== 'OTHER' || !Number.isSafeInteger(accelerationMs) || accelerationMs < 1000 || accelerationMs > 2_592_000_000)) ||
         (accelerationMs !== undefined && mechanic !== 'accelerate_growth') ||
         typeof canFlip !== 'boolean' || !['all', 'admin'].includes(access) || typeof giftOnly !== 'boolean' ||
@@ -325,6 +388,24 @@ router.post('/catalog', async (req, res) => {
             placementSurface,
             spriteScale,
             shopImage: normalizeImage(shopImage) || undefined,
+            ...(mechanic === 'grass_style' ? { grassTexture: normalizeImage(grassTexture) } : {}),
+            ...(mechanic === 'grass_style' ? { grassEdgeOverlap, grassEdgeBlur } : {}),
+            ...(mechanic === 'grass_style' || mechanic === 'background_style' ? { appearanceAnimation } : {}),
+            ...(mechanic === 'background_style' ? {
+                backgroundImage: normalizeImage(backgroundImage),
+                backgroundNightImage: normalizeImage(backgroundNightImage),
+            } : {}),
+            ...(skinsEnabled ? {
+                skinsEnabled,
+                skins: skins.map((skin) => ({
+                    ...skin,
+                    name: skin.name.trim(),
+                    priceCurrency: skin.priceCurrency ?? 'coins',
+                    rarity: skin.rarity ?? 'common',
+                    ...(skin.shopImage ? { shopImage: normalizeImage(skin.shopImage) } : {}),
+                    images: skin.images.map((source) => normalizeImage(source)),
+                })),
+            } : {}),
             shopIcon: shopIcon || undefined,
             yieldImage: normalizeImage(yieldImage) || undefined,
             growthImages: growthImages.map((source) => normalizeImage(source)),
@@ -358,7 +439,9 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             'housing',
             'buildingCategory', 'factoryInputItemId', 'factoryCapacity',
             'giftOnly',
-            'mechanic', 'accelerationMs',
+            'mechanic', 'accelerationMs', 'grassTexture', 'grassEdgeOverlap', 'grassEdgeBlur',
+            'backgroundImage', 'backgroundNightImage', 'appearanceAnimation',
+            'skinsEnabled', 'skins',
         ]);
         const updates = {};
 
@@ -374,6 +457,29 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             }
             if (field === 'priceCurrency') {
                 if (!['coins', 'rubies'].includes(value)) return res.status(400).json({ message: 'Валюта має бути монетами або рубінами' });
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'appearanceAnimation') {
+                if (!['none', 'snow', 'blizzard'].includes(value)) {
+                    return res.status(400).json({ message: 'Анімація має бути вимкнена, снігом або завірюхою' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'skinsEnabled') {
+                if (typeof value !== 'boolean' || !['TREE', 'ANIMAL'].includes(item.type)) {
+                    return res.status(400).json({ message: 'Скіни можна вмикати лише для дерев і тварин' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'skins') {
+                if (!isValidSkinList(value, item.type)) {
+                    return res.status(400).json({ message: item.type === 'TREE'
+                        ? 'Для кожного скіна дерева задай дві картинки: перед плодами й із плодами'
+                        : 'Для кожного скіна тварини задай одну картинку' });
+                }
                 updates[field] = value;
                 continue;
             }
@@ -429,8 +535,8 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 continue;
             }
             if (field === 'mechanic') {
-                if (item.type !== 'OTHER' || (value !== null && !['expand_farm', 'accelerate_growth'].includes(value))) {
-                    return res.status(400).json({ message: 'Механіка може бути розширенням або прискоренням часу для товару «Інше»' });
+                if (item.type !== 'OTHER' || (value !== null && !['expand_farm', 'accelerate_growth', 'grass_style', 'background_style'].includes(value))) {
+                    return res.status(400).json({ message: 'Невідома механіка товару «Інше»' });
                 }
                 updates[field] = value;
                 continue;
@@ -440,6 +546,20 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 if (value === null) { updates[field] = null; continue; }
                 if (!Number.isSafeInteger(value) || value < 1000 || value > 2_592_000_000) {
                     return res.status(400).json({ message: 'Час прискорення має бути від 1 секунди до 30 днів' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'grassEdgeOverlap') {
+                if (item.type !== 'OTHER' || !Number.isInteger(value) || value < 0 || value > 24) {
+                    return res.status(400).json({ message: 'Перекриття країв має бути цілим числом від 0 до 24 px' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'grassEdgeBlur') {
+                if (item.type !== 'OTHER' || !Number.isFinite(value) || value < 0 || value > 4) {
+                    return res.status(400).json({ message: 'М’якість краю має бути від 0 до 4 px' });
                 }
                 updates[field] = value;
                 continue;
@@ -488,7 +608,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 updates[field] = value;
                 continue;
             }
-            if (['shopImage', 'yieldImage'].includes(field)) {
+            if (['shopImage', 'yieldImage', 'grassTexture', 'backgroundImage', 'backgroundNightImage'].includes(field)) {
                 if (value === '' || value === null) { updates[field] = null; continue; }
                 if (!isImageSource(value)) {
                     return res.status(400).json({ message: `${field} має бути HTTPS URL або локальним шляхом /assets/...` });
@@ -519,7 +639,29 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
 
         if (!Object.keys(updates).length) return res.status(400).json({ message: 'Не передано змін конфігурації' });
         const resultingMechanic = updates.mechanic === undefined ? item.mechanic : updates.mechanic;
+        const resultingSkinsEnabled = updates.skinsEnabled === undefined ? item.skinsEnabled : updates.skinsEnabled;
+        const resultingSkins = updates.skins === undefined ? item.skins ?? [] : updates.skins;
+        if (resultingSkinsEnabled && !isValidSkinList(resultingSkins, item.type)) {
+            return res.status(400).json({ message: 'Додай коректний скін з потрібними зображеннями перед увімкненням скінів' });
+        }
         const resultingAcceleration = updates.accelerationMs === undefined ? item.accelerationMs : updates.accelerationMs;
+        const resultingGrassTexture = updates.grassTexture === undefined ? item.grassTexture : updates.grassTexture;
+        const resultingBackgroundImage = updates.backgroundImage === undefined ? item.backgroundImage : updates.backgroundImage;
+        const resultingBackgroundNightImage = updates.backgroundNightImage === undefined ? item.backgroundNightImage : updates.backgroundNightImage;
+        const resultingGrassEdgeOverlap = updates.grassEdgeOverlap ?? item.grassEdgeOverlap ?? 12;
+        const resultingGrassEdgeBlur = updates.grassEdgeBlur ?? item.grassEdgeBlur ?? 0;
+        if (resultingMechanic === 'grass_style' && !isImageSource(resultingGrassTexture)) {
+            return res.status(400).json({ message: 'Для оформлення трави задай коректну текстуру' });
+        }
+        if (resultingMechanic === 'background_style' &&
+            (!isImageSource(resultingBackgroundImage) || !isImageSource(resultingBackgroundNightImage))) {
+            return res.status(400).json({ message: 'Для оформлення фону задай окремі зображення для дня і ночі' });
+        }
+        if (resultingMechanic === 'grass_style' &&
+            (!Number.isInteger(resultingGrassEdgeOverlap) || resultingGrassEdgeOverlap < 0 || resultingGrassEdgeOverlap > 24 ||
+                !Number.isFinite(resultingGrassEdgeBlur) || resultingGrassEdgeBlur < 0 || resultingGrassEdgeBlur > 4)) {
+            return res.status(400).json({ message: 'Перевір перекриття та м’якість краю оформлення трави' });
+        }
         if (resultingMechanic === 'accelerate_growth' &&
             (!Number.isSafeInteger(resultingAcceleration) || resultingAcceleration < 1000 || resultingAcceleration > 2_592_000_000)) {
             return res.status(400).json({ message: 'Для добрива задай прискорення від 1 секунди до 30 днів' });
@@ -547,8 +689,18 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
         }
         const mediaSettings = await getMediaSettings();
         if (updates.growthImages) updates.growthImages = updates.growthImages.map((source) => normalizeAssetSource(source, mediaSettings));
-        for (const field of ['shopImage', 'yieldImage']) {
+        for (const field of ['shopImage', 'yieldImage', 'grassTexture', 'backgroundImage', 'backgroundNightImage']) {
             if (updates[field]) updates[field] = normalizeAssetSource(updates[field], mediaSettings);
+        }
+        if (updates.skins) {
+            updates.skins = updates.skins.map((skin) => ({
+                ...skin,
+                name: skin.name.trim(),
+                priceCurrency: skin.priceCurrency ?? 'coins',
+                rarity: skin.rarity ?? 'common',
+                ...(skin.shopImage ? { shopImage: normalizeAssetSource(skin.shopImage, mediaSettings) } : {}),
+                images: skin.images.map((source) => normalizeAssetSource(source, mediaSettings)),
+            }));
         }
         const { sortOrder, ...configUpdates } = updates;
         let updatedItem = Object.keys(configUpdates).length
@@ -774,15 +926,20 @@ router.post('/users/:userId/reset-progress', async (req, res) => {
 
         const starterTiles = createStarterFarmTiles();
         user.coins = USER_STARTING_COINS;
+        user.rubies = USER_STARTING_RUBIES;
         user.xp = 0;
         user.level = 1;
         user.inventory = new Map();
+        user.itemInventory = new Map();
+        user.unlockedGrassStyles = ['classic'];
+        user.unlockedBackgroundStyles = ['classic'];
+        user.claimedLevelRewards = [];
 
         await Promise.all([
             user.save(),
             Farm.findOneAndUpdate(
                 { userId: user._id },
-                { $set: { tiles: starterTiles } },
+                { $set: { size: FARM_STARTING_SIZE, tiles: starterTiles, grassStyle: 'classic', backgroundStyle: 'classic', backgroundIsNight: false } },
                 { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
             ),
         ]);
@@ -834,7 +991,7 @@ router.patch('/users/:userId/farm-items/:x/:y/:quadrant', async (req, res) => {
 
         const nextFlipX = flipX ?? tile.flipX ?? false;
         const occupiedCells = getOccupiedCells(x, y, quadrant, item, nextFlipX);
-        if (!occupiedCells?.length || occupiedCells.some((cell) => cell.x < 0 || cell.x >= 15 || cell.y < 0 || cell.y >= 15)) {
+        if (!occupiedCells?.length || occupiedCells.some((cell) => cell.x < 0 || cell.x >= farm.size || cell.y < 0 || cell.y >= farm.size)) {
             return res.status(400).json({ message: 'Footprint не поміщається в межі ферми' });
         }
 
@@ -992,7 +1149,7 @@ router.post('/users/:userId/farm-items', async (req, res) => {
 
         const tryPlaceAt = (x, y, quadrant) => {
             const occupiedCells = getOccupiedCells(x, y, quadrant, item, false);
-            if (!occupiedCells?.length || occupiedCells.some((cell) => cell.x < 0 || cell.x >= 15 || cell.y < 0 || cell.y >= 15)) return null;
+            if (!occupiedCells?.length || occupiedCells.some((cell) => cell.x < 0 || cell.x >= farm.size || cell.y < 0 || cell.y >= farm.size)) return null;
 
             const uniqueSurfaceCells = new Set(occupiedCells.map((cell) => `${cell.x},${cell.y}`));
             const occupiedDirtCells = new Set(farm.tiles
@@ -1035,8 +1192,8 @@ router.post('/users/:userId/farm-items', async (req, res) => {
             tile = tryPlaceAt(requestedX, requestedY, requestedQuadrant);
             if (!tile) return res.status(409).json({ message: 'Не вдалося розмістити предмет у вибраному місці' });
         } else {
-            search: for (let y = 0; y < 15; y++) {
-                for (let x = 0; x < 15; x++) {
+            search: for (let y = 0; y < farm.size; y++) {
+                for (let x = 0; x < farm.size; x++) {
                     for (let quadrant = 0; quadrant < 4; quadrant++) {
                         tile = tryPlaceAt(x, y, quadrant);
                         if (tile) break search;

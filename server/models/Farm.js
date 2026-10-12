@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+export const FARM_STARTING_SIZE = 10;
+
 const tileSchema = new mongoose.Schema({
     x: { type: Number, required: true },
     y: { type: Number, required: true },
@@ -11,6 +13,8 @@ const tileSchema = new mongoose.Schema({
     },
     flipX: { type: Boolean, default: false },
     itemId: { type: String, required: true },
+    skinId: { type: String, default: null },
+    unlockedSkinIds: { type: [String], default: [] },
     isDirt: { type: Boolean, default: false },
     stage: { type: Number, default: 0 },
     placedAt: { type: Date, default: Date.now },
@@ -22,6 +26,7 @@ const tileSchema = new mongoose.Schema({
 
 const housedAnimalSchema = new mongoose.Schema({
     itemId: { type: String, required: true },
+    skinId: { type: String, default: null },
     placedAt: { type: Date, required: true },
     lastHarvestedAt: { type: Date }
 });
@@ -32,7 +37,10 @@ tileSchema.add({
 
 const farmSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
-    size: { type: Number, default: 15, min: 15 },
+    size: { type: Number, default: FARM_STARTING_SIZE, min: FARM_STARTING_SIZE },
+    grassStyle: { type: String, default: 'classic' },
+    backgroundStyle: { type: String, default: 'classic' },
+    backgroundIsNight: { type: Boolean, default: false },
     tiles: [tileSchema]
 }, { timestamps: true });
 
