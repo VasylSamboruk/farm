@@ -17,6 +17,7 @@ export interface SocialFarmTile {
   quadrant: number;
   isDirt: boolean;
   itemId: string;
+  skinId?: string | null;
   stage: number;
   occupiedQuadrants?: number[];
   occupiedCells?: { x: number; y: number; quadrant: number }[];

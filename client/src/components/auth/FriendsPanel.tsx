@@ -65,6 +65,7 @@ const toTileMap = (tiles: FriendFarm['tiles']): Record<string, TileData> => {
     tileMap[`${tile.y},${tile.x},${tile.quadrant}`] = {
       type: 'item',
       itemId: tile.itemId,
+      skinId: tile.skinId,
       stage: tile.stage,
       quadrant: tile.quadrant,
       occupiedQuadrants: tile.occupiedQuadrants?.length ? tile.occupiedQuadrants : [tile.quadrant],
