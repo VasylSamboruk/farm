@@ -93,7 +93,7 @@ interface FarmState {
   collectHousedAnimals: (userId: string, building: { row: number; col: number; quadrant: number }) => Promise<{ items: { yieldItem: string; yieldName: string; amount: number }[] } | null>;
   startFactory: (userId: string, building: { row: number; col: number; quadrant: number }, amount: number) => Promise<boolean>;
   collectFactory: (userId: string, building: { row: number; col: number; quadrant: number }) => Promise<number>;
-  buyFertilizer: (userId: string, itemId: string) => Promise<boolean>;
+  buyFertilizer: (userId: string, itemId: string, quantity?: number) => Promise<boolean>;
   fertilizeItem: (userId: string, itemId: string, target: { row: number; col: number; quadrant: number }) => Promise<{ appliedTo: string; acceleratedMs: number } | null>;
   digTile: (row: number, col: number, userId: string) => void;
   removeTile: (row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
@@ -449,12 +449,12 @@ export const useFarmStore = create<FarmState>((set, get) => {
     }
   },
 
-  buyFertilizer: async (userId, itemId) => {
+  buyFertilizer: async (userId, itemId, quantity = 1) => {
     try {
       const response = await fetch(`${API_BASE_URL}/farm/buy-item`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, itemId }),
+        body: JSON.stringify({ userId, itemId, quantity }),
       });
       const data = await response.json() as {
         message?: string;

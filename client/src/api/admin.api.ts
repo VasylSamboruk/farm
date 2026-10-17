@@ -1,5 +1,5 @@
 import { api } from './axios';
-import type { ItemSkin, LevelIconEntry, LevelRewardEntry } from '../types/game';
+import type { GardenAchievement, ItemSkin, LevelIconEntry, LevelRewardEntry } from '../types/game';
 import type { AdminGiftReward } from '../types/game';
 
 export interface AdminFarmItem {
@@ -164,6 +164,14 @@ export const adminApi = {
   getLevelRewards: async (): Promise<LevelRewardEntry[]> => {
     const response = await api.get<{ levels: LevelRewardEntry[] }>('/admin/level-rewards');
     return response.data.levels;
+  },
+  getAchievements: async (): Promise<GardenAchievement[]> => {
+    const response = await api.get<{ achievements: GardenAchievement[] }>('/admin/achievements');
+    return response.data.achievements;
+  },
+  saveAchievements: async (achievement: GardenAchievement): Promise<GardenAchievement> => {
+    const response = await api.put<{ achievement: GardenAchievement }>(`/admin/achievements/${achievement.id}`, achievement);
+    return response.data.achievement;
   },
   getLevelIcons: async (): Promise<LevelIconEntry[]> => {
     const response = await api.get<{ levelIcons: LevelIconEntry[] }>('/admin/level-icons');

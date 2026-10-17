@@ -3,6 +3,27 @@ export type BuildingCategory = 'DECOR' | 'PEN' | 'FACTORY';
 export type LevelReward = { kind: 'coins'; amount: number } | { kind: 'rubies'; amount: number } | { kind: 'item'; amount: number; itemId: string };
 export interface LevelRewardEntry { level: number; rewards: LevelReward[]; }
 export interface LevelIconEntry { minLevel: number; icon: string; }
+export interface AchievementTier {
+  id: 'bronze' | 'silver' | 'gold';
+  label: string;
+  requiredCount: number;
+  rubies: number;
+  image: string;
+}
+export interface GardenAchievement {
+  id: 'garden-master' | 'animal-keeper' | 'tree-gardener';
+  kind: 'crops' | 'animals' | 'trees';
+  countLabel: string;
+  title: string;
+  description: string;
+  image: string;
+  tiers: AchievementTier[];
+}
+export interface AchievementProgress {
+  count: number;
+  claimedTiers: string[];
+  rubies: number;
+}
 export interface ItemSkin {
   id: string;
   name: string;

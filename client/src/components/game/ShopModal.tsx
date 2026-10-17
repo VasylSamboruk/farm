@@ -13,16 +13,17 @@ interface ShopModalProps {
   onClose: () => void;
 }
 
-type ShopCategory = GameItemType;
-type BuildingSubcategory = 'FACTORIES' | 'PENS' | 'DECOR';
+type ShopCategory = GameItemType | 'DECOR';
+type BuildingSubcategory = 'FACTORIES' | 'PENS';
 type OtherSubcategory = 'items' | 'styles';
 
-const CATEGORIES: { type: ShopCategory; label: string }[] = [
-  { type: 'TREE', label: '🌳 Дерева' },
-  { type: 'CROP', label: '🌱 Рослини' },
-  { type: 'ANIMAL', label: '🐮 Тварини' },
-  { type: 'BUILDING', label: '🏠 Будівлі' },
-  { type: 'OTHER', label: '🧰 Інше' },
+const CATEGORIES: { type: ShopCategory; label: string; icon: string }[] = [
+  { type: 'TREE', label: 'Дерева', icon: '/assets/ui/shop_cat_tree.png' },
+  { type: 'CROP', label: 'Рослини', icon: '/assets/ui/shop_cat_crop.png' },
+  { type: 'ANIMAL', label: 'Тварини', icon: '/assets/ui/shop_cat_animal.png' },
+  { type: 'BUILDING', label: 'Будівлі', icon: '/assets/ui/shop_cat_building.png' },
+  { type: 'DECOR', label: 'Декор', icon: '/assets/ui/shop_cat_decor.png' },
+  { type: 'OTHER', label: 'Інше', icon: '/assets/ui/shop_cat_other.png' },
 ];
 
 const getTitleFontSize = (name: string) => Math.max(9, Math.min(13, (13 * 14) / name.length));
@@ -31,9 +32,8 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<ShopCategory>('TREE');
   const [buildingSubcategory, setBuildingSubcategory] = useState<BuildingSubcategory>('PENS');
   const [otherSubcategory, setOtherSubcategory] = useState<OtherSubcategory>('items');
-  const [pendingExpansion, setPendingExpansion] = useState<GameItemConfig | null>(null);
   const [pendingPurchase, setPendingPurchase] = useState<GameItemConfig | null>(null);
-  const [expanding, setExpanding] = useState(false);
+  const [pendingFertilizer, setPendingFertilizer] = useState<GameItemConfig | null>(null);
   const [purchasingItemId, setPurchasingItemId] = useState<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const { user } = useAuthStore();
@@ -47,12 +47,12 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const filteredItems = Object.values(items).filter((item) =>
-    (item.type === activeCategory && (activeCategory !== 'BUILDING' ||
-      (buildingSubcategory === 'FACTORIES'
-        ? item.buildingCategory === 'FACTORY'
-        : buildingSubcategory === 'PENS'
-          ? item.buildingCategory === 'PEN' || (!item.buildingCategory && Boolean(item.housing))
-          : (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR'))) &&
+    (activeCategory === 'DECOR'
+      ? item.type === 'BUILDING' && (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR'
+      : item.type === activeCategory && (activeCategory !== 'BUILDING' ||
+        (buildingSubcategory === 'FACTORIES'
+          ? item.buildingCategory === 'FACTORY'
+          : item.buildingCategory === 'PEN' || (!item.buildingCategory && Boolean(item.housing))))) &&
     (activeCategory !== 'OTHER' ||
       (otherSubcategory === 'styles'
         ? item.mechanic === 'grass_style' || item.mechanic === 'background_style'
@@ -68,47 +68,59 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
       notifyGameMessage(`Цей товар доступний з ${requiredLevel} рівня.`);
       return;
     }
+    if (item.mechanic === 'accelerate_growth') {
+      setPendingFertilizer(item);
+      return;
+    }
     const currency = item.priceCurrency ?? 'coins';
     const balance = currency === 'rubies' ? (user?.rubies ?? 25) : (user?.coins ?? 0);
     if (balance < item.price) {
       notifyGameMessage(`Не вистачає ${currency === 'rubies' ? 'рубінів' : 'монет'} для цього предмета.`);
-      onClose();
+      if (!confirmed) onClose();
       return;
     }
-    if (!confirmed && item.mechanic !== 'expand_farm' &&
-      (currency === 'rubies' || item.price > 5000)) {
+    if (!confirmed) {
       setPendingPurchase(item);
       return;
     }
     if (item.mechanic === 'expand_farm') {
-      setPendingExpansion(item);
-      return;
-    }
-    if (item.mechanic === 'accelerate_growth') {
       if (!user?.id || purchasingItemId) return;
       setPurchasingItemId(item.id);
-      const purchased = await buyFertilizer(user.id, item.id);
-      setPurchasingItemId(null);
-      if (purchased) {
-        notifyGameMessage('Добриво куплено і поміщено на склад!');
-        onClose();
+      try {
+        if (await expandFarm(user.id, item.id)) {
+          notifyGameMessage('Ферму розширено вперед!');
+          setPendingPurchase(null);
+          onClose();
+        }
+      } finally {
+        setPurchasingItemId(null);
       }
       return;
     }
     if (item.mechanic === 'grass_style') {
       if (!user?.id || purchasingItemId) return;
       setPurchasingItemId(item.id);
-      const purchased = await buyStyle(user.id, item.id);
-      setPurchasingItemId(null);
-      if (purchased) notifyGameMessage('Вигляд трави придбано! Застосуй його у розділі «Оформлення» складу.');
+      try {
+        if (await buyStyle(user.id, item.id)) {
+          notifyGameMessage('Вигляд трави придбано! Застосуй його у розділі «Оформлення» складу.');
+          setPendingPurchase(null);
+        }
+      } finally {
+        setPurchasingItemId(null);
+      }
       return;
     }
     if (item.mechanic === 'background_style') {
       if (!user?.id || purchasingItemId) return;
       setPurchasingItemId(item.id);
-      const purchased = await buyStyle(user.id, item.id);
-      setPurchasingItemId(null);
-      if (purchased) notifyGameMessage('Фон придбано! Застосуй його у вкладці «Оформлення» складу.');
+      try {
+        if (await buyStyle(user.id, item.id)) {
+          notifyGameMessage('Фон придбано! Застосуй його у вкладці «Оформлення» складу.');
+          setPendingPurchase(null);
+        }
+      } finally {
+        setPurchasingItemId(null);
+      }
       return;
     }
     if (item.type === 'OTHER') {
@@ -116,19 +128,32 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
       return;
     }
     // Беремо в руку насіння
+    setPendingPurchase(null);
     setActiveTool(`place_${item.id}`);
     onClose();
   };
 
-  const confirmExpansion = async () => {
-    if (!pendingExpansion || !user?.id || expanding) return;
-    setExpanding(true);
-    const success = await expandFarm(user.id, pendingExpansion.id);
-    setExpanding(false);
-    if (success) {
-      notifyGameMessage('Ферму розширено вперед!');
-      setPendingExpansion(null);
-      onClose();
+  const requestPurchase = (item: GameItemConfig) => {
+    if ((user?.level ?? 1) < (item.requiredLevel ?? 1)) {
+      notifyGameMessage(`Цей товар доступний з ${item.requiredLevel ?? 1} рівня.`);
+      return;
+    }
+    if (item.mechanic === 'accelerate_growth') setPendingFertilizer(item);
+    else setPendingPurchase(item);
+  };
+
+  const confirmFertilizerPurchase = async (quantity: number) => {
+    if (!pendingFertilizer || !user?.id || purchasingItemId) return;
+    const item = pendingFertilizer;
+    setPurchasingItemId(item.id);
+    try {
+      if (await buyFertilizer(user.id, item.id, quantity)) {
+        notifyGameMessage(`${quantity} ${quantity === 1 ? 'одиницю добрива куплено' : 'одиниць добрива куплено'} і поміщено на склад!`);
+        setPendingFertilizer(null);
+        onClose();
+      }
+    } finally {
+      setPurchasingItemId(null);
     }
   };
 
@@ -140,24 +165,50 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
     track.scrollBy({ left: direction * ((firstTab?.offsetWidth ?? 120) + gap), behavior: 'smooth' });
   };
 
+  if (pendingFertilizer) {
+    return (
+      <PurchaseConfirmDialog
+        itemName={pendingFertilizer.name}
+        image={pendingFertilizer.shopImage ?? pendingFertilizer.growthImages?.at(-1)}
+        description={pendingFertilizer.accelerationMs ? `Прискорює ріст на ${formatGameDuration(pendingFertilizer.accelerationMs)}` : undefined}
+        price={pendingFertilizer.price}
+        currency={pendingFertilizer.priceCurrency ?? 'coins'}
+        balance={pendingFertilizer.priceCurrency === 'rubies' ? (user?.rubies ?? 25) : (user?.coins ?? 0)}
+        quantitySelection
+        busy={purchasingItemId === pendingFertilizer.id}
+        onConfirm={(quantity) => void confirmFertilizerPurchase(quantity)}
+        onCancel={() => setPendingFertilizer(null)}
+      />
+    );
+  }
+  if (pendingPurchase) {
+    const item = pendingPurchase;
+    const image = item.shopImage ?? item.growthImages?.at(-1);
+    const description = item.mechanic === 'expand_farm'
+      ? 'Розширення ферми'
+      : item.mechanic === 'accelerate_growth' && item.accelerationMs
+        ? `Прискорює ріст на ${formatGameDuration(item.accelerationMs)}`
+        : item.type === 'OTHER'
+          ? item.mechanic === 'grass_style' ? 'Оформлення трави для ферми' : item.mechanic === 'background_style' ? 'Оформлення фону ферми' : undefined
+          : item.yieldName ? `Виробляє: ${item.yieldName}` : undefined;
+    return (
+      <PurchaseConfirmDialog
+        itemName={item.name}
+        image={image}
+        description={description}
+        price={item.price}
+        currency={item.priceCurrency ?? 'coins'}
+        balance={item.priceCurrency === 'rubies' ? (user?.rubies ?? 25) : (user?.coins ?? 0)}
+        busy={purchasingItemId === item.id}
+        onConfirm={() => void handleBuy(item, true)}
+        onCancel={() => setPendingPurchase(null)}
+      />
+    );
+  }
+
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div className="game-modal-window shop-modal-window" style={styles.glassWindow} onClick={(e) => e.stopPropagation()}>
-        {pendingPurchase && (
-          <PurchaseConfirmDialog
-            itemName={pendingPurchase.name}
-            price={pendingPurchase.price}
-            currency={pendingPurchase.priceCurrency ?? 'coins'}
-            busy={purchasingItemId === pendingPurchase.id}
-            onConfirm={() => {
-              const confirmedItem = pendingPurchase;
-              setPendingPurchase(null);
-              void handleBuy(confirmedItem, true);
-            }}
-            onCancel={() => setPendingPurchase(null)}
-          />
-        )}
-        
         <div className="shared-modal-header game-modal-header modal-header-single-row" style={styles.header}>
           <div className="modal-header-summary">
             <div style={styles.titleWrapper}>
@@ -187,6 +238,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
               className={`shop-modal-tab${activeCategory === category.type ? ' is-active' : ''}`}
               onClick={() => setActiveCategory(category.type)}
             >
+              <img className="shop-category-icon" src={category.icon} alt="" draggable={false} />
               {category.label}
             </button>
           ))}
@@ -199,7 +251,6 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
             {([
               ['FACTORIES', 'Фабрики'],
               ['PENS', 'Загони'],
-              ['DECOR', 'Декор'],
             ] as const).map(([category, label]) => (
               <button
                 key={category}
@@ -230,20 +281,6 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
           </div>
         )}
 
-        {pendingExpansion && (
-          <div className="shop-confirm-overlay" role="presentation">
-            <section className="shop-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="shop-confirm-title">
-              <h3 id="shop-confirm-title">Розширення ферми</h3>
-              <p>Чи дійсно бажаєте купити розширення для своєї ферми?</p>
-              <p className="shop-confirm-price">{pendingExpansion.price.toLocaleString('uk-UA')} <img src="/assets/ui/rubin.png" alt="рубінів" draggable={false} /></p>
-              <div className="shop-confirm-actions">
-                <button type="button" onClick={() => setPendingExpansion(null)} disabled={expanding}>Скасувати</button>
-                <button type="button" onClick={() => void confirmExpansion()} disabled={expanding}>{expanding ? 'Купуємо…' : 'Підтвердити покупку'}</button>
-              </div>
-            </section>
-          </div>
-        )}
-
         <div className="shop-modal-grid modal-scrollbar-hidden" style={styles.gridContainer}>
           {filteredItems.map((item) => {
             const yieldImage = item.yieldImage
@@ -251,8 +288,33 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
             const factoryInput = item.factoryInputItemId ? items[item.factoryInputItemId] : undefined;
             return (
               <div key={item.id} className={`game-modal-card shop-modal-card${item.mechanic === 'background_style' ? ' is-background-style' : ''}`} style={styles.itemCard}>
-              <div className="shop-modal-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.name)}px` }} title={item.name}>{item.name}</div>
-              <div className={`shop-modal-icon-box${item.mechanic === 'background_style' ? ' is-background-preview' : ''}`} style={styles.iconBox}>
+              <div
+                className="shop-modal-card-title"
+                style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.name)}px`, cursor: 'pointer' }}
+                title={item.name}
+                role="button"
+                tabIndex={0}
+                onClick={() => requestPurchase(item)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    requestPurchase(item);
+                  }
+                }}
+              >{item.name}</div>
+              <div
+                className={`shop-modal-icon-box${item.mechanic === 'background_style' ? ' is-background-preview' : ''}`}
+                style={{ ...styles.iconBox, cursor: 'pointer' }}
+                role="button"
+                tabIndex={0}
+                onClick={() => requestPurchase(item)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    requestPurchase(item);
+                  }
+                }}
+              >
                 {item.shopImage || item.growthImages?.at(-1) ? (
                   <img
                     src={item.shopImage ?? item.growthImages?.at(-1)}
@@ -304,9 +366,10 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                 {item.type !== 'OTHER' && <div style={styles.statRow}><span>Досвід:</span><span style={{ color: '#8b5ac7', fontWeight: 'bold' }}>+{item.plantingXp} XP</span></div>}
               </div>
               <button
+                type="button"
                 className="shop-modal-buy-button"
                 style={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? { ...styles.buyBtn, ...styles.lockedBuyBtn } : styles.buyBtn}
-                onClick={() => void handleBuy(item)}
+                onClick={() => void handleBuy(item, item.mechanic !== 'accelerate_growth')}
                 disabled={(user?.level ?? 1) < (item.requiredLevel ?? 1) || purchasingItemId === item.id}
                 title={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Доступно з ${item.requiredLevel ?? 1} рівня` : undefined}
               >

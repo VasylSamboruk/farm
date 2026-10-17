@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import Farm, { FARM_STARTING_SIZE } from '../models/Farm.js';
 import LevelReward from '../models/LevelReward.js';
+import AchievementConfig from '../models/AchievementConfig.js';
 import GiftShopItem from '../models/GiftShopItem.js';
 import User, { USER_STARTING_COINS, USER_STARTING_RUBIES } from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
@@ -11,6 +12,7 @@ import { createCustomGameItem, getGameItem, listGameItems, listPermanentlyDelete
 import { getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 import { getLevelIcons, getMediaSettings, normalizeAssetSource, resolveAssetSource, resolveGameItemImages, restorePreviousAssetBaseUrl, setAssetBaseUrl, setLevelIcons } from '../services/mediaStorage.js';
 import { listGiftShopItems } from '../services/giftShop.js';
+import { DEFAULT_ACHIEVEMENTS, getAllAchievementConfigs, getAchievementConfig } from '../services/achievements.js';
 import {
     createLeaderboardCompetition,
     deleteLeaderboardCompetition,
@@ -236,6 +238,66 @@ router.get('/level-rewards', async (_req, res, next) => {
         return res.json({ levels: levels.map(({ level, rewards }) => ({ level, rewards })) });
     } catch (error) {
         return next(error);
+    }
+});
+
+router.get('/achievements', async (_req, res, next) => {
+    try {
+        return res.json({ achievements: await getAllAchievementConfigs() });
+    } catch (error) {
+        return next(error);
+    }
+});
+
+router.put('/achievements/:achievementId', async (req, res) => {
+    const { achievementId } = req.params;
+    const defaults = DEFAULT_ACHIEVEMENTS.find(entry => entry._id === achievementId);
+    if (!defaults) return res.status(404).json({ message: 'Досягнення не знайдено' });
+    const { title, description, image, tiers } = req.body ?? {};
+    if (typeof title !== 'string' || title.trim().length < 2 || title.trim().length > 80 ||
+        typeof description !== 'string' || description.trim().length < 1 || description.trim().length > 200 ||
+        !isImageSource(image) || !Array.isArray(tiers) || tiers.length !== defaults.tiers.length) {
+        return res.status(400).json({ message: 'Перевір назву, опис, іконку та три рівні нагород' });
+    }
+    const normalizedTiers = [];
+    for (let index = 0; index < tiers.length; index += 1) {
+        const tier = tiers[index];
+        const expectedTier = defaults.tiers[index];
+        if (!tier || tier.id !== expectedTier.id || !Number.isSafeInteger(tier.requiredCount) ||
+            tier.requiredCount < 1 || tier.requiredCount > 1_000_000_000 ||
+            !Number.isSafeInteger(tier.rubies) || tier.rubies < 1 || tier.rubies > 100_000 ||
+            !isImageSource(tier.image) ||
+            (index > 0 && tier.requiredCount <= normalizedTiers[index - 1].requiredCount)) {
+            return res.status(400).json({ message: 'Пороги мають зростати, а нагороди й зображення мають бути коректними' });
+        }
+        normalizedTiers.push({
+            id: expectedTier.id,
+            label: expectedTier.label,
+            requiredCount: tier.requiredCount,
+            rubies: tier.rubies,
+            image: tier.image,
+        });
+    }
+    try {
+        const mediaSettings = await getMediaSettings();
+        await AchievementConfig.findOneAndUpdate(
+            { _id: achievementId },
+            {
+                $set: {
+                    title: title.trim(),
+                    description: description.trim(),
+                    image: normalizeAssetSource(image, mediaSettings),
+                    tiers: normalizedTiers.map(tier => ({
+                        ...tier,
+                        image: normalizeAssetSource(tier.image, mediaSettings),
+                    })),
+                },
+            },
+            { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
+        );
+        return res.json({ achievement: await getAchievementConfig(achievementId) });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося зберегти налаштування досягнення', error: error.message });
     }
 });
 

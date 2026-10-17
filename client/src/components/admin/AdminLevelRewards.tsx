@@ -25,6 +25,18 @@ const getErrorMessage = (error: unknown) => axios.isAxiosError<{ message?: strin
   ? error.response?.data?.message ?? 'Не вдалося зберегти нагороди.'
   : error instanceof Error ? error.message : 'Сталася невідома помилка.';
 
+const nextFreeLevel = (levels: LevelRewardEntry[], fromLevel: number) => {
+  const used = new Set(levels.map((entry) => entry.level));
+  let nextLevel = Math.min(999, Math.max(2, fromLevel + 1));
+  while (used.has(nextLevel) && nextLevel < 999) nextLevel += 1;
+  return used.has(nextLevel) ? null : nextLevel;
+};
+
+const normalizeSavedLevel = (saved: LevelRewardEntry | undefined, level: number, rewards: LevelReward[]): LevelRewardEntry => ({
+  level: saved && Number.isSafeInteger(saved.level) ? saved.level : level,
+  rewards: Array.isArray(saved?.rewards) ? saved.rewards : rewards,
+});
+
 export const AdminLevelRewards: React.FC = () => {
   const showToast = useAdminToast();
   const updateStoreLevelIcons = useGameConfigStore((state) => state.setLevelIcons);
@@ -112,11 +124,22 @@ export const AdminLevelRewards: React.FC = () => {
 
     setSaving(true);
     setError('');
+    const creatingNewLevel = !savedLevels.some((entry) => entry.level === level);
     try {
-      const saved = await adminApi.saveLevelRewards(level, rewards);
-      setSavedLevels((current) => [...current.filter((entry) => entry.level !== level), saved].sort((a, b) => a.level - b.level));
-      setDrafts((current) => ({ ...current, [level]: asDrafts(saved.rewards) }));
-      showToast('success', `Нагороди для рівня ${level} збережено.`);
+      const saved = normalizeSavedLevel(await adminApi.saveLevelRewards(level, rewards), level, rewards);
+      const updatedLevels = [...savedLevels.filter((entry) => entry.level !== saved.level), saved]
+        .sort((left, right) => left.level - right.level);
+      const nextLevel = creatingNewLevel ? nextFreeLevel(updatedLevels, saved.level) : null;
+      setSavedLevels(updatedLevels);
+      setDrafts((current) => {
+        const next = { ...current, [saved.level]: asDrafts(saved.rewards) };
+        if (nextLevel !== null) delete next[nextLevel];
+        return next;
+      });
+      if (nextLevel !== null) setLevelInput(String(nextLevel));
+      showToast('success', nextLevel === null
+        ? `Нагороди для рівня ${saved.level} збережено.`
+        : `Нагороди для рівня ${saved.level} збережено. Можна додавати рівень ${nextLevel}.`);
     } catch (saveError) {
       const message = getErrorMessage(saveError);
       setError(message);
@@ -160,7 +183,7 @@ export const AdminLevelRewards: React.FC = () => {
         <>
           <form className="admin-level-rewards-editor" onSubmit={(event) => void saveRewards(event)}>
             <label className="admin-level-select">Рівень нагороди<input type="number" min="2" max="999" value={levelInput} onChange={(event) => setLevelInput(event.target.value)} /></label>
-            <div className="admin-level-reward-list">
+            <div className="admin-level-reward-list" key={levelInput}>
               {currentRewards.map((reward, index) => (
                 <div className="admin-level-reward-row" key={`${level}-${index}`}>
                   <label>Подарунок
@@ -180,7 +203,18 @@ export const AdminLevelRewards: React.FC = () => {
               {currentRewards.length === 0 && <p className="admin-level-rewards-empty">Для цього рівня нагороди ще не задані.</p>}
             </div>
             <div className="admin-level-reward-actions">
-              <button className="admin-secondary-button" type="button" onClick={() => updateCurrent([...currentRewards, { kind: 'coins', amount: '100', itemId: '' }])} disabled={currentRewards.length >= 20}><Plus size={15} />Додати подарунок</button>
+              <button className="admin-secondary-button" type="button" onClick={() => updateCurrent([...currentRewards, { kind: 'coins', amount: '100', itemId: '' }])} disabled={saving || currentRewards.length >= 20}><Plus size={15} />Додати подарунок</button>
+              <button className="admin-secondary-button" type="button" onClick={() => {
+                const nextLevel = nextFreeLevel(savedLevels, Number.isSafeInteger(level) ? level : 1);
+                if (nextLevel === null) return;
+                setLevelInput(String(nextLevel));
+                setDrafts((current) => {
+                  const next = { ...current };
+                  delete next[nextLevel];
+                  return next;
+                });
+                setError('');
+              }} disabled={saving || nextFreeLevel(savedLevels, Number.isSafeInteger(level) ? level : 1) === null}><Plus size={15} />Новий рівень</button>
               <button className="admin-primary-button" type="submit" disabled={saving}><Save size={15} />{saving ? 'Зберігаємо…' : 'Зберегти нагороди'}</button>
             </div>
           </form>
@@ -210,7 +244,7 @@ export const AdminLevelRewards: React.FC = () => {
           </section>
         </>
       )}
-      {savedLevels.length > 0 && <div className="admin-level-reward-saved-list"><h2>Налаштовані рівні</h2>{savedLevels.map((entry) => <div className="admin-level-reward-saved-entry" key={entry.level}><button type="button" onClick={() => setLevelInput(String(entry.level))}><strong>Рівень {entry.level}</strong><span>{entry.rewards.length} {entry.rewards.length === 1 ? 'подарунок' : 'подарунків'}</span></button><button className="admin-level-reward-delete-level" type="button" aria-label={`Видалити налаштування нагород рівня ${entry.level}`} disabled={deletingLevel !== null} onClick={() => void deleteLevel(entry.level)}><Trash2 size={15} /></button></div>)}</div>}
+      {savedLevels.length > 0 && <div className="admin-level-reward-saved-list"><h2>Налаштовані рівні</h2>{savedLevels.map((entry) => <div className="admin-level-reward-saved-entry" key={entry.level}><button type="button" onClick={() => { setLevelInput(String(entry.level)); setError(''); }}><strong>Рівень {entry.level}</strong><span>{entry.rewards?.length ?? 0} {(entry.rewards?.length ?? 0) === 1 ? 'подарунок' : 'подарунків'}</span></button><button className="admin-level-reward-delete-level" type="button" aria-label={`Видалити налаштування нагород рівня ${entry.level}`} disabled={deletingLevel !== null} onClick={() => void deleteLevel(entry.level)}><Trash2 size={15} /></button></div>)}</div>}
     </section>
   );
 };

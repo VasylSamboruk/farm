@@ -221,10 +221,18 @@ router.post('/buy-item', async (req, res) => {
         if (item.mechanic !== 'accelerate_growth') {
             return res.status(400).json({ message: 'Механіка цього товару ще не доступна' });
         }
+        const quantity = req.body.quantity ?? 1;
+        if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) {
+            return res.status(400).json({ message: 'Вкажіть кількість від 1 до 10000 одиниць' });
+        }
+        const totalPrice = item.price * quantity;
+        if (!Number.isSafeInteger(totalPrice)) {
+            return res.status(400).json({ message: 'Некоректна загальна вартість товару' });
+        }
         const currencyField = item.priceCurrency === 'rubies' ? 'rubies' : 'coins';
         const user = await User.findOneAndUpdate(
-            { _id: userId, [currencyField]: { $gte: item.price } },
-            { $inc: { [currencyField]: -item.price, [`itemInventory.${itemId}`]: 1 } },
+            { _id: userId, [currencyField]: { $gte: totalPrice } },
+            { $inc: { [currencyField]: -totalPrice, [`itemInventory.${itemId}`]: quantity } },
             { new: true }
         );
         if (!user) return res.status(400).json({ message: `Недостатньо ${currencyField === 'rubies' ? 'рубінів' : 'монет'}!` });
@@ -786,11 +794,25 @@ router.post('/place', async (req, res) => {
         const newTile = { x, y, quadrant, occupiedQuadrants: occupiedQuadrants ?? [quadrant], occupiedCells, itemId, isDirt: false, stage: 0, placedAt: new Date() };
         farm.tiles.push(newTile);
         await farm.save();
+        const achievementField = item.type === 'CROP'
+            ? 'plantedVegetableCount'
+            : item.type === 'ANIMAL' ? 'placedAnimalCount'
+                : item.type === 'TREE' ? 'plantedTreeCount' : null;
+        const achievementUser = achievementField
+            ? await User.findOneAndUpdate(
+                { _id: user._id },
+                { $inc: { [achievementField]: 1 } },
+                { new: true },
+            ).select('plantedVegetableCount placedAnimalCount plantedTreeCount')
+            : null;
         await recordLeaderboardXpSafely(user._id, item.plantingXp);
 
         res.json({ 
             success: true, 
             newTile, 
+            plantedVegetableCount: achievementUser?.plantedVegetableCount ?? null,
+            placedAnimalCount: achievementUser?.placedAnimalCount ?? null,
+            plantedTreeCount: achievementUser?.plantedTreeCount ?? null,
             user: { coins: user.coins, rubies: user.rubies, xp: user.xp, level: user.level, itemInventory: Object.fromEntries(user.itemInventory ?? []) }
         });
     } catch (error) {

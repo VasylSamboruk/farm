@@ -11,10 +11,12 @@ import { socialApi } from '../../api/social.api';
 import { getLevelProgress } from '../../config/progression';
 import { formatGameDuration } from '../../game/trees';
 import { gameApi } from '../../api/game.api';
+import { achievementsApi, getClaimableAchievementCount } from '../../api/achievements.api';
 import type { AdminGiftEntry, LevelRewardEntry } from '../../types/game';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
 import { getLevelIcon } from '../../config/levelIcons';
 import { LeaderboardModal } from './LeaderboardModal';
+import { AchievementsModal } from './AchievementsModal';
 import { leaderboardApi, type CompetitionReward, type LeaderboardPlayer } from '../../api/leaderboard.api';
 
 type ToolType = 'shovel' | 'trash' | 'move' | 'rotate' | null;
@@ -27,6 +29,7 @@ interface GameHUDProps {
 
 export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturnToProfile }) => {
   const { user } = useAuthStore();
+  const userId = user?.id;
   const { activeTool, setActiveTool, isSettingsOpen, setSettingsOpen, cancelInteraction } = useToolStore();
   const gameMessage = useFarmStore((state) => state.gameMessage);
   const dismissGameMessage = useFarmStore((state) => state.dismissGameMessage);
@@ -40,6 +43,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [isFriendsOpen, setIsFriendsOpen] = useState(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  const [isAchievementsOpen, setIsAchievementsOpen] = useState(false);
+  const [claimableAchievements, setClaimableAchievements] = useState<{ userId: string; count: number } | null>(null);
+  const claimableAchievementCount = userId && claimableAchievements?.userId === userId ? claimableAchievements.count : 0;
   const [visitPlayerId, setVisitPlayerId] = useState<string | null>(null);
   const [friendRequestCount, setFriendRequestCount] = useState(0);
   const [newFriendCount, setNewFriendCount] = useState(0);
@@ -94,6 +100,30 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
   }, []);
 
   const clearVisitPlayer = useCallback(() => setVisitPlayerId(null), []);
+  const updateClaimableAchievementCount = useCallback((count: number) => {
+    if (userId) setClaimableAchievements({ userId, count });
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let active = true;
+    const refreshClaimableAchievements = async () => {
+      try {
+        const achievements = await achievementsApi.get();
+        if (active) setClaimableAchievements({ userId, count: getClaimableAchievementCount(achievements) });
+      } catch (error) {
+        console.error('Не вдалося оновити сповіщення досягнень:', error);
+      }
+    };
+    void refreshClaimableAchievements();
+    const intervalId = window.setInterval(() => void refreshClaimableAchievements(), 30_000);
+    window.addEventListener('focus', refreshClaimableAchievements);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshClaimableAchievements);
+    };
+  }, [userId]);
 
   const closeFriends = () => {
     friendsModalOpenRef.current = false;
@@ -420,6 +450,23 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
           >
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
+          <button
+            className="game-achievements-button"
+            style={styles.themeToggleBtn}
+            type="button"
+            onClick={() => { cancelInteraction(); setIsAchievementsOpen(true); }}
+            aria-label={claimableAchievementCount > 0
+              ? `Відкрити досягнення: ${claimableAchievementCount} ${claimableAchievementCount === 1 ? 'нагорода доступна' : 'нагород доступно'}`
+              : 'Відкрити досягнення'}
+            title="Досягнення"
+          >
+            <img src="/assets/ui/achievements.png" alt="" draggable={false} />
+            {claimableAchievementCount > 0 && (
+              <span className="game-achievements-badge" aria-hidden="true">
+                {claimableAchievementCount > 99 ? '99+' : claimableAchievementCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -538,6 +585,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
         onReturnFromInitialVisit={closeFriends}
       />
       <LeaderboardModal isOpen={isLeaderboardOpen} onClose={() => setIsLeaderboardOpen(false)} onVisitPlayer={visitLeaderboardPlayer} />
+      <AchievementsModal
+        isOpen={isAchievementsOpen}
+        onClose={() => setIsAchievementsOpen(false)}
+        onClaimableCountChange={updateClaimableAchievementCount}
+      />
     </div>
   );
 };

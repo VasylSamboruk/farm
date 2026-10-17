@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Award, Calculator, Check, Gift, Image, Leaf, PackagePlus, ShieldCheck, Store, TriangleAlert, Users, X } from 'lucide-react';
+import { ArrowLeft, Award, BadgeCheck, Calculator, Check, Gift, Image, Leaf, PackagePlus, ShieldCheck, Store, TriangleAlert, Users, X } from 'lucide-react';
 import './Admin.css';
 import { AdminToastContext, type AdminToast } from './adminToast';
 
-export type AdminSection = 'users' | 'shop' | 'create' | 'media' | 'pricing' | 'rewards' | 'leaderboard';
+export type AdminSection = 'users' | 'shop' | 'create' | 'media' | 'pricing' | 'rewards' | 'achievements' | 'leaderboard';
 interface AdminShellProps {
   section: AdminSection;
   username: string;
@@ -38,6 +38,7 @@ export const AdminShell: React.FC<AdminShellProps> = ({ section, username, onSec
             <button className={section === 'create' ? 'is-active' : ''} type="button" aria-current={section === 'create' ? 'page' : undefined} onClick={() => onSectionChange('create')}><PackagePlus size={18} /><span>Додати товар</span></button>
             <button className={section === 'pricing' ? 'is-active' : ''} type="button" aria-current={section === 'pricing' ? 'page' : undefined} onClick={() => onSectionChange('pricing')}><Calculator size={18} /><span>Ціноутворення</span></button>
             <button className={section === 'rewards' ? 'is-active' : ''} type="button" aria-current={section === 'rewards' ? 'page' : undefined} onClick={() => onSectionChange('rewards')}><Gift size={18} /><span>Нагороди рівнів</span></button>
+            <button className={section === 'achievements' ? 'is-active' : ''} type="button" aria-current={section === 'achievements' ? 'page' : undefined} onClick={() => onSectionChange('achievements')}><BadgeCheck size={18} /><span>Досягнення</span></button>
             <button className={section === 'leaderboard' ? 'is-active' : ''} type="button" aria-current={section === 'leaderboard' ? 'page' : undefined} onClick={() => onSectionChange('leaderboard')}><Award size={18} /><span>Рейтинг і призи</span></button>
             <button className={section === 'media' ? 'is-active' : ''} type="button" aria-current={section === 'media' ? 'page' : undefined} onClick={() => onSectionChange('media')}><Image size={18} /><span>Зображення</span></button>
           </nav>
@@ -45,7 +46,7 @@ export const AdminShell: React.FC<AdminShellProps> = ({ section, username, onSec
         </aside>
         <div className="admin-main-column">
           <header className="admin-topbar">
-            <div className="admin-topbar-heading"><span><ShieldCheck size={17} /> ПАНЕЛЬ АДМІНІСТРАТОРА</span><strong>{section === 'users' ? 'Користувачі' : section === 'shop' ? 'Магазин' : section === 'media' ? 'Зображення' : section === 'pricing' ? 'Ціноутворення' : section === 'rewards' ? 'Нагороди рівнів' : section === 'leaderboard' ? 'Рейтинг і призи' : 'Додати товар'}</strong></div>
+            <div className="admin-topbar-heading"><span><ShieldCheck size={17} /> ПАНЕЛЬ АДМІНІСТРАТОРА</span><strong>{section === 'users' ? 'Користувачі' : section === 'shop' ? 'Магазин' : section === 'media' ? 'Зображення' : section === 'pricing' ? 'Ціноутворення' : section === 'rewards' ? 'Нагороди рівнів' : section === 'achievements' ? 'Досягнення' : section === 'leaderboard' ? 'Рейтинг і призи' : 'Додати товар'}</strong></div>
             <button className="admin-back-button" type="button" onClick={onBack}><ArrowLeft size={16} /><span>До профілю</span></button>
           </header>
           <div className="admin-page-content" key={section}>{children}</div>

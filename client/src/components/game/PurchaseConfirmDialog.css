@@ -1,123 +1,271 @@
 .purchase-confirm-backdrop {
   position: fixed;
-  z-index: 120;
+  z-index: 400;
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 16px;
-  background: rgba(22, 31, 39, .58);
-  backdrop-filter: blur(4px);
+  padding: 18px;
+  background: rgba(24, 32, 42, .7);
+  backdrop-filter: blur(5px);
 }
 
 .purchase-confirm-dialog {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: min(84dvh, 600px);
+  overflow: hidden auto;
+  padding: 0;
+}
+
+.purchase-confirm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 60px;
+  padding: 9px 16px 9px 20px;
+}
+
+.purchase-confirm-header > div { min-width: 0; }
+
+.purchase-confirm-eyebrow {
+  color: #71834e;
+  font: 900 8px/1.2 FarmBody, sans-serif;
+  letter-spacing: .13em;
+}
+
+.purchase-confirm-header h2 {
+  margin: 3px 0 0;
+  color: #2d3b4e;
+  font: 900 15px/1.2 FarmBody, sans-serif;
+}
+
+.purchase-confirm-header .game-modal-close { position: relative; z-index: 2; }
+
+.purchase-confirm-product {
   display: grid;
+  grid-template-columns: minmax(120px, 148px) minmax(0, 1fr);
+  align-items: center;
+  gap: 22px;
+  padding: 20px 24px 22px;
+}
+
+.purchase-confirm-preview {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1;
+  align-items: center;
   justify-items: center;
-  width: min(360px, 100%);
-  padding: 25px 22px 20px;
-  border: 1px solid rgba(193, 161, 100, .58);
+  overflow: hidden;
+  border: 1px solid rgba(130, 153, 123, .16);
   border-radius: 18px;
-  color: #293a4a;
-  background: linear-gradient(145deg, #fffdf4, #f1e4c7);
-  box-shadow: 0 18px 50px rgba(12, 20, 28, .4), inset 0 1px rgba(255, 255, 255, .9);
-  text-align: center;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .48), rgba(224, 234, 218, .24));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .68);
 }
 
-.purchase-confirm-close {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border: 1px solid rgba(92, 110, 123, .22);
-  border-radius: 50%;
-  color: #60717b;
-  background: rgba(255, 255, 255, .68);
-  cursor: pointer;
-}
-
-.purchase-confirm-icon {
-  display: grid;
-  width: 50px;
-  height: 50px;
-  place-items: center;
-  border: 1px solid rgba(191, 150, 72, .42);
-  border-radius: 50%;
-  background: linear-gradient(145deg, #fff9e9, #ead6a8);
-  box-shadow: 0 4px 12px rgba(100, 76, 35, .14);
-}
-
-.purchase-confirm-icon img,
-.purchase-confirm-price img {
-  width: 25px;
-  height: 25px;
+.purchase-confirm-preview img {
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  object-position: center;
 }
 
-.purchase-confirm-dialog h3 {
-  margin: 13px 0 5px;
-  font: 900 18px FarmBody, sans-serif;
+.purchase-confirm-preview > span { font-size: 52px; }
+.purchase-confirm-product-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
 }
 
-.purchase-confirm-dialog p {
-  margin: 0;
-  color: #657483;
-  font: 600 13px/1.45 FarmBody, sans-serif;
+.purchase-confirm-label {
+  color: #778392;
+  font: 700 9px FarmBody, sans-serif;
 }
 
-.purchase-confirm-price {
+.purchase-confirm-product-copy h3 {
+  margin: 5px 0 10px;
+  color: #2d3b4e;
+  font: 900 19px/1.2 FarmBody, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.purchase-confirm-product-copy p {
+  margin: 0 0 8px;
+  color: #697787;
+  font: 600 11px/1.4 FarmBody, sans-serif;
+}
+
+.purchase-confirm-unit-price {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 12px;
-  color: #3d563d;
-  font: 900 19px FarmBody, sans-serif;
+  color: #344735;
+  font: 900 17px FarmBody, sans-serif;
+}
+
+.purchase-confirm-unit-price img,
+.purchase-confirm-total img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.purchase-confirm-unit-price small {
+  margin-left: 2px;
+  color: #778179;
+  font: 700 11px FarmBody, sans-serif;
+}
+
+.purchase-confirm-quantity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 16px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(107, 129, 154, .2);
+  color: #405346;
+  font: 800 12px FarmBody, sans-serif;
+}
+
+.purchase-confirm-stepper { display: flex; align-items: center; gap: 8px; }
+
+.purchase-confirm-stepper button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(76, 117, 79, .4);
+  border-radius: 9px;
+  color: #386a48;
+  background: rgba(255, 255, 255, .72);
+  cursor: pointer;
+}
+
+.purchase-confirm-stepper input {
+  width: 76px;
+  height: 34px;
+  box-sizing: border-box;
+  border: 1px solid rgba(76, 117, 79, .42);
+  border-radius: 9px;
+  color: #293a4a;
+  background: rgba(255, 255, 255, .88);
+  font: 900 15px FarmBody, sans-serif;
+  text-align: center;
+}
+
+.purchase-confirm-total {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 8px 12px;
+  border: 1px solid rgba(151, 124, 74, .32);
+  border-radius: 11px;
+  color: #687567;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .72), rgba(232, 224, 202, .68));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .82), 0 2px 5px rgba(48, 59, 43, .08);
+  font: 700 11px FarmBody, sans-serif;
+}
+
+.purchase-confirm-total strong { color: #344735; font: 900 16px FarmBody, sans-serif; }
+
+.purchase-confirm-warning {
+  margin: 6px 0 0;
+  color: #9d4e35;
+  font: 700 10px/1.4 FarmBody, sans-serif;
 }
 
 .purchase-confirm-actions {
   display: flex;
-  justify-content: center;
-  gap: 9px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
   width: 100%;
-  margin-top: 18px;
+  margin-top: 16px;
 }
 
 .purchase-confirm-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-height: 39px;
+  gap: 6px;
+  min-height: 38px;
   padding: 0 14px;
   border: 1px solid rgba(94, 116, 132, .3);
-  border-radius: 10px;
+  border-radius: 11px;
   color: #526575;
   background: rgba(255, 255, 255, .72);
-  font: 800 12px FarmBody, sans-serif;
+  font: 800 10px FarmBody, sans-serif;
   cursor: pointer;
 }
 
-.purchase-confirm-actions button.is-confirm {
+.purchase-confirm-actions .purchase-confirm-accept {
   border-color: #457e57;
   color: #fff;
   background: linear-gradient(180deg, #64a86d, #438354);
   box-shadow: 0 3px 8px rgba(55, 113, 68, .24);
 }
 
+.purchase-confirm-actions .purchase-confirm-cancel { min-width: 96px; }
+.purchase-confirm-actions .purchase-confirm-accept { min-width: 166px; }
+
+.purchase-confirm-quantity {
+  margin: 0;
+  padding: 12px 24px 18px;
+}
+
 .purchase-confirm-actions button:disabled,
-.purchase-confirm-close:disabled {
-  opacity: .65;
-  cursor: wait;
+.purchase-confirm-stepper button:disabled { opacity: .58; cursor: not-allowed; }
+
+.app-shell[data-theme='dark'] .purchase-confirm-header h2,
+.app-shell[data-theme='dark'] .purchase-confirm-product-copy h3,
+.app-shell[data-theme='dark'] .purchase-confirm-total strong { color: #e2ecd9; }
+
+.app-shell[data-theme='dark'] .purchase-confirm-label,
+.app-shell[data-theme='dark'] .purchase-confirm-product-copy p,
+.app-shell[data-theme='dark'] .purchase-confirm-total { color: #b5c0b0; }
+
+.app-shell[data-theme='dark'] .purchase-confirm-quantity,
+.app-shell[data-theme='dark'] .purchase-confirm-total { border-color: rgba(210, 214, 185, .16); }
+.app-shell[data-theme='dark'] .purchase-confirm-total {
+  color: #b5c0b0;
+  background: linear-gradient(145deg, rgba(227, 237, 219, .09), rgba(227, 237, 219, .04));
+  box-shadow: inset 0 1px rgba(255,255,255,.06);
 }
 
-.app-shell[data-theme='dark'] .purchase-confirm-dialog {
-  border-color: rgba(202, 174, 120, .36);
+.app-shell[data-theme='dark'] .purchase-confirm-stepper input {
+  border-color: rgba(187, 200, 175, .34);
   color: #edf1e9;
-  background: linear-gradient(145deg, #303940, #252e35);
+  background: rgba(227, 237, 219, .08);
 }
 
-.app-shell[data-theme='dark'] .purchase-confirm-dialog p { color: #b5c0c3; }
-.app-shell[data-theme='dark'] .purchase-confirm-icon { border-color: rgba(212, 177, 103, .32); background: linear-gradient(145deg, #514b3c, #3e3a32); }
-.app-shell[data-theme='dark'] .purchase-confirm-actions button:not(.is-confirm) { border-color: rgba(187, 200, 204, .2); color: #d0d9d9; background: rgba(227, 237, 237, .08); }
+.app-shell[data-theme='dark'] .purchase-confirm-stepper button,
+.app-shell[data-theme='dark'] .purchase-confirm-actions .purchase-confirm-cancel {
+  border-color: rgba(187, 200, 175, .3);
+  color: #d3e7c8;
+  background: rgba(227, 237, 219, .08);
+}
+
+@media (max-width: 540px) {
+  .purchase-confirm-dialog { width: min(460px, 100%); }
+  .purchase-confirm-header { padding-inline: 14px; }
+  .purchase-confirm-product { grid-template-columns: minmax(92px, 120px) minmax(0, 1fr); gap: 14px; padding: 16px; }
+  .purchase-confirm-preview { border-radius: 14px; }
+  .purchase-confirm-product-copy h3 { font-size: 17px; }
+  .purchase-confirm-quantity { padding: 11px 16px 16px; }
+  .purchase-confirm-actions { gap: 6px; margin-top: 13px; }
+  .purchase-confirm-actions button { width: auto; min-height: 36px; padding: 0 10px; font-size: 9px; }
+  .purchase-confirm-actions .purchase-confirm-accept { min-width: 0; }
+}
+
+@media (max-width: 360px) {
+  .purchase-confirm-actions { flex-direction: column; align-items: stretch; }
+  .purchase-confirm-actions button { width: 100%; }
+}

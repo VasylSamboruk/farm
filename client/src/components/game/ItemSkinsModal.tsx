@@ -21,7 +21,7 @@ export const ItemSkinsModal: React.FC<ItemSkinsModalProps> = ({ item, tile, targ
   const applySkin = useFarmStore((state) => state.applySkin);
   const notifyGameMessage = useFarmStore((state) => state.notifyGameMessage);
   const [busySkinId, setBusySkinId] = useState<string | null>(null);
-  const [pendingSkinId, setPendingSkinId] = useState<string | null>(null);
+  const [pendingSkinId, setPendingSkinId] = useState<string | 'default' | null>(null);
   const skins = item.skins ?? [];
   const baseImage = item.growthImages?.[0] ?? item.shopImage;
 
@@ -29,14 +29,14 @@ export const ItemSkinsModal: React.FC<ItemSkinsModalProps> = ({ item, tile, targ
     if (!user || busySkinId) return;
     const skin = skins.find((entry) => entry.id === skinId);
     if (!skin) return;
-    if (!confirmed && (skin.priceCurrency === 'rubies' || skin.price > 5000)) {
+    if (!confirmed) {
       setPendingSkinId(skinId);
       return;
     }
-    setPendingSkinId(null);
     setBusySkinId(skinId);
     try {
       if (await purchaseSkin(user.id, target, item.id, skinId)) {
+        setPendingSkinId(null);
         if (await applySkin(user.id, target, item.id, skinId)) {
           notifyGameMessage('Скін придбано та одразу застосовано!');
         }
@@ -57,6 +57,82 @@ export const ItemSkinsModal: React.FC<ItemSkinsModalProps> = ({ item, tile, targ
       setBusySkinId(null);
     }
   };
+
+  const handleSkinPreviewAction = async (skinId: string, owned: boolean) => {
+    if (owned) {
+      if (!user || busySkinId) return;
+      setBusySkinId(skinId);
+      try {
+        if (await applySkin(user.id, target, item.id, skinId)) {
+          notifyGameMessage('Скін застосовано!');
+          setPendingSkinId(null);
+        }
+      } finally {
+        setBusySkinId(null);
+      }
+      return;
+    }
+    await handlePurchase(skinId, true);
+  };
+
+  const handleDefaultPreviewAction = async () => {
+    if (!user || busySkinId) return;
+    setBusySkinId('default');
+    try {
+      if (await applySkin(user.id, target, item.id, null)) {
+        notifyGameMessage('Початковий вигляд відновлено.');
+        setPendingSkinId(null);
+      }
+    } finally {
+      setBusySkinId(null);
+    }
+  };
+
+  if (pendingSkinId === 'default') {
+    return (
+      <PurchaseConfirmDialog
+        itemName="Стандартний вигляд"
+        image={baseImage}
+        description={`Початковий вигляд · ${item.name}`}
+        price={0}
+        currency="coins"
+        showPrice={false}
+        dialogTitle="Перегляд вигляду"
+        cancelLabel="Закрити"
+        confirmLabel={tile.skinId ? 'Застосувати стандартний вигляд' : 'Уже застосовано'}
+        confirmDisabled={!tile.skinId}
+        busy={busySkinId === 'default'}
+        onConfirm={() => void handleDefaultPreviewAction()}
+        onCancel={() => setPendingSkinId(null)}
+      />
+    );
+  }
+  if (pendingSkinId) {
+    const skin = skins.find((entry) => entry.id === pendingSkinId);
+    if (skin) {
+      const currency = skin.priceCurrency ?? 'coins';
+      const owned = tile.unlockedSkinIds?.includes(skin.id) ?? false;
+      const active = tile.skinId === skin.id;
+      return (
+        <PurchaseConfirmDialog
+          itemName={skin.name}
+          image={skin.shopImage ?? skin.images[0] ?? baseImage}
+          description={`${active ? 'Зараз застосовано' : owned ? 'Вже придбаний скін' : 'Скін для предмета'} · ${item.name}`}
+          price={skin.price}
+          currency={currency}
+          balance={currency === 'rubies' ? (user?.rubies ?? 0) : (user?.coins ?? 0)}
+          showPrice={!owned}
+          dialogTitle={owned ? 'Перегляд скіну' : undefined}
+          cancelLabel={owned ? 'Закрити' : undefined}
+          confirmLabel={owned ? (active ? 'Уже застосовано' : 'Застосувати скін') : 'Підтвердити покупку'}
+          confirmDisabled={active}
+          busy={busySkinId === skin.id}
+          onConfirm={() => void handleSkinPreviewAction(skin.id, owned)}
+          onCancel={() => setPendingSkinId(null)}
+        />
+      );
+    }
+  }
 
   return (
     <div className="housing-modal-backdrop item-skins-backdrop" role="presentation" onClick={onClose}>
@@ -83,7 +159,20 @@ export const ItemSkinsModal: React.FC<ItemSkinsModalProps> = ({ item, tile, targ
         <div className="item-skins-toolbar"><span><Sparkles size={13} /> Образи предмета</span><small>{skins.length + 1} доступно</small></div>
         <div className="item-skins-list">
           <article className={`item-skin-card item-skin-card-default${!tile.skinId ? ' is-active' : ''}`}>
-            <div className="item-skin-preview item-skin-preview-default">
+            <div
+              className="item-skin-preview item-skin-preview-default"
+              role="button"
+              tabIndex={0}
+              aria-label="Переглянути стандартний вигляд"
+              style={{ cursor: 'pointer' }}
+              onClick={() => setPendingSkinId('default')}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setPendingSkinId('default');
+                }
+              }}
+            >
               {baseImage ? <img src={baseImage} alt="" draggable={false} /> : <span>{item.shopIcon ?? '🌱'}</span>}
             </div>
             <div className="item-skin-details">
@@ -110,7 +199,20 @@ export const ItemSkinsModal: React.FC<ItemSkinsModalProps> = ({ item, tile, targ
             const effectiveTime = hasTimeBonus ? (item.productionTimeMs ?? 0) - timeSaved : 0;
             return (
               <article className={`item-skin-card is-${rarity}${active ? ' is-active' : ''}`} key={skin.id}>
-                <div className="item-skin-preview">
+                <div
+                  className="item-skin-preview"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Переглянути скін ${skin.name}`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setPendingSkinId(skin.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setPendingSkinId(skin.id);
+                    }
+                  }}
+                >
                   {skin.shopImage
                     ? <img className="item-skin-shop-image" src={skin.shopImage} alt="" />
                     : skin.images.map((image, index) => <img src={image} alt="" key={`${image}-${index}`} />)}
@@ -135,19 +237,6 @@ export const ItemSkinsModal: React.FC<ItemSkinsModalProps> = ({ item, tile, targ
           <span><Sparkles size={13} /> Придбаний образ можна одразу застосувати до предмета.</span>
           <span>{skins.length} {skins.length === 1 ? 'скін' : 'скіни'}</span>
         </footer>
-        {pendingSkinId && (() => {
-          const skin = skins.find((entry) => entry.id === pendingSkinId);
-          return skin ? (
-            <PurchaseConfirmDialog
-              itemName={skin.name}
-              price={skin.price}
-              currency={skin.priceCurrency ?? 'coins'}
-              busy={busySkinId !== null}
-              onConfirm={() => void handlePurchase(skin.id, true)}
-              onCancel={() => setPendingSkinId(null)}
-            />
-          ) : null;
-        })()}
       </section>
     </div>
   );

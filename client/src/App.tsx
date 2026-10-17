@@ -13,6 +13,7 @@ import { AdminCreateItem } from './components/admin/AdminCreateItem.tsx';
 import { AdminMedia } from './components/admin/AdminMedia';
 import { AdminPricing } from './components/admin/AdminPricing';
 import { AdminLevelRewards } from './components/admin/AdminLevelRewards.tsx';
+import { AdminAchievements } from './components/admin/AdminAchievements.tsx';
 import { AdminLeaderboard } from './components/admin/AdminLeaderboard';
 import { AdminShell } from './components/admin/AdminShell';
 import { GameHUD } from './components/game/GameHUD';
@@ -49,7 +50,8 @@ export const App: React.FC = () => {
       : location.pathname === '/admin/media' ? 'media'
         : location.pathname === '/admin/pricing' ? 'pricing'
         : location.pathname === '/admin/rewards' ? 'rewards'
-          : location.pathname === '/admin/leaderboard' ? 'leaderboard' : 'users';
+          : location.pathname === '/admin/achievements' ? 'achievements'
+            : location.pathname === '/admin/leaderboard' ? 'leaderboard' : 'users';
   const playRequested = Boolean(sessionKey && sessionKey === playSessionKey);
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('farmcanvas:theme') === 'light' ? 'light' : 'dark'
@@ -212,8 +214,10 @@ export const App: React.FC = () => {
                   ? <AdminPricing />
                   : adminSection === 'rewards'
                     ? <AdminLevelRewards />
-                    : adminSection === 'leaderboard'
-                      ? <AdminLeaderboard />
+                    : adminSection === 'achievements'
+                      ? <AdminAchievements />
+                      : adminSection === 'leaderboard'
+                        ? <AdminLeaderboard />
                     : <AdminUsers />}
         </AdminShell>
       </div>

@@ -8,6 +8,7 @@ import gameConfigRoutes from './routes/gameConfig.js';
 import socialRoutes from './routes/social.js';
 import adminRoutes from './routes/admin.js';
 import leaderboardRoutes from './routes/leaderboard.js';
+import achievementRoutes from './routes/achievements.js';
 import { loadGameItemPriceOverrides, restorePermanentlyDeletedGameItem } from './services/gameCatalog.js';
 import { closeExpiredLeaderboardPeriods } from './services/leaderboard.js';
 
@@ -35,6 +36,7 @@ app.use('/api/game-config', gameConfigRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/achievements', achievementRoutes);
 
 app.get('/', (req, res) => {
     res.send('API Ферми працює! 🚜');

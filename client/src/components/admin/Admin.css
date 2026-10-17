@@ -957,3 +957,37 @@
   .admin-save-button,
   .admin-toast { transition: none; animation: none; }
 }
+
+.admin-achievements-page { max-width: 1100px; min-height: 100%; margin: 0 auto; padding: 26px clamp(17px, 3vw, 42px) 38px; }
+.admin-achievement-form-title { margin: 0; color: var(--admin-ink); font: 700 17px/1.2 Georgia, serif; }
+.admin-achievement-editor { display: grid; gap: 18px; padding: 18px; border: 1px solid #dce4dc; border-radius: 7px; background: #fbfcf8; }
+.admin-achievement-main-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.admin-achievement-main-fields > label,
+.admin-achievement-tier-values > label { display: grid; align-content: start; gap: 6px; color: #58695c; font-size: 11px; font-weight: 800; }
+.admin-achievement-main-fields > label input,
+.admin-achievement-tier-values > label input { min-width: 0; height: 36px; padding: 0 10px; border: 1px solid #d8e0d8; border-radius: 5px; color: #324336; background: #fff; font-size: 12px; }
+.admin-achievement-main-fields > .admin-image-url-field { grid-column: 1 / -1; }
+.admin-achievement-tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.admin-achievement-tier { position: relative; display: grid; align-content: start; gap: 12px; min-width: 0; padding: 14px 12px 12px; border: 1px solid #d8e0d8; border-radius: 7px; background: #fff; }
+.admin-achievement-tier > legend { padding: 0 6px; color: #46594a; font: 700 14px Georgia, serif; }
+.admin-achievement-tier-values { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.admin-achievement-tier-values > label { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.admin-achievement-tier-values > label input { grid-column: 1 / -1; width: 100%; }
+.admin-achievement-tier-values > label span { color: #819082; font-size: 10px; }
+.admin-achievement-tier-preview { display: block; width: 100%; height: 110px; padding: 5px; border: 1px solid #e2e8e1; border-radius: 6px; background: linear-gradient(145deg, #f7f9f3, #eaf0e5); object-fit: contain; }
+.admin-achievement-note { margin: 0; padding: 10px 12px; border: 1px solid #dce8d6; border-radius: 5px; color: #647662; background: #f1f7ed; font-size: 11px; line-height: 1.5; }
+@media (max-width: 760px) {
+  .admin-achievement-tiers { grid-template-columns: 1fr; }
+  .admin-achievement-tier { grid-template-columns: minmax(0, 1fr) 100px; align-items: start; }
+  .admin-achievement-tier > legend { grid-column: 1 / -1; }
+  .admin-achievement-tier-values { grid-column: 1; }
+  .admin-achievement-tier > .admin-image-url-field { grid-column: 1; }
+  .admin-achievement-tier-preview { grid-column: 2; grid-row: 2 / span 2; height: 110px; }
+}
+@media (max-width: 500px) {
+  .admin-achievements-page { padding: 16px 12px 28px; }
+  .admin-achievement-editor { gap: 14px; padding: 14px; }
+  .admin-achievement-main-fields { grid-template-columns: 1fr; }
+  .admin-achievement-main-fields > .admin-image-url-field { grid-column: 1; }
+  .admin-achievement-tier { grid-template-columns: minmax(0, 1fr) 82px; padding: 12px 9px 9px; }
+}
