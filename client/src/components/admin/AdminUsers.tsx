@@ -42,15 +42,24 @@ const toFarmPreviewTiles = (farmItems: AdminFarmItem[]): Record<string, TileData
   return tiles;
 };
 
-export const AdminUsers: React.FC = () => {
+type PlayerStatus = 'all' | 'online' | 'offline' | 'banned';
+const STATUS_FILTERS: Array<{ id: PlayerStatus; label: string }> = [
+  { id: 'all', label: 'Усі' },
+  { id: 'online', label: 'Онлайн' },
+  { id: 'offline', label: 'Офлайн' },
+  { id: 'banned', label: 'Заблоковані' },
+];
+
+export const AdminUsers: React.FC<{ initialSearch?: string; onEnterFarm?: (user: AdminUser) => void }> = ({ initialSearch = '', onEnterFarm }) => {
   const showToast = useAdminToast();
   const loadGameItems = useGameConfigStore((state) => state.loadItems);
   const levelIcons = useGameConfigStore((state) => state.levelIcons);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [status, setStatus] = useState<PlayerStatus>('all');
   const [catalog, setCatalog] = useState<AdminCatalogItem[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [search, setSearch] = useState(initialSearch);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -84,10 +93,10 @@ export const AdminUsers: React.FC = () => {
     showToast('error', message);
   }, [showToast]);
 
-  const refreshUsers = async (query = search, requestedPage = page, preferredUserId = selectedUserId) => {
+  const refreshUsers = async (query = search, requestedPage = page, preferredUserId = selectedUserId, nextStatus = status) => {
     setLoading(true);
     try {
-      const result = await adminApi.getUsers(query, requestedPage);
+      const result = await adminApi.getUsers(query, requestedPage, nextStatus);
       setUsers(result.users);
       setTotal(result.total);
       setPages(Math.max(1, result.pages));
@@ -108,7 +117,7 @@ export const AdminUsers: React.FC = () => {
       await loadGameItems(true);
       const [loadedCatalog, result] = await Promise.all([
         adminApi.getCatalog(),
-        adminApi.getUsers('', 1),
+        adminApi.getUsers(initialSearch, 1),
       ]);
       const gameConfig = useGameConfigStore.getState();
       if (gameConfig.error) throw new Error(gameConfig.error);
@@ -137,7 +146,7 @@ export const AdminUsers: React.FC = () => {
       .catch((requestError: unknown) => { if (active) reportError(getErrorMessage(requestError)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [loadGameItems, reportError]);
+  }, [loadGameItems, reportError, initialSearch]);
 
   const selectedUser = users.find((entry) => entry.id === selectedUserId) ?? null;
   const productCatalog = catalog.filter((item) => item.yieldItem);
@@ -355,12 +364,18 @@ export const AdminUsers: React.FC = () => {
               <button type="submit" aria-label="Шукати гравців"><Search size={15} /></button>
             </form>
             {error && <p className="admin-message admin-error" role="alert">{error}</p>}
+            <div className="admin-status-filters" role="group" aria-label="Фільтр гравців">
+              {STATUS_FILTERS.map((option) => (
+                <button key={option.id} type="button" className={status === option.id ? 'is-active' : ''} onClick={() => { setStatus(option.id); setPage(1); void refreshUsers(search, 1, '', option.id); }}>{option.label}</button>
+              ))}
+            </div>
             {loading ? <p className="admin-empty">Завантажуємо гравців...</p> : users.length === 0 ? <p className="admin-empty">Гравців не знайдено.</p> : (
               <div className="admin-user-list">
                 {users.map((entry) => (
                   <button key={entry.id} className={entry.id === selectedUserId ? 'admin-user-row is-selected' : 'admin-user-row'} type="button" onClick={() => { setSelectedUserId(entry.id); setUsernameDraft(entry.username); setRoleDraft(entry.role); setNotice(''); setError(''); }}>
                     <span className="admin-avatar">{entry.avatar ? <img src={entry.avatar} alt="" /> : entry.username.slice(0, 1).toUpperCase()}</span>
-                    <span className="admin-user-copy"><strong>{entry.username}</strong><small>{entry.isBanned ? 'Заблокований' : `ID: ${entry.id}`}</small></span>
+                    <span className="admin-user-copy"><strong>{entry.username}</strong><small>{entry.isBanned ? 'Заблокований' : entry.isOnline ? 'Онлайн' : `ID: ${entry.id}`}</small></span>
+                    {entry.isOnline && <span className="admin-online-badge" title="Онлайн" />}
                     <span className="admin-user-level"><img src={getLevelIcon(entry.level, levelIcons)} alt="" /><strong>{entry.level}</strong></span>
                   </button>
                 ))}
@@ -380,7 +395,7 @@ export const AdminUsers: React.FC = () => {
               <>
                 <header className="admin-player-card">
                   <span className="admin-avatar admin-avatar-large">{selectedUser.avatar ? <img src={selectedUser.avatar} alt="" /> : selectedUser.username.slice(0, 1).toUpperCase()}</span>
-                  <div className="admin-player-name"><span className="admin-kicker">ПРОФІЛЬ ГРАВЦЯ</span><h2>{selectedUser.username}</h2><code>ID: {selectedUser.id}</code></div>
+                  <div className="admin-player-name"><span className="admin-kicker">ПРОФІЛЬ ГРАВЦЯ</span><h2>{selectedUser.username}</h2><code>ID: {selectedUser.id}</code>{onEnterFarm && <button type="button" className="admin-primary-button admin-enter-farm" onClick={() => onEnterFarm(selectedUser)}>Зайти на ферму гравця</button>}</div>
                   <div className="admin-player-level"><img src={getLevelIcon(getLevelProgress(selectedUser.xp).level, levelIcons)} alt="" /><strong>{getLevelProgress(selectedUser.xp).level}</strong><span>РІВЕНЬ</span></div>
                 </header>
 

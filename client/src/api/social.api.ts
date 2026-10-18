@@ -7,6 +7,7 @@ export interface SocialPlayer {
   xp: number;
   level: number;
   isOnline?: boolean;
+  isAdmin?: boolean;
   lastOnlineAt?: string | null;
   relation?: 'none' | 'friend' | 'pending_sent' | 'pending_received';
 }

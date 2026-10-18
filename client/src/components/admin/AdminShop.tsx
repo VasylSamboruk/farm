@@ -32,6 +32,7 @@ interface ItemDraft {
   sellPrice: string;
   plantingXp: string;
   requiredLevel: string;
+  shopBadge: string;
   sortOrder: string;
   productionTime: DurationParts;
   mechanic: 'expand_farm' | 'accelerate_growth' | 'grass_style' | 'background_style' | 'none';
@@ -73,11 +74,12 @@ const createDraft = (item: AdminCatalogItem): ItemDraft => {
   const durationParts = millisecondsToDurationParts(item.productionTimeMs);
   return {
   name: item.name,
-  price: String(item.price),
+  price: String(item.originalPrice ?? item.price),
   priceCurrency: item.priceCurrency ?? 'coins',
   sellPrice: String(item.sellPrice ?? ''),
   plantingXp: String(item.plantingXp ?? 0),
   requiredLevel: String(item.requiredLevel ?? 1),
+  shopBadge: item.shopBadge ?? '',
   sortOrder: String(item.sortOrder ?? 1),
   productionTime: durationParts,
   mechanic: item.mechanic ?? 'none',
@@ -287,7 +289,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     try {
       const updated = await adminApi.updateConfig(item.id, {
         name: draft.name.trim(), price, sellPrice, priceCurrency: draft.priceCurrency,
-        plantingXp, requiredLevel, sortOrder, productionTimeMs,
+        plantingXp, requiredLevel, sortOrder, productionTimeMs, shopBadge: (draft.shopBadge || null) as AdminCatalogItem['shopBadge'],
         yieldItem: draft.yieldItem.trim(), yieldName: draft.yieldName.trim(), yieldIcon: draft.yieldIcon.trim(), yieldAmount,
         placementSurface: draft.placementSurface, flipX: draft.flipX, canFlip: draft.canFlip,
         spriteScale,
@@ -499,6 +501,15 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                     <label className="admin-check-field"><input type="checkbox" checked={giftSetting?.enabled ?? true} onChange={(event) => setGiftSettings((current) => ({ ...current, [item.id]: { itemId: item.id, name: item.name, type: item.type, image: item.shopImage ?? '', icon: item.shopIcon ?? '', price: current[item.id]?.price ?? item.price, priceCurrency: current[item.id]?.priceCurrency ?? item.priceCurrency ?? 'coins', enabled: event.target.checked } }))} />У подарунковому магазині</label>
                   </>}
                   <label>Мінімальний рівень<input type="number" min="1" max="999" value={draft.requiredLevel} onChange={(event) => updateDraft(item.id, { requiredLevel: event.target.value })} /></label>
+                  <label>Позначка в магазині
+                    <select value={draft.shopBadge} onChange={(event) => updateDraft(item.id, { shopBadge: event.target.value })}>
+                      <option value="">Без позначки</option>
+                      <option value="new">Новинка</option>
+                      <option value="sale">Акція</option>
+                      <option value="top">Топ</option>
+                      <option value="hit">Хіт</option>
+                    </select>
+                  </label>
                   <label>Позиція у списку<input type="number" min="1" max="9999" value={draft.sortOrder} onChange={(event) => updateDraft(item.id, { sortOrder: event.target.value })} /></label>
                 </div>
                 {item.type === 'OTHER' && draft.mechanic === 'background_style' && <AdminBackgroundImages

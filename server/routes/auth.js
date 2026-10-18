@@ -12,22 +12,43 @@ import { ensureDefaultAvatar, getRandomDefaultAvatar } from '../services/avatars
 
 const router = express.Router();
 
-const getTokenPayload = (req) => {
+const getTokenPayload = async (req, { allowImpersonation = false } = {}) => {
     const authorization = req.headers.authorization ?? '';
     const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
     if (!token) return null;
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    return typeof payload === 'object' && typeof payload.userId === 'string' ? payload : null;
+    if (typeof payload !== 'object' || typeof payload.userId !== 'string') return null;
+    // Адмін може діяти від імені іншого гравця, але лише для читання профілю (/me).
+    const targetId = String(req.headers['x-impersonate-user'] ?? '');
+    if (allowImpersonation && targetId && targetId !== payload.userId && mongoose.isValidObjectId(targetId)) {
+        const [admin, target] = await Promise.all([
+            User.findById(payload.userId).select('role'),
+            User.exists({ _id: targetId }),
+        ]);
+        if (admin?.role === 'admin' && target) return { ...payload, userId: targetId };
+    }
+    return payload;
 };
+
+const banPayload = (user) => ({
+    banned: true,
+    banUntil: user.banUntil ?? null,
+    banReason: user.banReason ?? '',
+});
+
+const isActivelyBanned = (user) => Boolean(user?.isBanned && (!user.banUntil || user.banUntil > new Date()));
 
 router.get('/me', async (req, res) => {
     try {
-        const payload = getTokenPayload(req);
+        const payload = await getTokenPayload(req, { allowImpersonation: true });
         if (!payload) {
             return res.status(401).json({ message: 'Недійсна сесія' });
         }
-        const user = await User.findById(payload.userId).select('username role coins rubies xp level avatar inventory itemInventory unlockedGrassStyles unlockedBackgroundStyles');
+        const user = await User.findById(payload.userId).select('username role coins rubies xp level avatar inventory itemInventory unlockedGrassStyles unlockedBackgroundStyles isBanned banUntil banReason');
         if (!user) return res.status(401).json({ message: 'Гравця не знайдено' });
+        if (isActivelyBanned(user) && String(user._id) === String(payload.userId) && !req.headers['x-impersonate-user']) {
+            return res.status(403).json({ message: 'Акаунт заблоковано', ...banPayload(user) });
+        }
         await ensureDefaultAvatar(user);
         const progression = getLevelProgress(user.xp ?? 0);
         return res.json({
@@ -54,7 +75,7 @@ router.get('/me', async (req, res) => {
 
 router.get('/level-rewards/pending', async (req, res) => {
     try {
-        const payload = getTokenPayload(req);
+        const payload = await getTokenPayload(req);
         if (!payload) return res.status(401).json({ message: 'Недійсна сесія' });
         const user = await User.findById(payload.userId).select('xp claimedLevelRewards');
         if (!user) return res.status(401).json({ message: 'Гравця не знайдено' });
@@ -82,7 +103,7 @@ router.get('/level-rewards/pending', async (req, res) => {
 
 router.post('/level-rewards/claim', async (req, res) => {
     try {
-        const payload = getTokenPayload(req);
+        const payload = await getTokenPayload(req);
         if (!payload) return res.status(401).json({ message: 'Недійсна сесія' });
         const level = req.body?.level;
         if (!Number.isSafeInteger(level) || level < 2) return res.status(400).json({ message: 'Некоректний рівень нагороди' });
@@ -130,12 +151,13 @@ router.post('/level-rewards/claim', async (req, res) => {
 
 router.get('/admin-gifts/pending', async (req, res) => {
     try {
-        const payload = getTokenPayload(req);
+        const payload = await getTokenPayload(req);
         if (!payload) return res.status(401).json({ message: 'Недійсна сесія' });
         const user = await User.findById(payload.userId).select('adminGifts');
         if (!user) return res.status(401).json({ message: 'Гравця не знайдено' });
         return res.json({ gifts: user.adminGifts.filter((gift) => !gift.claimed).map((gift) => ({
             id: String(gift._id),
+            kind: gift.kind ?? 'gift',
             title: gift.title,
             description: gift.description,
             items: gift.items.map(({ kind, itemId, amount }) => ({ kind, itemId, amount })),
@@ -150,7 +172,7 @@ router.get('/admin-gifts/pending', async (req, res) => {
 
 router.post('/admin-gifts/claim', async (req, res) => {
     try {
-        const payload = getTokenPayload(req);
+        const payload = await getTokenPayload(req);
         if (!payload) return res.status(401).json({ message: 'Недійсна сесія' });
         const giftId = req.body?.giftId;
         if (typeof giftId !== 'string' || !/^[a-f\d]{24}$/i.test(giftId)) {
@@ -185,7 +207,7 @@ router.post('/admin-gifts/claim', async (req, res) => {
         if (xpToGrant > 0) increments.xp = xpToGrant;
         const claimedUser = await User.findOneAndUpdate(
             { _id: payload.userId, adminGifts: { $elemMatch: { _id: giftObjectId, claimed: false } } },
-            { $set: { 'adminGifts.$.claimed': true }, $inc: increments },
+            { $set: { 'adminGifts.$.claimed': true }, ...(Object.keys(increments).length ? { $inc: increments } : {}) },
             { new: true }
         );
         if (!claimedUser) return res.status(409).json({ message: 'Цей подарунок уже забрали' });
@@ -271,6 +293,8 @@ router.post('/login', async (req, res) => {
                     ? `Акаунт заблоковано до ${user.banUntil.toISOString()}`
                     : 'Акаунт заблоковано безстроково',
                 banUntil: user.banUntil,
+                banned: true,
+                banReason: user.banReason ?? '',
             });
         }
 

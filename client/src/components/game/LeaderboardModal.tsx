@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { Award, ChevronLeft, ChevronRight, Gift, House, Trophy } from 'lucide-react';
+import { Award, ChevronLeft, ChevronRight, House, Trophy } from 'lucide-react';
 import { leaderboardApi, type CompetitionReward, type LeaderboardData, type LeaderboardPlayer } from '../../api/leaderboard.api';
 import { getLevelIcon } from '../../config/levelIcons';
 import { useAuthStore } from '../../store/authStore';
@@ -54,7 +54,6 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ isOpen, onCl
   const [claimingId, setClaimingId] = useState('');
   const [error, setError] = useState('');
   const [now, setNow] = useState(0);
-  const [showPrizeRanges, setShowPrizeRanges] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -175,6 +174,11 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ isOpen, onCl
         <header className="shared-modal-header game-modal-header social-modal-header modal-header-single-row leaderboard-header">
           <div className="modal-header-summary">
             <img className="leaderboard-title-banner" src="/assets/ui/rating_banner.png" alt="Рейтинг гравців" draggable={false} />
+            <span className="modal-title-divider" aria-hidden="true" />
+            <div className="leaderboard-resources">
+              <span className="modal-resource-chip"><img src="/assets/ui/coin.png" alt="" draggable={false} />{(user?.coins ?? 0).toLocaleString('uk-UA')}</span>
+              <span className="modal-resource-chip"><img src="/assets/ui/rubin.png" alt="" draggable={false} />{(user?.rubies ?? 0).toLocaleString('uk-UA')}</span>
+            </div>
           </div>
           <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити рейтинг">✕</button>
         </header>
@@ -184,32 +188,6 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ isOpen, onCl
             <button type="button" className={type === 'competition' ? 'is-active' : ''} onClick={() => { setType('competition'); setPage(1); }}><img src="/assets/ui/leaderboard-competition.png" alt="" draggable={false} />Змагання</button>
           </nav>
           {error && <p className="leaderboard-error" role="alert">{error}</p>}
-          {type === 'competition' && !loading && data && (
-            <div className="leaderboard-prizes-bar">
-              <button
-                type="button"
-                className={`leaderboard-prizes-toggle${showPrizeRanges ? ' is-active' : ''}`}
-                onClick={() => setShowPrizeRanges((visible) => !visible)}
-                aria-expanded={showPrizeRanges}
-                aria-controls="leaderboard-prize-ranges"
-              >
-                <Gift size={18} />
-                <span className="leaderboard-prizes-toggle-copy"><strong>Призи змагання</strong><small>{data.prizeRanges?.length ? `${data.prizeRanges.length} категорій нагород` : 'Переглянути нагороди'}</small></span>
-                <ChevronRight size={17} />
-              </button>
-            </div>
-          )}
-          {type === 'competition' && showPrizeRanges && !loading && data && (
-            <section className="leaderboard-prize-ranges" id="leaderboard-prize-ranges" aria-label="Призи за місця">
-              <header><img src="/assets/ui/leaderboard-cup.png" alt="" draggable={false} /><strong>Нагороди за місця</strong></header>
-              {data.prizeRanges?.length ? data.prizeRanges.map((range) => (
-                <div className="leaderboard-prize-range" key={`${range.rankFrom}-${range.rankTo}`}>
-                  <strong>{range.rankFrom === range.rankTo ? `#${range.rankFrom}` : `#${range.rankFrom}–${range.rankTo}`}</strong>
-                  <span>{rewardList(range.rewards)}</span>
-                </div>
-              )) : <p>Для цього змагання призи не налаштовані.</p>}
-            </section>
-          )}
           {type === 'competition' && pendingRewards.length > 0 && (
             <div className="leaderboard-pending-list">
               {pendingRewards.map((reward) => (
@@ -223,6 +201,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ isOpen, onCl
           {loading ? <div className="leaderboard-state">Завантажуємо рейтинг…</div> : data && (
             <>
               {type === 'total' && <div className="leaderboard-summary"><span>Увесь зароблений XP</span><strong>{formatNumber(data.total)} гравців</strong></div>}
+              {type === 'competition' && <div className="leaderboard-summary"><span>XP за період змагання</span><strong>{formatNumber(data.total)} гравців</strong></div>}
               <div className="leaderboard-list">
                 {data.entries
                   .filter((player) => player.rank <= 3 || player.id !== user?.id)

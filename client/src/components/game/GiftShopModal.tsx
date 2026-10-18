@@ -1,15 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Gift, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { SocialGiftProduct, SocialPlayer } from '../../api/social.api';
 
 const categories = [
-  { type: 'ALL', label: 'Усі' },
-  { type: 'TREE', label: 'Дерева' },
-  { type: 'CROP', label: 'Рослини' },
-  { type: 'ANIMAL', label: 'Тварини' },
-  { type: 'BUILDING', label: 'Декор' },
+  { type: 'ALL', label: 'Усі', icon: '/assets/ui/friends/f07.png' },
+  { type: 'TREE', label: 'Дерева', icon: '/assets/ui/shop_cat_tree.png' },
+  { type: 'CROP', label: 'Рослини', icon: '/assets/ui/shop_cat_crop.png' },
+  { type: 'ANIMAL', label: 'Тварини', icon: '/assets/ui/shop_cat_animal.png' },
+  { type: 'BUILDING', label: 'Декор', icon: '/assets/ui/shop_cat_decor.png' },
 ];
+const GIFT_ICON = '/assets/ui/friends/f07.png';
 
 const formatRemaining = (until: string | undefined, now: number) => {
   if (!until) return '';
@@ -56,17 +57,17 @@ export const GiftShopModal: React.FC<GiftShopModalProps> = ({
         <div className="gift-shop-overlay" onClick={onClose}>
           <section className="game-modal-window gift-shop-window" role="dialog" aria-modal="true" aria-labelledby="gift-shop-title" onClick={(event) => event.stopPropagation()}>
             <header className="gift-shop-header">
-              <div><Gift size={21} /><div><h2 id="gift-shop-title">Подарунок для {friend.username}</h2><span>Обери особливий подарунок для друга</span></div></div>
+              <div><img className="gift-ui-icon gift-ui-icon-lg" src={GIFT_ICON} alt="" draggable={false} /><div><h2 id="gift-shop-title">Подарунок для {friend.username}</h2><span>Обери особливий подарунок для друга</span></div></div>
               <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити магазин подарунків"><X size={18} /></button>
             </header>
             {remaining && <div className="gift-shop-cooldown">Наступний подарунок цьому другові можна надіслати через <strong>{remaining}</strong></div>}
             <nav className="gift-shop-categories" aria-label="Категорії подарунків">
               {categories.map((entry) => (
-                <button type="button" key={entry.type} className={category === entry.type ? 'is-active' : ''} onClick={() => setCategory(entry.type)}>{entry.label}</button>
+                <button type="button" key={entry.type} className={category === entry.type ? 'is-active' : ''} onClick={() => setCategory(entry.type)}><img className="gift-ui-icon" src={entry.icon} alt="" draggable={false} /><span>{entry.label}</span></button>
               ))}
             </nav>
             {visibleItems.length === 0 ? (
-              <div className="gift-shop-empty"><Gift size={28} /><strong>У цій категорії подарунків поки немає</strong></div>
+              <div className="gift-shop-empty"><img className="gift-ui-icon gift-ui-icon-lg" src={GIFT_ICON} alt="" draggable={false} /><strong>У цій категорії подарунків поки немає</strong></div>
             ) : (
               <div className="gift-shop-grid">
                 {visibleItems.map((item) => (
@@ -80,7 +81,7 @@ export const GiftShopModal: React.FC<GiftShopModalProps> = ({
                       onClick={() => setPendingItem(item)}
                       disabled={Boolean(remaining) || sendingItemId !== null}
                     >
-                      <Gift size={17} />
+                      <img className="gift-ui-icon gift-btn-gift" src={GIFT_ICON} alt="" draggable={false} />
                       <strong>{sendingItemId === item.itemId ? '…' : item.price.toLocaleString('uk-UA')}</strong>
                       <img src={item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png'} alt={item.priceCurrency === 'rubies' ? 'рубінів' : 'монет'} draggable={false} />
                     </button>
@@ -96,7 +97,7 @@ export const GiftShopModal: React.FC<GiftShopModalProps> = ({
         <div className="gift-confirm-backdrop" onClick={() => sendingItemId === null && setPendingItem(null)}>
           <section className="gift-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="gift-confirm-title" onClick={(event) => event.stopPropagation()}>
             <button className="gift-confirm-close" type="button" onClick={() => setPendingItem(null)} disabled={sendingItemId !== null} aria-label="Скасувати"><X size={17} /></button>
-            <div className="gift-confirm-mark"><Gift size={25} /></div>
+            <div className="gift-confirm-mark"><img className="gift-ui-icon gift-ui-icon-lg" src={GIFT_ICON} alt="" draggable={false} /></div>
             <p className="gift-confirm-eyebrow">ПОДАРУНОК ДЛЯ ДРУГА</p>
             <h3 id="gift-confirm-title">Надіслати цей подарунок?</h3>
             <div className="gift-confirm-recipient">
@@ -111,7 +112,7 @@ export const GiftShopModal: React.FC<GiftShopModalProps> = ({
             <div className="gift-confirm-actions">
               <button type="button" onClick={() => setPendingItem(null)} disabled={sendingItemId !== null}>Ще подумаю</button>
               <button type="button" className="gift-confirm-send" onClick={() => onSend(pendingItem)} disabled={sendingItemId !== null}>
-                <Check size={16} />{sendingItemId === pendingItem.itemId ? 'Надсилаємо…' : 'Так, подарувати'}
+                <img className="gift-ui-icon gift-btn-gift" src="/assets/ui/friends/f32.png" alt="" draggable={false} />{sendingItemId === pendingItem.itemId ? 'Надсилаємо…' : 'Так, подарувати'}
               </button>
             </div>
           </section>

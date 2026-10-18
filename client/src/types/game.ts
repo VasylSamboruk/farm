@@ -24,6 +24,7 @@ export interface AchievementProgress {
   claimedTiers: string[];
   rubies: number;
 }
+export type ShopBadge = 'new' | 'sale' | 'top' | 'hit';
 export interface ItemSkin {
   id: string;
   name: string;
@@ -39,6 +40,7 @@ export interface ItemSkin {
 }
 export interface AdminGiftEntry {
   id: string;
+  kind?: 'gift' | 'message' | 'warning';
   title: string;
   description: string;
   items: AdminGiftReward[];
@@ -76,6 +78,9 @@ export interface GameItemConfig {
   plantingXp: number;
   requiredLevel?: number;
   sortOrder?: number;
+  shopBadge?: ShopBadge | null;
+  originalPrice?: number | null;
+  discountPercent?: number | null;
   shopImage?: string;
   shopIcon?: string;
   growthImages?: string[];

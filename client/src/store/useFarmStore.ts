@@ -90,7 +90,7 @@ interface FarmState {
   expandFarm: (userId: string, itemId: string, fromInventory?: boolean) => Promise<boolean>;
   houseAnimal: (userId: string, building: { row: number; col: number; quadrant: number }, animal: { row: number; col: number; quadrant: number }) => Promise<boolean>;
   releaseHousedAnimal: (userId: string, building: { row: number; col: number; quadrant: number }, animalId: string, destination: { row: number; col: number; quadrant: number }) => Promise<boolean>;
-  collectHousedAnimals: (userId: string, building: { row: number; col: number; quadrant: number }) => Promise<{ items: { yieldItem: string; yieldName: string; amount: number }[] } | null>;
+  collectHousedAnimals: (userId: string, building: { row: number; col: number; quadrant: number }, animalId?: string) => Promise<{ items: { yieldItem: string; yieldName: string; amount: number }[] } | null>;
   startFactory: (userId: string, building: { row: number; col: number; quadrant: number }, amount: number) => Promise<boolean>;
   collectFactory: (userId: string, building: { row: number; col: number; quadrant: number }) => Promise<number>;
   buyFertilizer: (userId: string, itemId: string, quantity?: number) => Promise<boolean>;
@@ -350,7 +350,7 @@ export const useFarmStore = create<FarmState>((set, get) => {
     }
   },
 
-  collectHousedAnimals: async (userId, building) => {
+  collectHousedAnimals: async (userId, building, animalId) => {
     try {
       const response = await fetch(`${API_BASE_URL}/farm/housing/collect`, {
         method: 'POST',
@@ -360,6 +360,7 @@ export const useFarmStore = create<FarmState>((set, get) => {
           buildingX: building.col,
           buildingY: building.row,
           buildingQuadrant: building.quadrant,
+          animalId,
         }),
       });
       const data = await response.json() as {

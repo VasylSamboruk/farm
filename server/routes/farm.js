@@ -1,5 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 import Farm from '../models/Farm.js';
 import User from '../models/User.js';
 import { getLevelProgress } from '../config/progression.js';
@@ -23,9 +24,18 @@ router.use(async (req, res, next) => {
     try {
         const userId = req.body?.userId ?? (req.method === 'GET' ? req.path.slice(1).split('/')[0] : null);
         if (!mongoose.isValidObjectId(userId)) return next();
-        const user = await User.findById(userId).select('isBanned banUntil');
+        const user = await User.findById(userId).select('isBanned banUntil banReason');
         if (user?.isBanned && (!user.banUntil || user.banUntil > new Date())) {
-            return res.status(403).json({ message: 'Акаунт заблоковано', banUntil: user.banUntil });
+            // Адмін у режимі ферми гравця може керувати навіть заблокованою фермою.
+            const authorization = req.headers.authorization ?? '';
+            if (req.headers['x-impersonate-user'] === String(userId) && authorization.startsWith('Bearer ')) {
+                try {
+                    const payload = jwt.verify(authorization.slice(7), process.env.JWT_SECRET);
+                    const admin = await User.findById(payload.userId).select('role');
+                    if (admin?.role === 'admin') return next();
+                } catch { /* токен недійсний — діє звичайне блокування */ }
+            }
+            return res.status(403).json({ message: 'Акаунт заблоковано', banUntil: user.banUntil, banned: true, banReason: user.banReason ?? '' });
         }
         return next();
     } catch (error) {
@@ -614,7 +624,7 @@ router.post('/housing/release', async (req, res) => {
 
 router.post('/housing/collect', async (req, res) => {
     try {
-        const { userId, buildingX, buildingY, buildingQuadrant } = req.body;
+        const { userId, buildingX, buildingY, buildingQuadrant, animalId } = req.body;
         const [farm, user] = await Promise.all([
             Farm.findOne({ userId }),
             User.findById(userId),
@@ -627,7 +637,14 @@ router.post('/housing/collect', async (req, res) => {
         const now = new Date();
         const collectedByItem = new Map();
         const readyAnimals = [];
-        for (const animal of housing.tile.housedAnimals ?? []) {
+        const housedAnimals = housing.tile.housedAnimals ?? [];
+        const animalsToCollect = animalId
+            ? housedAnimals.filter((animal) => String(animal._id ?? animal.id) === animalId)
+            : housedAnimals;
+        if (animalId && animalsToCollect.length === 0) {
+            return res.status(404).json({ message: 'Тварину в загоні не знайдено' });
+        }
+        for (const animal of animalsToCollect) {
             const item = getGameItem(animal.itemId);
             if (!item?.yieldItem || !item.yieldAmount || now.getTime() < getTreeHarvestReadyAt(animal, item)) continue;
             const current = collectedByItem.get(item.yieldItem) ?? { yieldItem: item.yieldItem, yieldName: item.yieldName ?? item.name, amount: 0 };

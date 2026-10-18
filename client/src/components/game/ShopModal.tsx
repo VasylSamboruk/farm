@@ -1,10 +1,11 @@
-import React, { useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
 import { useToolStore } from '../../store/useToolStore';
 import { useFarmStore } from '../../store/useFarmStore';
-import type { GameItemConfig, GameItemType } from '../../types/game';
+import { adminApi } from '../../api/admin.api';
+import type { GameItemConfig, GameItemType, ShopBadge } from '../../types/game';
 import { formatGameDuration } from '../../game/trees';
 import { PurchaseConfirmDialog } from './PurchaseConfirmDialog';
 
@@ -26,7 +27,22 @@ const CATEGORIES: { type: ShopCategory; label: string; icon: string }[] = [
   { type: 'OTHER', label: 'Інше', icon: '/assets/ui/shop_cat_other.png' },
 ];
 
-const getTitleFontSize = (name: string) => Math.max(9, Math.min(13, (13 * 14) / name.length));
+const getTitleFontSize = (name: string) => Math.max(10, Math.min(14, (14 * 13) / name.length));
+
+const SHOP_BADGES: { id: ShopBadge; label: string; image: string }[] = [
+  { id: 'new', label: 'Новинка', image: '/assets/ui/shop/badge-new.png' },
+  { id: 'sale', label: 'Акція', image: '/assets/ui/shop/badge-sale.png' },
+  { id: 'top', label: 'Топ', image: '/assets/ui/shop/badge-top.png' },
+  { id: 'hit', label: 'Хіт', image: '/assets/ui/shop/badge-hit.png' },
+];
+
+const StatRow: React.FC<{ icon: React.ReactNode; label: string; value: React.ReactNode; accent?: 'level' | 'xp' }> = ({ icon, label, value, accent }) => (
+  <div className="shop-stat-row">
+    <span className="shop-stat-icon">{icon}</span>
+    <span className="shop-stat-label">{label}</span>
+    <span className={`shop-stat-value${accent ? ` is-${accent}` : ''}`}>{value}</span>
+  </div>
+);
 
 export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<ShopCategory>('TREE');
@@ -35,6 +51,16 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const [pendingPurchase, setPendingPurchase] = useState<GameItemConfig | null>(null);
   const [pendingFertilizer, setPendingFertilizer] = useState<GameItemConfig | null>(null);
   const [purchasingItemId, setPurchasingItemId] = useState<string | null>(null);
+  const [badgeSavingId, setBadgeSavingId] = useState<string | null>(null);
+  const [promoEditId, setPromoEditId] = useState<string | null>(null);
+  const [promoBadge, setPromoBadge] = useState<ShopBadge | ''>('');
+  const [promoName, setPromoName] = useState('');
+  const [promoBase, setPromoBase] = useState('');
+  const [promoSale, setPromoSale] = useState('');
+  const [promoScale, setPromoScale] = useState('1');
+  const [promoVisibility, setPromoVisibility] = useState<'all' | 'admin' | 'hidden'>('all');
+  const [promoTime, setPromoTime] = useState('');
+  const [promoXp, setPromoXp] = useState('');
   const tabsRef = useRef<HTMLDivElement>(null);
   const { user } = useAuthStore();
   const { setActiveTool } = useToolStore();
@@ -42,9 +68,76 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const expandFarm = useFarmStore((state) => state.expandFarm);
   const buyFertilizer = useFarmStore((state) => state.buyFertilizer);
   const buyStyle = useFarmStore((state) => state.buyStyle);
-  const { items, loading, error } = useGameConfigStore();
+  const { items, loading, error, loadItems } = useGameConfigStore();
+
+  useEffect(() => {
+    if (isOpen) void loadItems(true);
+  }, [isOpen, loadItems]);
 
   if (!isOpen) return null;
+
+  const openPromoEditor = (item: GameItemConfig) => {
+    setPromoEditId(item.id);
+    setPromoBadge(item.shopBadge ?? '');
+    setPromoName(item.name);
+    setPromoBase(String(item.originalPrice ?? item.price));
+    setPromoSale(item.originalPrice && item.originalPrice > item.price ? String(item.price) : '');
+    setPromoScale(String(item.spriteScale ?? 1));
+    setPromoVisibility(item.disabled ? 'hidden' : item.access === 'admin' ? 'admin' : 'all');
+    setPromoTime(item.productionTimeMs ? String(Math.round(item.productionTimeMs / 1000)) : '');
+    setPromoXp(String(item.plantingXp ?? 0));
+  };
+
+  const applyDiscountPercent = (percent: number) => {
+    const base = Number(promoBase);
+    if (percent === 0 || !Number.isFinite(base) || base < 1) {
+      setPromoSale('');
+      return;
+    }
+    setPromoSale(String(Math.max(1, Math.round(base * (1 - percent / 100)))));
+    if (!promoBadge) setPromoBadge('sale');
+  };
+
+  const savePromo = async (item: GameItemConfig) => {
+    if (badgeSavingId) return;
+    const name = promoName.trim();
+    const base = Number(promoBase);
+    const sale = promoSale.trim() === '' ? null : Number(promoSale);
+    const scale = Number(promoScale);
+    if (!name || name.length > 80) { notifyGameMessage('Вкажи назву товару (до 80 символів).'); return; }
+    if (!Number.isSafeInteger(base) || base < 0) { notifyGameMessage('Початкова ціна має бути цілим числом.'); return; }
+    if (sale !== null && (!Number.isSafeInteger(sale) || sale < 1 || sale >= base)) {
+      notifyGameMessage('Ціна зі знижкою має бути меншою за початкову.');
+      return;
+    }
+    if (!Number.isFinite(scale) || scale < 0.1 || scale > 5) { notifyGameMessage('Розмір має бути від 0.1 до 5.'); return; }
+    const hasTime = Boolean(item.productionTimeMs);
+    const timeSec = Number(promoTime);
+    const xp = Number(promoXp);
+    if (hasTime && (!Number.isFinite(timeSec) || timeSec < 1)) { notifyGameMessage('Час має бути не менше 1 секунди.'); return; }
+    if (!Number.isSafeInteger(xp) || xp < 0) { notifyGameMessage('Досвід має бути цілим числом від 0.'); return; }
+    setBadgeSavingId(item.id);
+    try {
+      await adminApi.updateConfig(item.id, {
+        name,
+        price: base,
+        salePrice: sale,
+        spriteScale: scale,
+        plantingXp: xp,
+        ...(hasTime ? { productionTimeMs: Math.round(timeSec * 1000) } : {}),
+        shopBadge: promoBadge || null,
+        disabled: promoVisibility === 'hidden',
+        access: promoVisibility === 'admin' ? 'admin' : 'all',
+      });
+      await loadItems(true);
+      setPromoEditId(null);
+    } catch (badgeError) {
+      console.error('Не вдалося зберегти налаштування товару:', badgeError);
+      notifyGameMessage('Не вдалося зберегти налаштування товару.');
+    } finally {
+      setBadgeSavingId(null);
+    }
+  };
 
   const filteredItems = Object.values(items).filter((item) =>
     (activeCategory === 'DECOR'
@@ -57,7 +150,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
       (otherSubcategory === 'styles'
         ? item.mechanic === 'grass_style' || item.mechanic === 'background_style'
         : item.mechanic !== 'grass_style' && item.mechanic !== 'background_style')) &&
-    !item.giftOnly && !item.disabled && (item.access !== 'admin' || user?.role === 'admin') &&
+    !item.giftOnly && (!item.disabled || user?.role === 'admin') && (item.access !== 'admin' || user?.role === 'admin') &&
     (item.mechanic !== 'grass_style' || !user?.unlockedGrassStyles?.includes(item.id)) &&
     (item.mechanic !== 'background_style' || !user?.unlockedBackgroundStyles?.includes(item.id))
   ).sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0));
@@ -286,11 +379,17 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
             const yieldImage = item.yieldImage
               ?? (item.yieldItem === 'flour' ? '/assets/buildings/fabrik/muka.png' : undefined);
             const factoryInput = item.factoryInputItemId ? items[item.factoryInputItemId] : undefined;
+            const isBackgroundStyle = item.mechanic === 'background_style';
+            const locked = (user?.level ?? 1) < (item.requiredLevel ?? 1);
+            const balance = (item.priceCurrency ?? 'coins') === 'rubies' ? (user?.rubies ?? 25) : (user?.coins ?? 0);
+            const canAfford = balance >= item.price;
+            const onSale = Boolean(item.originalPrice && item.originalPrice > item.price);
+            const badge = SHOP_BADGES.find((entry) => entry.id === item.shopBadge);
             return (
-              <div key={item.id} className={`game-modal-card shop-modal-card${item.mechanic === 'background_style' ? ' is-background-style' : ''}`} style={styles.itemCard}>
+              <div key={item.id} className={`game-modal-card shop-modal-card${isBackgroundStyle ? ' is-background-style' : ''}${locked ? ' is-locked' : ''}${item.disabled ? ' is-hidden-item' : ''}`}>
               <div
                 className="shop-modal-card-title"
-                style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.name)}px`, cursor: 'pointer' }}
+                style={{ '--shop-title-size': `${getTitleFontSize(item.name)}px` } as React.CSSProperties}
                 title={item.name}
                 role="button"
                 tabIndex={0}
@@ -303,8 +402,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                 }}
               >{item.name}</div>
               <div
-                className={`shop-modal-icon-box${item.mechanic === 'background_style' ? ' is-background-preview' : ''}`}
-                style={{ ...styles.iconBox, cursor: 'pointer' }}
+                className={`shop-modal-icon-box${isBackgroundStyle ? ' is-background-preview' : ''}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => requestPurchase(item)}
@@ -317,21 +415,21 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
               >
                 {item.shopImage || item.growthImages?.at(-1) ? (
                   <img
+                    className={isBackgroundStyle ? 'shop-background-image' : 'shop-item-image'}
                     src={item.shopImage ?? item.growthImages?.at(-1)}
                     alt={item.name}
-                    style={item.mechanic === 'background_style' ? styles.backgroundShopImage : styles.shopImage}
                     draggable={false}
                   />
                 ) : (
-                  <span style={styles.cardEmoji}>{item.shopIcon ?? item.yieldIcon ?? '🌳'}</span>
+                  <span className="shop-item-emoji">{item.shopIcon ?? item.yieldIcon ?? '🌳'}</span>
                 )}
                 {item.yieldItem && (
-                  <div className="shop-yield-pill" style={styles.yieldBadge} title={`${item.yieldName ?? item.name}${typeof item.sellPrice === 'number' ? ` · +${item.sellPrice} монет за продаж` : ''}`}>
-                    <span className="shop-yield-icon" style={styles.yieldCircle}>
-                      {yieldImage ? <img src={yieldImage} alt="" style={styles.yieldImage} draggable={false} /> : <span>{item.yieldIcon ?? '📦'}</span>}
+                  <div className="shop-yield-pill" title={`${item.yieldName ?? item.name}${typeof item.sellPrice === 'number' ? ` · +${item.sellPrice} монет за продаж` : ''}`}>
+                    <span className="shop-yield-icon">
+                      {yieldImage ? <img src={yieldImage} alt="" draggable={false} /> : <span>{item.yieldIcon ?? '📦'}</span>}
                     </span>
                     {typeof item.sellPrice === 'number' && (
-                      <span className="shop-yield-price" style={styles.yieldPrice}>+{item.sellPrice}<img src="/assets/ui/coin.png" alt="" style={styles.yieldCoin} draggable={false} /></span>
+                      <span className="shop-yield-price">+{item.sellPrice}<img src="/assets/ui/coin.png" alt="" draggable={false} /></span>
                     )}
                   </div>
                 )}
@@ -346,40 +444,135 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                       : <span>{factoryInput.yieldIcon ?? factoryInput.shopIcon ?? '📦'}</span>}
                   </span>
                 )}
+                {locked && <img className="shop-lock-icon" src="/assets/ui/shop/lock.png" alt="" draggable={false} />}
+                {onSale && (
+                  <span className="shop-old-price" title="Стара ціна">
+                    <img src={item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png'} alt="" draggable={false} />
+                    <s>{item.originalPrice!.toLocaleString('uk-UA')}</s>
+                  </span>
+                )}
               </div>
-              <div className={`shop-modal-stats${item.mechanic === 'background_style' ? ' is-background-style' : ''}`} style={styles.statsContainer}>
-                <div className={`shop-modal-stat-row${item.mechanic === 'background_style' ? ' is-background-style-stat' : ''}`} style={styles.statRow}>
-                  <span className={item.mechanic === 'background_style' ? 'shop-modal-stat-label' : undefined}>Доступно з:</span>
-                  <span className="shop-modal-level" style={styles.levelRequirement}>{item.requiredLevel ?? 1} рівня</span>
-                </div>
+              {badge && <img className="shop-badge-ribbon" src={badge.image} alt={badge.label} draggable={false} />}
+              {user?.role === 'admin' && (
+                <>
+                  <button
+                    type="button"
+                    className="shop-admin-gear"
+                    title="Позначка та знижка (тільки адмін)"
+                    aria-label={`Позначка та знижка для ${item.name}`}
+                    onClick={(event) => { event.stopPropagation(); if (promoEditId === item.id) setPromoEditId(null); else openPromoEditor(item); }}
+                  >
+                    <Settings size={13} strokeWidth={2.6} />
+                  </button>
+                  {promoEditId === item.id && (
+                    <div className="shop-admin-popover" onClick={(event) => event.stopPropagation()}>
+                      <div className="shop-admin-popover-title">Назва</div>
+                      <input className="shop-admin-input" value={promoName} maxLength={80} onChange={(event) => setPromoName(event.target.value)} />
+                      <div className="shop-admin-row">
+                        <label className="shop-admin-field"><span className="shop-admin-popover-title">Початкова ціна</span>
+                          <input className="shop-admin-input" type="number" min="0" value={promoBase} onChange={(event) => setPromoBase(event.target.value)} />
+                        </label>
+                        <label className="shop-admin-field"><span className="shop-admin-popover-title">Розмір</span>
+                          <input className="shop-admin-input" type="number" min="0.1" max="5" step="0.1" value={promoScale} onChange={(event) => setPromoScale(event.target.value)} />
+                        </label>
+                      </div>
+                      {(item.productionTimeMs || item.type !== 'OTHER') && (
+                        <div className="shop-admin-row">
+                          {item.productionTimeMs ? (
+                            <label className="shop-admin-field"><span className="shop-admin-popover-title">Час (сек)</span>
+                              <input className="shop-admin-input" type="number" min="1" value={promoTime} onChange={(event) => setPromoTime(event.target.value)} />
+                            </label>
+                          ) : null}
+                          {item.type !== 'OTHER' && (
+                            <label className="shop-admin-field"><span className="shop-admin-popover-title">Досвід (XP)</span>
+                              <input className="shop-admin-input" type="number" min="0" value={promoXp} onChange={(event) => setPromoXp(event.target.value)} />
+                            </label>
+                          )}
+                        </div>
+                      )}
+                      <div className="shop-admin-popover-title">Позначка</div>
+                      <div className="shop-admin-chips">
+                        {[{ id: '' as const, label: 'Без' }, ...SHOP_BADGES].map((entry) => (
+                          <button
+                            key={entry.id || 'none'}
+                            type="button"
+                            className={`shop-admin-chip${promoBadge === entry.id ? ' is-active' : ''}`}
+                            onClick={() => setPromoBadge(entry.id)}
+                          >{entry.label}</button>
+                        ))}
+                      </div>
+                      <div className="shop-admin-popover-title">Знижка</div>
+                      <div className="shop-admin-chips">
+                        {[0, 10, 20, 30, 40, 50].map((percent) => (
+                          <button key={percent} type="button" className="shop-admin-chip" onClick={() => applyDiscountPercent(percent)}>
+                            {percent === 0 ? 'Без' : `-${percent}%`}
+                          </button>
+                        ))}
+                      </div>
+                      <label className="shop-admin-field"><span className="shop-admin-popover-title">Ціна зі знижкою (своя)</span>
+                        <input className="shop-admin-input" type="number" min="1" placeholder="Без знижки" value={promoSale} onChange={(event) => setPromoSale(event.target.value)} />
+                      </label>
+                      <div className="shop-admin-popover-title">Показувати</div>
+                      <div className="shop-admin-chips">
+                        {([['all', 'Усім'], ['admin', 'Тільки адмін'], ['hidden', 'Сховано']] as const).map(([id, label]) => (
+                          <button
+                            key={id}
+                            type="button"
+                            className={`shop-admin-chip${promoVisibility === id ? ' is-active' : ''}`}
+                            onClick={() => setPromoVisibility(id)}
+                          >{label}</button>
+                        ))}
+                      </div>
+                      <div className="shop-admin-popover-price">
+                        {promoSale.trim() && Number(promoSale) > 0 && Number(promoSale) < Number(promoBase)
+                          ? `${Number(promoBase).toLocaleString('uk-UA')} → ${Number(promoSale).toLocaleString('uk-UA')} (−${Math.round((1 - Number(promoSale) / Number(promoBase)) * 100)}%)`
+                          : `Ціна: ${Number(promoBase || 0).toLocaleString('uk-UA')}`}
+                      </div>
+                      <div className="shop-admin-actions">
+                        <button type="button" className="shop-admin-cancel" onClick={() => setPromoEditId(null)}>Скасувати</button>
+                        <button type="button" className="shop-admin-save" disabled={badgeSavingId === item.id} onClick={() => void savePromo(item)}>
+                          {badgeSavingId === item.id ? '…' : 'Зберегти'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className={`shop-modal-stats${isBackgroundStyle ? ' is-background-style' : ''}`}>
+                <StatRow icon={<img src="/assets/ui/shop/level.png" alt="" draggable={false} />} label="Доступно з:" value={`${item.requiredLevel ?? 1} рівня`} accent="level" />
                 {item.type === 'OTHER' ? (
-                  <div className={`shop-modal-stat-row${item.mechanic === 'background_style' ? ' is-background-style-stat' : ''}`} style={styles.statRow}>
-                    <span className={item.mechanic === 'background_style' ? 'shop-modal-stat-label' : undefined}>{item.mechanic === 'accelerate_growth' ? 'Прискорює:' : 'Механіка:'}</span>
-                    <span className={item.mechanic === 'background_style' ? 'shop-modal-stat-description' : undefined}>{item.mechanic === 'expand_farm' ? 'Розширення' : item.mechanic === 'accelerate_growth' && item.accelerationMs ? `на ${formatGameDuration(item.accelerationMs)}` : item.mechanic === 'grass_style' ? 'Змінює вигляд трави на фермі' : item.mechanic === 'background_style' ? 'День і ніч для фону ферми' : 'Спеціальна дія'}</span>
+                  <div className={`shop-stat-row${isBackgroundStyle ? ' is-description' : ''}`}>
+                    <span className="shop-stat-label">{item.mechanic === 'accelerate_growth' ? 'Прискорює:' : 'Механіка:'}</span>
+                    <span className="shop-stat-value">{item.mechanic === 'expand_farm' ? 'Розширення' : item.mechanic === 'accelerate_growth' && item.accelerationMs ? `на ${formatGameDuration(item.accelerationMs)}` : item.mechanic === 'grass_style' ? 'Змінює вигляд трави на фермі' : isBackgroundStyle ? 'День і ніч для фону ферми' : 'Спеціальна дія'}</span>
                   </div>
                 ) : item.type !== 'BUILDING' && typeof item.productionTimeMs === 'number' && item.productionTimeMs > 0 && (
-                  <div style={styles.statRow}>
-                    <span>Готовність:</span>
-                    <span>{formatGameDuration(item.productionTimeMs)}</span>
-                  </div>
+                  <StatRow icon={<img src="/assets/ui/shop/clock.png" alt="" draggable={false} />} label="Готовність:" value={formatGameDuration(item.productionTimeMs)} />
                 )}
-                {item.type !== 'OTHER' && <div style={styles.statRow}><span>Досвід:</span><span style={{ color: '#8b5ac7', fontWeight: 'bold' }}>+{item.plantingXp} XP</span></div>}
+                {item.type !== 'OTHER' && <StatRow icon={<img src="/assets/ui/shop/xp.png" alt="" draggable={false} />} label="Досвід:" value={`+${item.plantingXp} XP`} accent="xp" />}
               </div>
               <button
                 type="button"
-                className="shop-modal-buy-button"
-                style={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? { ...styles.buyBtn, ...styles.lockedBuyBtn } : styles.buyBtn}
+                className={`shop-modal-buy-button${locked ? ' is-locked' : ''}${!locked && !canAfford ? ' is-unaffordable' : ''}${!locked && canAfford && onSale ? ' is-sale' : ''}`}
                 onClick={() => void handleBuy(item, item.mechanic !== 'accelerate_growth')}
-                disabled={(user?.level ?? 1) < (item.requiredLevel ?? 1) || purchasingItemId === item.id}
-                title={(user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Доступно з ${item.requiredLevel ?? 1} рівня` : undefined}
+                disabled={locked || item.disabled || purchasingItemId === item.id}
+                title={locked ? `Доступно з ${item.requiredLevel ?? 1} рівня` : !canAfford ? 'Не вистачає коштів' : undefined}
               >
-                <span>{purchasingItemId === item.id ? 'Купуємо…' : (user?.level ?? 1) < (item.requiredLevel ?? 1) ? `Рівень ${item.requiredLevel ?? 1}` : `−${item.price.toLocaleString('uk-UA')}`}</span>
-                {purchasingItemId !== item.id && (user?.level ?? 1) >= (item.requiredLevel ?? 1) && <img src={item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png'} alt="" className="currency-small-icon" draggable={false} />}
+                {purchasingItemId === item.id ? <span>Купуємо…</span> : locked ? (
+                  <>
+                    <img src="/assets/ui/shop/lock.png" alt="" className="shop-button-icon shop-button-lock" draggable={false} />
+                    <span>{item.requiredLevel ?? 1} рівень</span>
+                  </>
+                ) : (
+                  <>
+                    <img src={item.priceCurrency === 'rubies' ? '/assets/ui/rubin.png' : '/assets/ui/coin.png'} alt="" className="shop-button-icon" draggable={false} />
+                    <span className="shop-price-new">{item.price.toLocaleString('uk-UA')}</span>
+                  </>
+                )}
               </button>
               </div>
             );
           })}
-          {loading && <p style={{color: 'white', gridColumn: '1 / -1', textAlign: 'center'}}>Завантаження каталогу...</p>}
+          {loading && filteredItems.length === 0 && <p style={{color: 'white', gridColumn: '1 / -1', textAlign: 'center'}}>Завантаження каталогу...</p>}
           {error && <p style={{color: 'white', gridColumn: '1 / -1', textAlign: 'center'}}>{error}</p>}
           {!loading && !error && filteredItems.length === 0 && <p style={{color: 'white', gridColumn: '1 / -1', textAlign: 'center'}}>Тут поки порожньо...</p>}
         </div>
@@ -400,22 +593,5 @@ const styles: Record<string, React.CSSProperties> = {
   resourceIcon: { width: '18px', height: '18px', objectFit: 'contain' },
   resourceValue: { color: '#263b58', fontWeight: '900', fontSize: '13px', textShadow: '0 1px rgba(255,255,255,0.55)' },
   tabContainer: { display: 'flex', alignItems: 'center', padding: '10px 12px', gap: '4px', background: 'linear-gradient(180deg, rgba(143, 94, 43, 0.09), rgba(143, 94, 43, 0.025))', borderBottom: '1px solid rgba(132, 83, 39, 0.18)' },
-  gridContainer: { padding: '14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px', overflowY: 'auto' },
-  itemCard: { background: 'linear-gradient(145deg, #fffdf1, #f1dfb9)', border: '1px solid #d8b77e', borderRadius: '12px', padding: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 3px 0 rgba(129, 81, 42, 0.16), 0 7px 14px rgba(112, 77, 34, 0.08)' },
-  cardTitle: { width: '100%', overflow: 'hidden', color: '#2b394d', fontWeight: '900', fontSize: '13px', marginBottom: '8px', textAlign: 'center', whiteSpace: 'nowrap' },
-  iconBox: { position: 'relative', width: '100%', height: '82px', background: 'linear-gradient(145deg, rgba(249,250,251,0.96), rgba(220,225,231,0.88))', border: '1px solid rgba(255,255,255,0.94)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.98)' },
-  shopImage: { width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 7px rgba(35,51,72,0.18))' },
-  backgroundShopImage: { display: 'block', width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' },
-  yieldBadge: { position: 'absolute', zIndex: 2, left: -7, bottom: -8, display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 29, margin: 0, padding: '2px 8px 2px 2px', border: '1px solid rgba(255,255,255,0.98)', borderRadius: 18, color: '#17653c', background: 'linear-gradient(180deg, rgba(235,250,241,0.98), rgba(193,230,207,0.96))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.98), 0 4px 10px rgba(35,86,57,0.2)' },
-  yieldCircle: { display: 'grid', placeItems: 'center', flex: '0 0 24px', width: 24, height: 24, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.98)', borderRadius: '50%', background: 'rgba(255,255,255,0.92)', boxShadow: '0 2px 5px rgba(45,70,58,0.12)', fontSize: 15 },
-  yieldImage: { width: '76%', height: '76%', objectFit: 'contain' },
-  yieldPrice: { display: 'inline-flex', alignItems: 'center', gap: 3, color: '#176c40', font: '900 11px/1.1 "Trebuchet MS", sans-serif', textShadow: '0 1px rgba(255,255,255,0.65)', whiteSpace: 'nowrap' },
-  yieldCoin: { width: 14, height: 14, objectFit: 'contain' },
-  cardEmoji: { fontSize: '38px' },
-  priceBadge: { background: 'rgba(255, 193, 7, 0.2)', border: '1px solid rgba(255, 193, 7, 0.5)', borderRadius: '10px', padding: '3px 8px', color: '#ffd54f', fontWeight: '800', fontSize: '12px', marginBottom: '10px' },
-  statsContainer: { width: '100%', fontFamily: 'Trebuchet MS, sans-serif', fontSize: '10px', color: '#65748a', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' },
-  statRow: { display: 'flex', justifyContent: 'space-between', width: '100%' },
-  levelRequirement: { color: '#445c78', fontWeight: '800' },
-  buyBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', minHeight: '36px', padding: '7px 8px', background: 'linear-gradient(180deg, #43d17c, #20a85a)', borderRadius: '11px', color: '#fff', fontFamily: 'Trebuchet MS, sans-serif', fontWeight: '900', fontSize: '12px', cursor: 'pointer', border: '1px solid rgba(31,151,81,0.7)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.58), 0 5px 12px rgba(31,164,88,0.2)' },
-  lockedBuyBtn: { borderColor: '#8e7757', color: '#f5e8ce', background: 'linear-gradient(180deg, #a79a81, #756b5b)', boxShadow: 'inset 0 1px 0 rgba(255, 248, 224, 0.35), 0 2px 0 #5e5448', cursor: 'not-allowed' },
+  gridContainer: { overflowY: 'auto' },
 };

@@ -93,6 +93,8 @@ const serializeAdminUser = (user, farm, mediaSettings = {}) => ({
     isBanned: user.isBanned ?? false,
     banUntil: user.banUntil ?? null,
     banReason: user.banReason ?? '',
+    lastSeenAt: user.lastSeenAt ?? null,
+    isOnline: Boolean(user.lastSeenAt && Date.now() - new Date(user.lastSeenAt).getTime() < 120_000),
     farmSize: farm?.size ?? FARM_STARTING_SIZE,
     grassStyle: farm?.grassStyle ?? 'classic',
     backgroundStyle: farm?.backgroundStyle ?? 'classic',
@@ -135,6 +137,9 @@ const serializeCatalogItem = (item) => ({
     plantingXp: item.plantingXp,
     requiredLevel: item.requiredLevel ?? 1,
     sortOrder: item.sortOrder,
+    shopBadge: item.shopBadge ?? null,
+    originalPrice: item.originalPrice ?? null,
+    discountPercent: item.discountPercent ?? null,
     productionTimeMs: item.productionTimeMs,
     mechanic: item.mechanic,
     grassTexture: item.grassTexture,
@@ -729,7 +734,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             'giftOnly',
             'mechanic', 'accelerationMs', 'grassTexture', 'grassEdgeOverlap', 'grassEdgeBlur',
             'backgroundImage', 'backgroundNightImage', 'appearanceAnimation',
-            'skinsEnabled', 'skins',
+            'skinsEnabled', 'skins', 'shopBadge', 'discountPercent', 'salePrice',
         ]);
         const updates = {};
 
@@ -745,6 +750,30 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             }
             if (field === 'priceCurrency') {
                 if (!['coins', 'rubies'].includes(value)) return res.status(400).json({ message: 'Валюта має бути монетами або рубінами' });
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'salePrice') {
+                if (value === '' || value === null || value === 0) { updates[field] = null; continue; }
+                if (!Number.isSafeInteger(value) || value < 1) {
+                    return res.status(400).json({ message: 'Ціна зі знижкою має бути цілим числом від 1' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'discountPercent') {
+                if (value === '' || value === null || value === 0) { updates[field] = 0; continue; }
+                if (!Number.isInteger(value) || value < 1 || value > 90) {
+                    return res.status(400).json({ message: 'Знижка має бути від 1 до 90 відсотків' });
+                }
+                updates[field] = value;
+                continue;
+            }
+            if (field === 'shopBadge') {
+                if (value === '' || value === null) { updates[field] = null; continue; }
+                if (!['new', 'sale', 'top', 'hit'].includes(value)) {
+                    return res.status(400).json({ message: 'Позначка товару має бути Новинка, Акція, Топ або Хіт' });
+                }
                 updates[field] = value;
                 continue;
             }
@@ -999,6 +1028,35 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
             }));
         }
         const { sortOrder, ...configUpdates } = updates;
+        delete configUpdates.salePrice;
+        if (updates.price !== undefined || updates.discountPercent !== undefined || updates.salePrice !== undefined) {
+            const basePrice = updates.price ?? item.originalPrice ?? item.price;
+            if (updates.salePrice !== undefined) {
+                if (updates.salePrice !== null && updates.salePrice >= basePrice) {
+                    return res.status(400).json({ message: 'Ціна зі знижкою має бути меншою за початкову' });
+                }
+                if (updates.salePrice) {
+                    configUpdates.originalPrice = basePrice;
+                    configUpdates.price = updates.salePrice;
+                    configUpdates.discountPercent = Math.max(1, Math.round((1 - updates.salePrice / basePrice) * 100));
+                } else {
+                    configUpdates.price = basePrice;
+                    configUpdates.originalPrice = null;
+                    configUpdates.discountPercent = null;
+                }
+            } else {
+                const percent = updates.discountPercent !== undefined ? updates.discountPercent : (item.discountPercent ?? 0);
+                if (percent > 0) {
+                    configUpdates.originalPrice = basePrice;
+                    configUpdates.price = Math.max(1, Math.round(basePrice * (1 - percent / 100)));
+                    configUpdates.discountPercent = percent;
+                } else {
+                    configUpdates.price = basePrice;
+                    configUpdates.originalPrice = null;
+                    configUpdates.discountPercent = null;
+                }
+            }
+        }
         let updatedItem = Object.keys(configUpdates).length
             ? await updateGameItemConfig(item.id, configUpdates)
             : item;
@@ -1075,16 +1133,21 @@ router.get('/users', async (req, res) => {
         const search = String(req.query.search ?? '').trim();
         const page = Math.max(1, Number.parseInt(String(req.query.page ?? '1'), 10) || 1);
         const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(String(req.query.limit ?? '50'), 10) || 50));
+        const status = String(req.query.status ?? 'all');
         const filter = search
             ? mongoose.isValidObjectId(search)
                 ? { _id: search }
                 : { username: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
             : {};
+        const onlineSince = new Date(Date.now() - 120_000);
+        if (status === 'online') filter.lastSeenAt = { $gte: onlineSince };
+        else if (status === 'offline') filter.$and = [{ $or: [{ lastSeenAt: null }, { lastSeenAt: { $lt: onlineSince } }] }];
+        else if (status === 'banned') filter.isBanned = true;
         const [total, users] = await Promise.all([
             User.countDocuments(filter),
             User.find(filter)
-                .select('_id username role avatar coins rubies xp inventory createdAt isBanned banUntil banReason')
-                .sort({ createdAt: -1, _id: 1 })
+                .select('_id username role avatar coins rubies xp inventory createdAt isBanned banUntil banReason lastSeenAt')
+                .sort(status === 'online' ? { lastSeenAt: -1, _id: 1 } : { createdAt: -1, _id: 1 })
                 .skip((page - 1) * limit)
                 .limit(limit)
                 .lean(),
@@ -1364,10 +1427,12 @@ router.post('/users/:userId/gifts', async (req, res) => {
         if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
         const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
         const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
-        const items = req.body?.items;
+        const items = req.body?.items ?? [];
+        const kind = ['gift', 'message', 'warning'].includes(req.body?.kind) ? req.body.kind : 'gift';
         if (title.length < 2 || title.length > 100 || description.length > 300 ||
-            !Array.isArray(items) || items.length < 1 || items.length > 20) {
-            return res.status(400).json({ message: 'Вкажи назву, опис до 300 символів і від 1 до 20 предметів' });
+            !Array.isArray(items) || items.length > 20 || (kind === 'gift' && items.length < 1) ||
+            (kind !== 'gift' && items.length === 0 && description.length < 1)) {
+            return res.status(400).json({ message: 'Вкажи заголовок, текст до 300 символів і (для подарунка) від 1 до 20 предметів' });
         }
         const giftItems = [];
         for (const entry of items) {
@@ -1396,7 +1461,7 @@ router.post('/users/:userId/gifts', async (req, res) => {
         }
         const user = await User.findByIdAndUpdate(
             req.params.userId,
-            { $push: { adminGifts: { title, description, items: giftItems } } },
+            { $push: { adminGifts: { title, description, kind, items: giftItems } } },
             { new: true, runValidators: true }
         ).select('_id');
         if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
@@ -1428,6 +1493,42 @@ router.post('/users/:userId/inventory', async (req, res) => {
         return res.json({ inventory: serializeInventory(user.inventory) });
     } catch (error) {
         return res.status(500).json({ message: 'Не вдалося оновити інвентар', error: error.message });
+    }
+});
+
+router.post('/users/:userId/inventory/remove', async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const { scope = 'all', itemId, amount } = req.body ?? {};
+        if (!['harvest', 'items', 'all'].includes(scope)) return res.status(400).json({ message: 'Невідомий розділ складу' });
+        const user = await User.findById(req.params.userId);
+        if (!user) return res.status(404).json({ message: 'Гравця не знайдено' });
+        const harvest = user.inventory ?? new Map();
+        const owned = user.itemInventory ?? new Map();
+        if (typeof itemId === 'string' && itemId) {
+            const map = scope === 'items' ? owned : harvest;
+            if (!map.has(itemId)) return res.status(404).json({ message: 'У гравця немає цього предмета' });
+            const removeAmount = amount === undefined ? null : Number(amount);
+            if (removeAmount !== null && (!Number.isSafeInteger(removeAmount) || removeAmount < 1)) {
+                return res.status(400).json({ message: 'Кількість має бути цілим числом від 1' });
+            }
+            const left = removeAmount === null ? 0 : Number(map.get(itemId) ?? 0) - removeAmount;
+            if (left > 0) map.set(itemId, left); else map.delete(itemId);
+        } else {
+            if (scope !== 'items') harvest.clear();
+            if (scope !== 'harvest') owned.clear();
+        }
+        user.inventory = harvest;
+        user.itemInventory = owned;
+        user.markModified('inventory');
+        user.markModified('itemInventory');
+        await user.save();
+        return res.json({
+            inventory: Object.fromEntries(user.inventory ?? []),
+            itemInventory: Object.fromEntries(user.itemInventory ?? []),
+        });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося очистити склад', error: error.message });
     }
 });
 

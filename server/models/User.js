@@ -6,6 +6,7 @@ export const USER_STARTING_RUBIES = 25;
 const adminGiftSchema = new mongoose.Schema({
     title: { type: String, required: true, trim: true, maxlength: 100 },
     description: { type: String, default: '', trim: true, maxlength: 300 },
+    kind: { type: String, enum: ['gift', 'message', 'warning'], default: 'gift' },
     items: {
         type: [{
             kind: { type: String, enum: ['item', 'coins', 'rubies', 'xp', 'level'], required: true },
@@ -13,7 +14,7 @@ const adminGiftSchema = new mongoose.Schema({
             amount: { type: Number, min: 1, max: 100000, required: true },
         }],
         required: true,
-        validate: (items) => items.length > 0 && items.length <= 20,
+        validate: (items) => items.length <= 20,
     },
     claimed: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },

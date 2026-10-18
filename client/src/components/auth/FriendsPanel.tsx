@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { ArrowLeft, Bell, Check, ChevronDown, ChevronUp, ClipboardCheck, Copy, Gift, House, MoreVertical, Search, UserRoundMinus, UserRoundPlus, Users, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronUp, ClipboardCheck, Copy, Gift, House, MoreVertical, Search, Settings, ShieldCheck, UserRoundPlus, X } from 'lucide-react';
 import { getLevelProgress } from '../../config/progression';
 import { getLevelIcon } from '../../config/levelIcons';
 import { socialApi, type FriendFarm, type ReceivedSocialGift, type SocialGiftProduct, type SocialPlayer } from '../../api/social.api';
@@ -11,9 +11,14 @@ import { useAuthStore } from '../../store/authStore';
 import type { TileData } from '../../store/useFarmStore';
 import { FarmCanvas } from '../game/FarmCanvas';
 import { GiftShopModal } from '../game/GiftShopModal';
+import { AdminPlayersModal } from '../game/AdminPlayersModal';
+import { startImpersonation } from '../../game/adminImpersonation';
 import { ReceivedGiftModal } from '../game/ReceivedGiftModal';
 
 const loadSocialLists = async () => Promise.all([socialApi.getFriends(), socialApi.getRequests()]);
+const FriendIcon: React.FC<{ n: number; size?: number; className?: string }> = ({ n, size = 20, className }) => (
+  <img className={`friend-ui-icon${className ? ` ${className}` : ''}`} src={`/assets/ui/friends/f${String(n).padStart(2, '0')}.png`} width={size} height={size} alt="" draggable={false} />
+);
 const shortenPlayerId = (id: string) => id.length > 15 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 const formatGiftCooldown = (until: string | undefined, now: number) => {
   if (!until) return '';
@@ -118,6 +123,19 @@ export const FriendsPanel: React.FC<{
   const [giftClock, setGiftClock] = useState(Date.now);
   const initialVisitFlow = useRef(false);
   const updateUser = useAuthStore((state) => state.updateUser);
+  const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
+  const [adminModal, setAdminModal] = useState<{ focusUserId?: string } | null>(null);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const [enteringFarm, setEnteringFarm] = useState(false);
+  const enterFriendFarm = async (id: string, name: string) => {
+    setEnteringFarm(true);
+    try {
+      await startImpersonation(id, name);
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+      setEnteringFarm(false);
+    }
+  };
   const hasGiftCooldowns = Object.keys(giftCooldowns).length > 0;
 
   useEffect(() => {
@@ -317,13 +335,13 @@ export const FriendsPanel: React.FC<{
       {isInGame ? (
         <nav className="game-friends-tabs" id="friends-heading" aria-label="Розділи друзів">
           <button type="button" className={activeTab === 'friends' ? 'is-active' : ''} onClick={() => setActiveTab('friends')}>
-            <Users size={16} /><span>Мої друзі</span><small className="friends-tab-count">{friends.length}</small>
+            <FriendIcon n={4} size={22} /><span>Мої друзі</span><small className="friends-tab-count">{friends.length}</small>
           </button>
           <button type="button" className={`${activeTab === 'requests' ? 'is-active' : ''}${requests.length > 0 ? ' has-new' : ''}`} onClick={() => setActiveTab('requests')}>
-            <Bell size={16} /><span>Запити</span><small className="friends-tab-count">{requests.length}</small>
+            <FriendIcon n={8} size={22} /><span>Запити</span><small className="friends-tab-count">{requests.length}</small>
           </button>
           <button type="button" className={`${activeTab === 'gifts' ? 'is-active' : ''}${receivedGifts.length > 0 ? ' has-new' : ''}`} onClick={() => setActiveTab('gifts')}>
-            <Gift size={16} /><span>Подарунки</span><small className="friends-tab-count">{receivedGifts.length}</small>
+            <FriendIcon n={7} size={22} /><span>Подарунки</span><small className="friends-tab-count">{receivedGifts.length}</small>
           </button>
         </nav>
       ) : (
@@ -340,7 +358,7 @@ export const FriendsPanel: React.FC<{
 
       {(!isInGame || activeTab === 'friends') && (
         <form className="friend-search" onSubmit={searchPlayers}>
-          <Search size={17} aria-hidden="true" />
+          {isInGame ? <FriendIcon n={5} size={22} /> : <Search size={17} aria-hidden="true" />}
           <input
             aria-label="Пошук гравця за логіном або ID"
             placeholder="Знайти за логіном або ID"
@@ -348,8 +366,7 @@ export const FriendsPanel: React.FC<{
             onChange={(event) => setSearchQuery(event.target.value)}
           />
           <button className="friend-add-button" type="submit" disabled={searching}>
-            <UserRoundPlus size={17} />
-            <span>{searching ? 'Шукаємо...' : 'Знайти'}</span>
+            {isInGame ? <FriendIcon n={3} size={22} /> : <UserRoundPlus size={17} />} <span>{searching ? 'Шукаємо...' : 'Знайти'}</span>
           </button>
         </form>
       )}
@@ -360,7 +377,7 @@ export const FriendsPanel: React.FC<{
             <div className="social-player-row" key={player.id}>
               <PlayerIdentity player={player} hideId={isInGame} levelIcons={levelIcons} />
               {player.relation === 'none' && (
-                <button className="social-icon-button" type="button" onClick={() => void runPlayerAction(player, 'send')} disabled={busyPlayerId === player.id} aria-label={`Надіслати запит ${player.username}`} title="Додати в друзі"><UserRoundPlus size={17} /></button>
+                <button className="social-icon-button" type="button" onClick={() => void runPlayerAction(player, 'send')} disabled={busyPlayerId === player.id} aria-label={`Надіслати запит ${player.username}`} title="Додати в друзі">{isInGame ? <FriendIcon n={3} size={24} /> : <UserRoundPlus size={17} />}</button>
               )}
               {player.relation === 'pending_sent' && <span className="social-state">Запит надіслано</span>}
               {player.relation === 'pending_received' && <button className="social-text-action" type="button" onClick={() => void runPlayerAction(player, 'accept')} disabled={busyPlayerId === player.id}>Прийняти</button>}
@@ -378,41 +395,41 @@ export const FriendsPanel: React.FC<{
             {requests.map((player) => (
               <div className="social-player-row" key={player.id}>
                 <PlayerIdentity player={player} hideId={isInGame} levelIcons={levelIcons} />
-                <button className="social-icon-button accept-button" type="button" onClick={() => void runPlayerAction(player, 'accept')} disabled={busyPlayerId === player.id} aria-label={`Прийняти запит від ${player.username}`} title="Прийняти"><Check size={17} /></button>
-                <button className="social-icon-button reject-button" type="button" onClick={() => void runPlayerAction(player, 'decline')} disabled={busyPlayerId === player.id} aria-label={`Відхилити запит від ${player.username}`} title="Відхилити"><X size={17} /></button>
+                <button className="social-icon-button accept-button" type="button" onClick={() => void runPlayerAction(player, 'accept')} disabled={busyPlayerId === player.id} aria-label={`Прийняти запит від ${player.username}`} title="Прийняти">{isInGame ? <FriendIcon n={32} size={24} /> : <Check size={17} />}</button>
+                <button className="social-icon-button reject-button" type="button" onClick={() => void runPlayerAction(player, 'decline')} disabled={busyPlayerId === player.id} aria-label={`Відхилити запит від ${player.username}`} title="Відхилити">{isInGame ? <FriendIcon n={33} size={24} /> : <X size={17} />}</button>
               </div>
             ))}
           </div>
         </div>
       )}
       {isInGame && activeTab === 'requests' && requests.length === 0 && !loadingLists && (
-        <div className="game-friends-empty"><Bell size={25} /><strong>Нових запитів немає</strong><span>Коли хтось запросить у друзі, запит з’явиться тут.</span></div>
+        <div className="game-friends-empty"><FriendIcon n={11} size={44} /><strong>Нових запитів немає</strong><span>Коли хтось запросить у друзі, запит з’явиться тут.</span></div>
       )}
 
       {isInGame && activeTab === 'gifts' && (
         <div className="friends-subsection">
           {receivedGifts.length === 0 ? (
-            <div className="game-friends-empty"><Gift size={27} /><strong>Подарунків поки немає</strong><span>Коли друг надішле подарунок, він з’явиться тут.</span></div>
+            <div className="game-friends-empty"><FriendIcon n={12} size={48} /><strong>Подарунків поки немає</strong><span>Коли друг надішле подарунок, він з’явиться тут.</span></div>
           ) : (
             <div className="social-list received-gifts-list">
               {receivedGifts.map((gift) => (
-                <article className="received-gift-row" key={gift.id}>
-                  <div className="received-gift-card-sender">
-                    <span className="received-gift-mini-avatar">{gift.senderAvatar ? <img src={gift.senderAvatar} alt="" /> : gift.senderName.slice(0, 1).toUpperCase()}</span>
-                    <span className="received-gift-sender-details">
+                <article className="rg-card" key={gift.id}>
+                  <div className="rg-sender">
+                    <span className="rg-avatar">{gift.senderAvatar ? <img src={gift.senderAvatar} alt="" /> : gift.senderName.slice(0, 1).toUpperCase()}</span>
+                    <span className="rg-sender-copy">
                       <small>ПОДАРУНОК ВІД</small>
                       <strong>{gift.senderName}</strong>
+                      <em><img src={getLevelIcon(gift.senderLevel, levelIcons)} alt="" />Рівень {gift.senderLevel}</em>
                     </span>
-                    <span className="received-gift-level"><img src={getLevelIcon(gift.senderLevel, levelIcons)} alt="" /> Рівень {gift.senderLevel}</span>
                   </div>
-                  <div className="received-gift-card-content">
-                    <div className="received-gift-image">{gift.image ? <img src={gift.image} alt="" draggable={false} /> : <Gift size={28} />}</div>
-                    <div className="received-gift-card-copy">
-                      <small>ДЛЯ ТВОЄЇ ФЕРМИ</small>
+                  <div className="rg-item">
+                    <span className="rg-image">{gift.image ? <img src={gift.image} alt="" draggable={false} /> : <FriendIcon n={7} size={34} />}</span>
+                    <span className="rg-item-copy">
                       <strong>{gift.itemName}</strong>
-                    </div>
-                    <button className="received-gift-open" type="button" onClick={() => setSelectedReceivedGift(gift)}><Gift size={15} /><span>Відкрити</span></button>
+                      <small>Для твоєї ферми</small>
+                    </span>
                   </div>
+                  <button className="rg-open" type="button" onClick={() => setSelectedReceivedGift(gift)}><FriendIcon n={7} size={26} /><span>Відкрити</span></button>
                 </article>
               ))}
             </div>
@@ -424,7 +441,7 @@ export const FriendsPanel: React.FC<{
         {!isInGame && <h3>Мої друзі <span>{friends.length}</span></h3>}
         {loadingLists ? <p className="social-empty">Завантажуємо список друзів...</p> : friends.length === 0 ? (
           isInGame
-            ? <div className="game-friends-empty"><Users size={27} /><strong>Тут будуть твої друзі</strong><span>Знайди гравців у полі пошуку вище та запроси їх до свого кола.</span></div>
+            ? <div className="game-friends-empty"><FriendIcon n={1} size={64} /><strong>Тут будуть твої друзі</strong><span>Знайди гравців у полі пошуку вище та запроси їх до свого кола.</span></div>
             : <p className="social-empty">Додай гравців, щоб навідуватися на їхні ферми.</p>
         ) : (
           <div className="social-list friends-grid">
@@ -441,14 +458,14 @@ export const FriendsPanel: React.FC<{
                   <div className="friend-row-actions">
                     {isInGame && (() => {
                       const remaining = formatGiftCooldown(giftCooldowns[friend.id], giftClock);
-                      return <button className={`friend-gift-button${remaining ? ' is-cooling' : ''}`} type="button" aria-disabled={Boolean(remaining)} onClick={() => setSelectedGiftFriend(friend)} aria-label={remaining ? `Подарувати ${friend.username}. Доступно через ${remaining}` : `Подарувати ${friend.username}`} title={remaining ? `Наступний подарунок через ${remaining}` : `Подарувати ${friend.username}`}><Gift size={16} />{remaining && <span>{formatCompactGiftCooldown(giftCooldowns[friend.id], giftClock)}</span>}</button>;
+                      return <button className={`friend-gift-button${remaining ? ' is-cooling' : ''}`} type="button" aria-disabled={Boolean(remaining)} onClick={() => setSelectedGiftFriend(friend)} aria-label={remaining ? `Подарувати ${friend.username}. Доступно через ${remaining}` : `Подарувати ${friend.username}`} title={remaining ? `Наступний подарунок через ${remaining}` : `Подарувати ${friend.username}`}>{isInGame ? <FriendIcon n={7} size={24} /> : <Gift size={16} />}{remaining && <span>{formatCompactGiftCooldown(giftCooldowns[friend.id], giftClock)}</span>}</button>;
                     })()}
-                    <button className="friend-visit-button" type="button" onClick={() => void openFriendFarm(friend)} disabled={openingFriend} aria-label={`Відвідати ферму ${friend.username}`}><House size={16} /><span>В гості</span></button>
+                    <button className="friend-visit-button" type="button" onClick={() => void openFriendFarm(friend)} disabled={openingFriend} aria-label={`Відвідати ферму ${friend.username}`}>{isInGame ? <FriendIcon n={27} size={22} /> : <House size={16} />}<span>В гості</span></button>
                     <div className="friend-menu-wrap">
                       <button className="friend-menu-button" type="button" onClick={() => setOpenFriendMenuId((openId) => openId === friend.id ? null : friend.id)} aria-expanded={openFriendMenuId === friend.id} aria-label={`Дії для друга ${friend.username}`} title="Інші дії"><MoreVertical size={18} /></button>
                       {openFriendMenuId === friend.id && (
                         <div className="friend-action-menu">
-                          <button type="button" onClick={() => { setFriendToRemoveId(friend.id); setOpenFriendMenuId(null); }}><UserRoundMinus size={15} /><span>Видалити друга</span></button>
+                          <button type="button" onClick={() => { setFriendToRemoveId(friend.id); setOpenFriendMenuId(null); }}><FriendIcon n={16} size={20} /><span>Видалити друга</span></button>
                         </div>
                       )}
                     </div>
@@ -507,6 +524,7 @@ export const FriendsPanel: React.FC<{
             <div className="friend-farm-player">
               <div className="friend-farm-identity">
                 {selectedFarm.profile.avatar ? <img src={selectedFarm.profile.avatar} alt="" /> : <span>{selectedFarm.profile.username.slice(0, 1).toUpperCase()}</span>}
+                {selectedFarm.profile.isAdmin && <img className="admin-role-badge" src="/assets/ui/admin/admin-badge.png" alt="Адміністратор" title="Адміністратор" draggable={false} />}
                 <div className="friend-farm-identity-copy">
                   <strong>{selectedFarm.profile.username}</strong>
                   <button className="friend-id-copy" type="button" onClick={() => void copyFriendId(selectedFarm.profile.id)} aria-label={copiedFriendId === selectedFarm.profile.id ? 'ID скопійовано' : 'Скопіювати ID друга'} title="Скопіювати повний ID">
@@ -522,6 +540,25 @@ export const FriendsPanel: React.FC<{
                 </div>
                 <span className="friend-total-xp">{selectedFarm.profile.xp.toLocaleString('uk-UA')} XP</span>
               </div>
+              {isAdmin && (
+                <div className="friend-admin-menu-wrap">
+                  <button type="button" className={`friend-admin-gear${adminMenuOpen ? ' is-on' : ''}`} onClick={() => setAdminMenuOpen((open) => !open)} title="Адмін (тільки для тебе)" aria-label="Адмін-меню" aria-expanded={adminMenuOpen}>
+                    <Settings size={15} strokeWidth={2.4} />
+                  </button>
+                  {adminMenuOpen && (
+                    <div className="friend-admin-menu" role="menu">
+                      {isInGame && (
+                        <button type="button" role="menuitem" disabled={enteringFarm} onClick={() => void enterFriendFarm(selectedFarm.profile.id, selectedFarm.profile.username)}>
+                          <ShieldCheck size={15} /> {enteringFarm ? 'Заходимо…' : 'Редагувати ферму як свою'}
+                        </button>
+                      )}
+                      <button type="button" role="menuitem" onClick={() => { setAdminMenuOpen(false); setAdminModal({ focusUserId: selectedFarm.profile.id }); }}>
+                        <Settings size={15} /> Баланс, склад, блокування
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <div className="friend-farm-contents-control">
@@ -542,6 +579,7 @@ export const FriendsPanel: React.FC<{
         </div>,
         document.querySelector('.app-shell') ?? document.body
       )}
+      {isAdmin && adminModal && <AdminPlayersModal key={adminModal.focusUserId ?? 'all'} focusUserId={adminModal.focusUserId} canEnterFarm={isInGame} onClose={() => setAdminModal(null)} />}
     </section>
   );
 };
@@ -552,6 +590,7 @@ const PlayerIdentity: React.FC<{ player: SocialPlayer; hideId?: boolean; levelIc
       <span className={`social-avatar${player.isOnline ? ' is-online' : ''}`} title={formatLastOnline(player)}>
         {player.avatar ? <img src={player.avatar} alt="" /> : <span>{player.username.slice(0, 1).toUpperCase()}</span>}
       </span>
+      {player.isAdmin && <img className="admin-role-badge" src="/assets/ui/admin/admin-badge.png" alt="Адміністратор" title="Адміністратор" draggable={false} />}
       {hideId && (
         <span className="social-player-level" aria-label={`Рівень ${getLevelProgress(player.xp).level}`}>
           <img src={getLevelIcon(getLevelProgress(player.xp).level, levelIcons)} alt="" draggable={false} />

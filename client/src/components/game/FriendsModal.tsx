@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Settings } from 'lucide-react';
 import { FriendsPanel } from '../auth/FriendsPanel';
+import { AdminPlayersModal } from './AdminPlayersModal';
+import { useAuthStore } from '../../store/authStore';
 
 interface FriendsModalProps {
   isOpen: boolean;
@@ -11,6 +14,8 @@ interface FriendsModalProps {
 }
 
 export const FriendsModal: React.FC<FriendsModalProps> = ({ isOpen, onClose, onRequestCountChange, visitPlayerId, onVisitHandled, onReturnFromInitialVisit }) => {
+  const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
+  const [adminOpen, setAdminOpen] = useState(false);
   if (!isOpen) return null;
 
   return (
@@ -30,11 +35,19 @@ export const FriendsModal: React.FC<FriendsModalProps> = ({ isOpen, onClose, onR
             <span className="modal-title-divider" aria-hidden="true" />
             <span className="social-modal-subtitle">Знайомся, додавай і відвідуй ферми</span>
           </div>
-          <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити друзів">✕</button>
+          <div className="modal-header-actions">
+            {isAdmin && (
+              <button type="button" className={`admin-settings-gear${adminOpen ? ' is-open' : ''}`} onClick={() => setAdminOpen((open) => !open)} title="Керування гравцями (тільки адмін)" aria-label="Керування гравцями">
+                <Settings size={18} strokeWidth={2.4} />
+              </button>
+            )}
+            <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити друзів">✕</button>
+          </div>
         </header>
         <div className="social-modal-content">
           <FriendsPanel isInGame onRequestCountChange={onRequestCountChange} initialVisitUserId={visitPlayerId} onInitialVisitHandled={onVisitHandled} onReturnFromInitialVisit={onReturnFromInitialVisit} />
         </div>
+        {isAdmin && adminOpen && <AdminPlayersModal onClose={() => setAdminOpen(false)} />}
       </section>
     </div>
   );

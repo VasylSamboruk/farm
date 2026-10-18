@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { User as AuthUser } from '../types/auth';
+import { useImpersonationStore } from './impersonationStore';
 
 export type User = AuthUser;
 
@@ -39,8 +40,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   updateUser: (data) => set((state) => {
     if (!state.user) return state;
-    const updated = { ...state.user, ...data };
-    localStorage.setItem('user', JSON.stringify(updated)); // Зберігаємо нові монети в пам'ять
+    const impersonating = Boolean(useImpersonationStore.getState().targetId);
+    // У режимі керування чужою фермою роль лишається адмінською, а дані не потрапляють у localStorage.
+    const updated = { ...state.user, ...data, ...(impersonating ? { role: 'admin' as const } : {}) };
+    if (!impersonating) localStorage.setItem('user', JSON.stringify(updated)); // Зберігаємо нові монети в пам'ять
     return { user: updated };
   })
 }));

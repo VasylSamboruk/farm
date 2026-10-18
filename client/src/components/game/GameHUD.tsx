@@ -1,7 +1,8 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Bell, Gift, Moon, Sparkles, Sun, Trophy, X } from 'lucide-react';
+import { ArrowLeft, Bell, Gift, Sparkles, Trophy, X } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useImpersonationStore } from '../../store/impersonationStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useToolStore } from '../../store/useToolStore';
 import { ShopModal } from './ShopModal'; // НЕ ЗАБУДЬ імпортувати ShopModal якщо його ще тут немає
@@ -22,12 +23,10 @@ import { leaderboardApi, type CompetitionReward, type LeaderboardPlayer } from '
 type ToolType = 'shovel' | 'trash' | 'move' | 'rotate' | null;
 
 interface GameHUDProps {
-  theme: 'light' | 'dark';
-  onToggleTheme: () => void;
   onReturnToProfile: () => void;
 }
 
-export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturnToProfile }) => {
+export const GameHUD: React.FC<GameHUDProps> = ({ onReturnToProfile }) => {
   const { user } = useAuthStore();
   const userId = user?.id;
   const { activeTool, setActiveTool, isSettingsOpen, setSettingsOpen, cancelInteraction } = useToolStore();
@@ -148,17 +147,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
     return () => clearTimeout(timer);
   }, [gameMessage, dismissGameMessage]);
 
+  const isImpersonating = useImpersonationStore((state) => Boolean(state.targetId));
+
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || isImpersonating) return;
     let active = true;
     void gameApi.getPendingLevelRewards()
       .then((rewards) => { if (active) setPendingRewards(rewards); })
       .catch((error: unknown) => console.error('Не вдалося завантажити нагороди рівня:', error));
     return () => { active = false; };
-  }, [user?.id, user?.xp, user?.level]);
+  }, [user?.id, user?.xp, user?.level, isImpersonating]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || isImpersonating) return;
     let active = true;
     const refreshAdminGifts = async () => {
       try {
@@ -176,7 +177,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshAdminGifts);
     };
-  }, [user?.id]);
+  }, [user?.id, isImpersonating]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -354,11 +355,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
           </section>
         </div>
       )}
-      {!pendingRewards[0] && !pendingCompetitionRewards[0] && pendingAdminGifts[0] && (
+      {!isImpersonating && !pendingRewards[0] && !pendingCompetitionRewards[0] && pendingAdminGifts[0] && (
         <div className="level-reward-overlay">
-          <section className="level-reward-dialog admin-gift-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-gift-title">
-            <div className="level-reward-gift"><Gift size={30} /></div>
-            <span className="level-reward-kicker">ПОДАРУНОК</span>
+          <section className={`level-reward-dialog admin-gift-dialog notice-card notice-${pendingAdminGifts[0].kind ?? 'gift'}`} role="dialog" aria-modal="true" aria-labelledby="admin-gift-title">
+            <header className="notice-card-banner" aria-hidden="true" />
+            <div className="notice-card-icon"><img src={`/assets/ui/admin/${pendingAdminGifts[0].kind === 'warning' ? 'warning' : pendingAdminGifts[0].kind === 'message' ? 'mail' : 'gift'}.png`} alt="" draggable={false} /></div>
             <h2 id="admin-gift-title">{pendingAdminGifts[0].title}</h2>
             {pendingAdminGifts[0].description && <p className="admin-gift-description">{pendingAdminGifts[0].description}</p>}
             <div className="level-reward-items">
@@ -366,6 +367,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
                 const item = giftItem.kind === 'item' ? gameItems[giftItem.itemId] : undefined;
                 const icon = giftItem.kind === 'coins' ? '/assets/ui/coin.png'
                   : giftItem.kind === 'rubies' ? '/assets/ui/rubin.png'
+                    : giftItem.kind === 'xp' ? '/assets/ui/shop/xp.png'
                     : giftItem.kind === 'level' ? getLevelIcon(giftItem.amount, levelIcons)
                       : item?.shopImage ?? item?.growthImages?.at(-1);
                 const label = giftItem.kind === 'coins' ? 'Монети'
@@ -382,7 +384,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
               })}
             </div>
             <button className="level-reward-claim" type="button" onClick={() => void claimAdminGift()} disabled={claimingAdminGift}>
-              {claimingAdminGift ? 'Забираємо…' : 'Забрати'}
+              {claimingAdminGift ? 'Забираємо…' : pendingAdminGifts[0].items.length === 0 ? 'Зрозуміло' : 'Забрати подарунок'}
             </button>
           </section>
         </div>
@@ -442,17 +444,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({ theme, onToggleTheme, onReturn
             <ArrowLeft size={18} />
           </button>
           <button
-            className="game-theme-toggle"
-            style={styles.themeToggleBtn}
-            onClick={onToggleTheme}
-            aria-label={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`}
-            title={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`}
-          >
-            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
-          <button
             className="game-achievements-button"
-            style={styles.themeToggleBtn}
+            style={styles.topRightActionBtn}
             type="button"
             onClick={() => { cancelInteraction(); setIsAchievementsOpen(true); }}
             aria-label={claimableAchievementCount > 0
@@ -611,7 +604,7 @@ const styles: Record<string, React.CSSProperties> = {
   currencyValue: { color: '#fff4d4', fontWeight: '900', fontSize: '13px', textShadow: '0 1px 2px #342114' },
   settingsBtn: { display: 'grid', placeItems: 'center', background: 'linear-gradient(180deg, #a36a36, #60391f)', border: '2px solid #3f2819', borderRadius: '12px', width: '40px', height: '40px', color: '#fff0c9', cursor: 'pointer', outline: 'none', boxShadow: 'inset 0 1px 0 rgba(255, 222, 164, 0.45), 0 3px 0 rgba(31, 23, 15, 0.65)' },
   topRightActions: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' },
-  themeToggleBtn: { display: 'grid', placeItems: 'center', background: 'linear-gradient(180deg, #976030, #57331d)', border: '2px solid #3f2819', borderRadius: '12px', width: '40px', height: '40px', color: '#fff0c9', cursor: 'pointer', outline: 'none', boxShadow: 'inset 0 1px 0 rgba(255, 222, 164, 0.45), 0 3px 0 rgba(31, 23, 15, 0.65)' },
+  topRightActionBtn: { display: 'grid', placeItems: 'center', background: 'linear-gradient(180deg, #976030, #57331d)', border: '2px solid #3f2819', borderRadius: '12px', width: '40px', height: '40px', color: '#fff0c9', cursor: 'pointer', outline: 'none', boxShadow: 'inset 0 1px 0 rgba(255, 222, 164, 0.45), 0 3px 0 rgba(31, 23, 15, 0.65)' },
   actionPanel: { position: 'absolute', bottom: 'calc(20px + clamp(48px, 15vw, 64px) + 8px)', left: '50%', display: 'flex', flexDirection: 'column', gap: '3px', pointerEvents: 'auto', transition: 'opacity 0.18s ease, transform 0.18s ease' },
   bottomPanelNoBg: { position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 'clamp(6px, 2vw, 18px)', pointerEvents: 'auto' },
   cleanIconBtn: { position: 'relative', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(48px, 15vw, 64px)', height: 'clamp(48px, 15vw, 64px)', outline: 'none', transition: 'transform 0.15s ease' },

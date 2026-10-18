@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, Clock3, Minus, Plus, Wheat } from 'lucide-react';
+import { ArrowRight, Hourglass, Minus, Plus, Wheat } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore, type TileData } from '../../store/useFarmStore';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
 import type { GameItemConfig } from '../../types/game';
 import { formatGameDuration } from '../../game/trees';
+import { AdminItemSettings } from './AdminItemSettings';
 
 interface FactoryModalProps {
   building: GameItemConfig;
@@ -33,8 +34,6 @@ export const FactoryModal: React.FC<FactoryModalProps> = ({ building, position, 
   const readyUnits = queuedUnits && startedAt && processingTimeMs > 0
     ? Math.min(queuedUnits, Math.floor(Math.max(0, now - startedAt) / processingTimeMs))
     : 0;
-  const nextReadyAt = startedAt && processingTimeMs > 0 ? startedAt + processingTimeMs : null;
-  const queueFill = Math.min(100, (queuedUnits / capacity) * 100);
   const processProgress = queuedUnits && startedAt && processingTimeMs > 0
     ? readyUnits === queuedUnits ? 100 : Math.min(100, (Math.max(0, now - startedAt) % processingTimeMs) / processingTimeMs * 100)
     : 0;
@@ -90,9 +89,13 @@ export const FactoryModal: React.FC<FactoryModalProps> = ({ building, position, 
             </span>
             <div className="housing-modal-title-copy">
               <h2 id="factory-modal-title">{building.name}</h2>
+              <span className="factory-header-caption">Переробляй урожай у цінні товари</span>
             </div>
           </div>
-          <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити">×</button>
+          <div className="modal-header-actions">
+            <AdminItemSettings item={building} />
+            <button className="game-modal-close" type="button" onClick={onClose} aria-label="Закрити">×</button>
+          </div>
         </header>
         <div className="housing-modal-content">
           <div className="factory-recipe-flow">
@@ -125,7 +128,7 @@ export const FactoryModal: React.FC<FactoryModalProps> = ({ building, position, 
                   {busy ? '…' : 'Завантажити'}
                 </button>
               </div>
-              <span><Clock3 size={12} />{formatGameDuration(processingTimeMs)}</span>
+              <span><img className="factory-clock" src="/assets/ui/shop/clock.png" alt="" draggable={false} />{formatGameDuration(processingTimeMs)}</span>
             </div>
             <article className="factory-product is-output">
               <span className="factory-product-image">
@@ -141,27 +144,33 @@ export const FactoryModal: React.FC<FactoryModalProps> = ({ building, position, 
           </div>
           <section className="factory-queue-panel" aria-label="Заповнення черги фабрики">
             <div className="factory-queue-heading">
-              <span>ЧЕРГА МЛИНА</span>
-              <small>{queuedUnits === 0 ? 'Порожньо' : `${queuedUnits} ${queuedUnits === 1 ? 'одиниця' : 'одиниць'} у роботі`}</small>
+              <span>Черга: {building.name}</span>
+              <small>Заповнено: <b>{queuedUnits}/{capacity}</b></small>
             </div>
-            <div className="factory-capacity-track" role="progressbar" aria-label="Заповнення черги" aria-valuemin={0} aria-valuemax={capacity} aria-valuenow={queuedUnits}>
-              <span style={{ width: `${queueFill}%` }} />
-              <strong>{queuedUnits}/{capacity}</strong>
+            <div className="factory-slots" role="list">
+              {Array.from({ length: capacity }, (_, index) => {
+                if (index >= queuedUnits) return <div className="factory-slot is-empty" role="listitem" key={index}><img src={outputImage ?? ''} alt="" draggable={false} hidden={!outputImage} /></div>;
+                const readyAt = startedAt && processingTimeMs > 0 ? startedAt + (index + 1) * processingTimeMs : null;
+                const isDone = index < readyUnits;
+                const isActive = index === readyUnits;
+                const left = readyAt ? Math.max(0, readyAt - now) : 0;
+                const label = isDone ? 'Готово' : formatGameDuration(left);
+                return (
+                  <div className={`factory-slot${isDone ? ' is-done' : ''}`} role="listitem" key={index}>
+                    {outputImage ? <img src={outputImage} alt="" draggable={false} /> : <span className="factory-slot-emoji">{building.yieldIcon ?? '🛍️'}</span>}
+                    <strong>{label}</strong>
+                    <span className="factory-slot-bar"><span style={{ width: `${isDone ? 100 : isActive ? processProgress : 0}%` }} /></span>
+                  </div>
+                );
+              })}
             </div>
             {queuedUnits > 0 && (
-              <div className="factory-active-job">
-                <div className="factory-job-caption">
-                  <strong>{readyUnits > 0 ? `${readyUnits} од. готово до збору` : 'Переробка триває'}</strong>
-                  <small>{readyUnits < queuedUnits && nextReadyAt ? `Наступна: ${formatGameDuration(nextReadyAt - now)}` : 'Уся черга готова'}</small>
-                </div>
-                <div className="factory-cycle-track"><span style={{ width: `${processProgress}%` }} /></div>
-                <button className="factory-collect-button" type="button" onClick={() => void collect()} disabled={busy || readyUnits === 0}>
-                  {busy ? 'Зачекай…' : `Забрати готове · ${readyUnits}`}
-                </button>
-              </div>
+              <button className="factory-collect-button" type="button" onClick={() => void collect()} disabled={busy || readyUnits === 0}>
+                {busy ? 'Зачекай…' : `Забрати готове · ${readyUnits}`}
+              </button>
             )}
           </section>
-          <p className="factory-capacity-note">Вільно місця: {Math.max(0, capacity - queuedUnits)} од.</p>
+          <p className="factory-capacity-note"><Hourglass size={20} aria-hidden="true" />Вільно місця: <b>{Math.max(0, capacity - queuedUnits)} од.</b></p>
           {notice && <p className="factory-notice" role="status">{notice}</p>}
         </div>
       </section>

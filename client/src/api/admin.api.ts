@@ -37,6 +37,8 @@ export interface AdminUser {
   isBanned: boolean;
   banUntil: string | null;
   banReason: string;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
   farmItems: AdminFarmItem[];
 }
 
@@ -58,6 +60,10 @@ export interface AdminCatalogItem {
   plantingXp: number;
   requiredLevel: number;
   sortOrder: number;
+  shopBadge?: 'new' | 'sale' | 'top' | 'hit' | null;
+  originalPrice?: number | null;
+  discountPercent?: number | null;
+  salePrice?: number | null;
   productionTimeMs?: number | null;
   mechanic?: 'expand_farm' | 'accelerate_growth' | 'grass_style' | 'background_style' | null;
   grassTexture?: string | null;
@@ -150,10 +156,10 @@ export interface AdminLeaderboardPlayers {
 }
 
 export const adminApi = {
-  getUsers: async (search = '', page = 1) => {
+  getUsers: async (search = '', page = 1, status: 'all' | 'online' | 'offline' | 'banned' = 'all') => {
     const response = await api.get<{ users: AdminUser[]; page: number; limit: number; total: number; pages: number }>(
       '/admin/users',
-      { params: { search, page, limit: 50 } }
+      { params: { search, page, limit: 50, status } }
     );
     return response.data;
   },
@@ -307,7 +313,11 @@ export const adminApi = {
     const response = await api.patch<{ user: AdminUser }>(`/admin/users/${userId}/stats`, { coinsDelta, rubiesDelta, xpDelta });
     return response.data.user;
   },
-  sendGift: async (userId: string, gift: { title: string; description: string; items: AdminGiftReward[] }) => {
+  removeInventory: async (userId: string, scope: 'harvest' | 'items' | 'all', itemId?: string, amount?: number) => {
+    const response = await api.post<{ inventory: Record<string, number>; itemInventory: Record<string, number> }>(`/admin/users/${userId}/inventory/remove`, { scope, itemId, amount });
+    return response.data;
+  },
+  sendGift: async (userId: string, gift: { title: string; description: string; kind?: 'gift' | 'message' | 'warning'; items: AdminGiftReward[] }) => {
     const response = await api.post<{ success: boolean; message: string }>(`/admin/users/${userId}/gifts`, gift);
     return response.data;
   },

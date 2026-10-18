@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Check, Copy, LogOut, Moon, Package, Play, ShieldCheck, Sparkles, Sprout, Sun, X } from 'lucide-react';
+import { Camera, Check, Copy, LogOut, Package, Play, ShieldCheck, Sparkles, Sprout, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { getLevelProgress } from '../../config/progression';
 import { getLevelIcon } from '../../config/levelIcons';
@@ -12,13 +12,11 @@ import { FriendsPanel } from './FriendsPanel';
 
 interface PlayerProfileProps {
   user: User;
-  theme: 'light' | 'dark';
-  onToggleTheme: () => void;
   onPlay: () => void;
   onOpenAdmin: () => void;
 }
 
-export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onToggleTheme, onPlay, onOpenAdmin }) => {
+export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, onPlay, onOpenAdmin }) => {
   const logout = useAuthStore((state) => state.logout);
   const updateUser = useAuthStore((state) => state.updateUser);
   const backgroundStyle = useFarmStore((state) => state.backgroundStyle);
@@ -119,7 +117,6 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
             <div className="wallet-chip gem-chip"><img src="/assets/ui/rubin.png" alt="" draggable={false} /><strong>25</strong></div>
           </div>
           <div className="farmer-header-actions">
-            <button className="top-icon-button" type="button" onClick={onToggleTheme} aria-label={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`} title={`Увімкнути ${theme === 'dark' ? 'світлу' : 'темну'} тему`}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>
             {user.role === 'admin' && <button className="top-icon-button admin-entry-button" type="button" onClick={onOpenAdmin} aria-label="Відкрити адмін-панель" title="Адмін-панель"><ShieldCheck size={18} /></button>}
             <button className="top-icon-button" type="button" onClick={logout} aria-label="Вийти з акаунта" title="Вийти"><LogOut size={18} /></button>
           </div>
@@ -184,7 +181,7 @@ export const PlayerProfile: React.FC<PlayerProfileProps> = ({ user, theme, onTog
       </div>
       {showAvatarPicker && createPortal(
         <div className="avatar-picker-overlay" onClick={() => !avatarSaving && setShowAvatarPicker(false)}>
-          <section className={`avatar-picker-dialog${theme === 'dark' ? ' is-dark' : ''}`} role="dialog" aria-modal="true" aria-labelledby="avatar-picker-title" onClick={(event) => event.stopPropagation()}>
+          <section className="avatar-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="avatar-picker-title" onClick={(event) => event.stopPropagation()}>
             <button className="avatar-picker-close" type="button" onClick={() => setShowAvatarPicker(false)} disabled={avatarSaving} aria-label="Закрити"><X size={18} /></button>
             <div className="avatar-picker-heading"><Camera size={20} /><div><h2 id="avatar-picker-title">Обери аватар</h2><p>Вибери готовий або завантаж власне фото</p></div></div>
             <div className="avatar-picker-grid">

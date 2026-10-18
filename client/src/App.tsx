@@ -8,6 +8,8 @@ import { socialApi } from './api/social.api';
 import { AuthForm } from './components/auth/AuthForm';
 import { PlayerProfile } from './components/auth/PlayerProfile';
 import { AdminUsers } from './components/admin/AdminUsers';
+import { ImpersonationBanner } from './components/game/ImpersonationBanner';
+import { useImpersonationStore } from './store/impersonationStore';
 import { AdminShop } from './components/admin/AdminShop';
 import { AdminCreateItem } from './components/admin/AdminCreateItem.tsx';
 import { AdminMedia } from './components/admin/AdminMedia';
@@ -38,7 +40,8 @@ export const App: React.FC = () => {
   const loadFarm = useFarmStore((state) => state.loadFarm);
   const loadGameItems = useGameConfigStore((state) => state.loadItems);
   const userId = user?.id;
-  const sessionKey = userId ? `${userId}:${localStorage.getItem('token') ?? ''}` : null;
+  const impersonatorId = useImpersonationStore((state) => state.adminUser?.id);
+  const sessionKey = userId ? `${impersonatorId ?? userId}:${localStorage.getItem('token') ?? ''}` : null;
   const [stage, setStage] = useState<StartupStage>('session');
   const [startupError, setStartupError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
@@ -53,11 +56,7 @@ export const App: React.FC = () => {
           : location.pathname === '/admin/achievements' ? 'achievements'
             : location.pathname === '/admin/leaderboard' ? 'leaderboard' : 'users';
   const playRequested = Boolean(sessionKey && sessionKey === playSessionKey);
-  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    localStorage.getItem('farmcanvas:theme') === 'light' ? 'light' : 'dark'
-  );
 
-  const toggleTheme = () => setTheme((current) => current === 'dark' ? 'light' : 'dark');
   const returnToProfile = () => {
     setStage('session');
     setStartupError(null);
@@ -68,10 +67,6 @@ export const App: React.FC = () => {
     setStartupError(null);
     setPlaySessionKey(sessionKey);
   };
-
-  useEffect(() => {
-    localStorage.setItem('farmcanvas:theme', theme);
-  }, [theme]);
 
   useEffect(() => {
     if (isAdminRoute && location.pathname === '/admin') navigate('/admin/users', { replace: true });
@@ -189,12 +184,12 @@ export const App: React.FC = () => {
   }, [userId, loadFarm, loadGameItems, setUser, retryKey, playRequested]);
 
   if (!user || !localStorage.getItem('token')) {
-    return <div className="app-shell" data-theme={theme}><AuthForm /></div>;
+    return <div className="app-shell" data-theme="light"><AuthForm /></div>;
   }
 
   if (isAdminRoute && user.role === 'admin') {
     return (
-      <div className="app-shell">
+      <div className="app-shell" data-theme="light">
         <AdminShell
           section={adminSection}
           username={user.username}
@@ -226,8 +221,8 @@ export const App: React.FC = () => {
 
   if (!playRequested) {
     return (
-      <div className="app-shell" data-theme={theme}>
-        <PlayerProfile key={user.id} user={user} theme={theme} onToggleTheme={toggleTheme} onPlay={startPlaying} onOpenAdmin={() => navigate('/admin/users')} />
+      <div className="app-shell" data-theme="light">
+        <PlayerProfile key={user.id} user={user} onPlay={startPlaying} onOpenAdmin={() => navigate('/admin/users')} />
       </div>
     );
   }
@@ -235,7 +230,7 @@ export const App: React.FC = () => {
   if (stage !== 'ready') {
     const progress = stage === 'session' ? 12 : stage === 'farm' ? 42 : 78;
     return (
-      <div className="app-shell" data-theme={theme}>
+      <div className="app-shell" data-theme="light">
       <main className="startup-screen" aria-live="polite">
         <section className="startup-panel">
           <div className="startup-mark" aria-hidden="true">✦</div>
@@ -264,9 +259,10 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="app-shell" data-theme={theme}>
+    <div className="app-shell" data-theme="light">
       <main className="game-screen">
-        <GameHUD theme={theme} onToggleTheme={toggleTheme} onReturnToProfile={returnToProfile} />
+        <GameHUD onReturnToProfile={returnToProfile} />
+        <ImpersonationBanner />
         <FarmCanvas />
       </main>
     </div>

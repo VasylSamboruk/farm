@@ -20,10 +20,10 @@ router.use(async (req, res, next) => {
 
     try {
         const payload = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(payload.userId).select('isBanned banUntil');
+        const user = await User.findById(payload.userId).select('isBanned banUntil banReason');
         if (!user) return res.status(401).json({ message: 'Гравця не знайдено' });
         if (user.isBanned && (!user.banUntil || user.banUntil > new Date())) {
-            return res.status(403).json({ message: 'Акаунт заблоковано', banUntil: user.banUntil });
+            return res.status(403).json({ message: 'Акаунт заблоковано', banUntil: user.banUntil, banned: true, banReason: user.banReason ?? '' });
         }
         req.authUserId = payload.userId;
         return next();
@@ -36,6 +36,7 @@ const publicProfile = (user) => ({
     id: String(user._id),
     username: user.username,
     avatar: user.avatar ?? '',
+    isAdmin: user.role === 'admin',
     xp: user.xp ?? 0,
     level: getLevelProgress(user.xp ?? 0).level,
     isOnline: Boolean(user.lastSeenAt && Date.now() - new Date(user.lastSeenAt).getTime() < 120_000),
@@ -290,7 +291,7 @@ router.get('/search', async (req, res) => {
             ? { _id: query }
             : { username: { $regex: escapeRegex(query), $options: 'i' } };
         const players = await User.find({ $and: [criteria, { _id: { $ne: currentUser._id } }] })
-            .select('username avatar xp level lastSeenAt friends friendRequestsReceived friendRequestsSent')
+            .select('username avatar role xp level lastSeenAt friends friendRequestsReceived friendRequestsSent')
             .limit(20)
             .lean();
 
@@ -317,7 +318,7 @@ router.get('/friends', async (req, res) => {
         const currentUser = await getCurrentUser(req.authUserId);
         if (!currentUser) return res.status(404).json({ message: 'Гравця не знайдено' });
         const friends = await User.find({ _id: { $in: currentUser.friends ?? [] } })
-            .select('username avatar xp level lastSeenAt')
+            .select('username avatar role xp level lastSeenAt')
             .lean();
         await Promise.all(friends.map(ensureDefaultAvatar));
         return res.json({ friends: friends.map(publicProfile) });
@@ -331,7 +332,7 @@ router.get('/requests', async (req, res) => {
         const currentUser = await getCurrentUser(req.authUserId);
         if (!currentUser) return res.status(404).json({ message: 'Гравця не знайдено' });
         const requests = await User.find({ _id: { $in: currentUser.friendRequestsReceived ?? [] } })
-            .select('username avatar xp level lastSeenAt')
+            .select('username avatar role xp level lastSeenAt')
             .lean();
         await Promise.all(requests.map(ensureDefaultAvatar));
         return res.json({ requests: requests.map(publicProfile) });
@@ -430,7 +431,7 @@ router.get('/profile/:friendId', async (req, res) => {
         }
 
         const [friend, farm] = await Promise.all([
-            User.findById(req.params.friendId).select('username avatar xp level lastSeenAt'),
+            User.findById(req.params.friendId).select('username avatar role xp level lastSeenAt'),
             Farm.findOne({ userId: req.params.friendId }).lean(),
         ]);
         if (!friend || !farm) return res.status(404).json({ message: 'Профіль або ферму не знайдено' });

@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { useImpersonationStore } from '../store/impersonationStore';
+import { useBanStore } from '../store/banStore';
 
 export const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/+$/, '');
 
@@ -12,5 +14,19 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const impersonatedId = useImpersonationStore.getState().targetId;
+  if (impersonatedId) {
+    config.headers['X-Impersonate-User'] = impersonatedId;
+  }
   return config;
 });
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const data = error?.response?.data;
+    if (error?.response?.status === 403 && data?.banned && !useImpersonationStore.getState().targetId) {
+      useBanStore.getState().show({ banUntil: data.banUntil ?? null, reason: data.banReason ?? '' });
+    }
+    return Promise.reject(error);
+  },
+);

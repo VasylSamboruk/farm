@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Gift, Minus, Moon, PackageOpen, Plus, Sun } from 'lucide-react';
+
+const TAB_ICONS = { harvest: 'skl1', farm: 'skl2', other: 'skl3', styles: 'skl4' } as const;
+const SORT_OPTIONS = [['name', 'За назвою'], ['amount', 'За кількістю'], ['price', 'За ціною']] as const;
 import { useAuthStore } from '../../store/authStore';
 import { useFarmStore } from '../../store/useFarmStore';
 import { useGameConfigStore } from '../../store/useGameConfigStore';
@@ -15,11 +18,16 @@ interface InventoryModalProps {
 
 export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<'harvest' | 'farm' | 'other' | 'styles' | null>(null);
+  const [sortOpen, setSortOpen] = useState(false);
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [sellingItemId, setSellingItemId] = useState<string | null>(null);
   const [applyingGrassStyle, setApplyingGrassStyle] = useState<string | null>(null);
   const [applyingBackgroundStyle, setApplyingBackgroundStyle] = useState<string | null>(null);
   const [styleSection, setStyleSection] = useState<'grass' | 'background'>('grass');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'amount' | 'price'>('name');
+  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
+  const [sellingSelected, setSellingSelected] = useState(false);
   const repeatTimeoutRef = useRef<number | null>(null);
   const repeatIntervalRef = useRef<number | null>(null);
   const user = useAuthStore((state) => state.user);
@@ -68,6 +76,19 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
     categoryCounts.other > 0 ? 'other' : categoryCounts.farm > 0 ? 'farm' : categoryCounts.harvest > 0 ? 'harvest' : 'styles'
   );
 
+  const searchQuery = search.trim().toLowerCase();
+  const harvestList = stockedItems
+    .filter((item) => (item.yieldName ?? item.name).toLowerCase().includes(searchQuery))
+    .sort((left, right) => {
+      if (sortBy === 'amount') return (inventory[right.yieldItem!] ?? 0) - (inventory[left.yieldItem!] ?? 0);
+      if (sortBy === 'price') return (right.sellPrice ?? 0) - (left.sellPrice ?? 0);
+      return (left.yieldName ?? left.name).localeCompare(right.yieldName ?? right.name, 'uk');
+    });
+  const selectedItems = stockedItems.filter((item) => selectedIds[item.yieldItem!]);
+  const selectedTotal = selectedItems.reduce((sum, item) => sum + (inventory[item.yieldItem!] ?? 0) * (item.sellPrice ?? 0), 0);
+
+  const toggleSelected = (itemId: string) => setSelectedIds((current) => ({ ...current, [itemId]: !current[itemId] }));
+
   const stopAmountHold = () => {
     if (repeatTimeoutRef.current !== null) window.clearTimeout(repeatTimeoutRef.current);
     if (repeatIntervalRef.current !== null) window.clearInterval(repeatIntervalRef.current);
@@ -78,7 +99,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
   const changeAmountBy = (itemId: string, delta: number, max: number) => {
     setAmounts((current) => ({
       ...current,
-      [itemId]: Math.min(max, Math.max(0, Math.floor((current[itemId] ?? 1) + delta))),
+      [itemId]: Math.min(max, Math.max(1, Math.floor((current[itemId] ?? 1) + delta))),
     }));
   };
 
@@ -102,6 +123,16 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
     setSellingItemId(itemId);
     await sellItem(user.id, itemId, amount);
     setSellingItemId(null);
+  };
+
+  const sellSelected = async () => {
+    if (!user || sellingSelected || sellingItemId || selectedItems.length === 0) return;
+    setSellingSelected(true);
+    for (const item of selectedItems) {
+      await sellItem(user.id, item.yieldItem!, inventory[item.yieldItem!] ?? 0);
+    }
+    setSelectedIds({});
+    setSellingSelected(false);
   };
 
   const handleUseFarmItem = async (itemId: string, mechanic?: string | null) => {
@@ -181,16 +212,47 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
               className={`shop-modal-tab${visibleCategory === category ? ' is-active' : ''}`}
               onClick={() => setActiveCategory(category)}
             >
-              {label} <span className="inventory-tab-count">{categoryCounts[category]}</span>
+              <img className="inventory-tab-icon" src={`/assets/ui/inventory/${TAB_ICONS[category]}.png`} alt="" draggable={false} />
+              <span className="inventory-tab-label">{label}</span><span className="inventory-tab-count">{categoryCounts[category]}</span>
             </button>
           ))}
         </div>
         {stockedItems.length === 0 && stockedFarmItems.length === 0 && grassStyles.length === 0 ? (
           <div className="inventory-modal-empty" style={styles.empty}>Поки що склад порожній</div>
         ) : (
+          <>
+          {visibleCategory === 'harvest' && stockedItems.length > 0 && (
+            <div className="inventory-toolbar">
+              <label className="inventory-search">
+                <img className="inventory-ui-icon" src="/assets/ui/inventory/skl6.png" alt="" draggable={false} />
+                <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук..." />
+                {search && <button type="button" onClick={() => setSearch('')} aria-label="Очистити пошук">✕</button>}
+              </label>
+              <div className="inventory-sort-wrap">
+                <button type="button" className="inventory-sort" onClick={() => setSortOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={sortOpen}>
+                  <img className="inventory-ui-icon" src="/assets/ui/inventory/skl5.png" alt="" draggable={false} />
+                  <span className="inventory-sort-value">{SORT_OPTIONS.find(([value]) => value === sortBy)?.[1]}</span>
+                  <span className={`inventory-sort-arrow${sortOpen ? ' is-open' : ''}`} aria-hidden="true">▾</span>
+                </button>
+                {sortOpen && (
+                  <>
+                    <div className="inventory-sort-backdrop" onClick={() => setSortOpen(false)} />
+                    <ul className="inventory-sort-menu" role="listbox">
+                      {SORT_OPTIONS.map(([value, text]) => (
+                        <li key={value}>
+                          <button type="button" role="option" aria-selected={sortBy === value} className={sortBy === value ? 'is-active' : ''} onClick={() => { setSortBy(value); setSortOpen(false); }}>
+                            {text}{sortBy === value && <span aria-hidden="true">✓</span>}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           <div className="modal-scrollbar-hidden" style={styles.grid}>
-              {visibleCategory === 'harvest' && stockedItems.length > 0 && <h3 className="inventory-section-title" style={styles.sectionTitle}>Урожай</h3>}
-              {visibleCategory === 'harvest' && stockedItems.map((item) => {
+              {visibleCategory === 'harvest' && harvestList.map((item) => {
                 const itemId = item.yieldItem!;
                 const productImage = item.yieldImage
                   ?? (itemId === 'flour' ? '/assets/buildings/fabrik/muka.png' : undefined);
@@ -198,72 +260,66 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                 const amount = Math.min(amounts[itemId] ?? 1, stockAmount);
                 const totalCoins = amount * (item.sellPrice ?? 0);
                 const isSelling = sellingItemId === itemId;
+                const isSelected = Boolean(selectedIds[itemId]);
+                const name = item.yieldName ?? item.name;
 
                 return (
-                  <article key={itemId} className="game-modal-card" style={styles.card}>
-                    <h3 className="inventory-card-title" style={{ ...styles.cardTitle, fontSize: `${getTitleFontSize(item.yieldName ?? item.name)}px` }} title={item.yieldName ?? item.name}>{item.yieldName ?? item.name}</h3>
-                    <div className="inventory-image-box" style={styles.imageBox}>
+                  <article
+                    key={itemId}
+                    className={`game-modal-card inventory-card${isSelected ? ' is-selected' : ''}`}
+                    onClick={() => toggleSelected(itemId)}
+                    role="button"
+                    aria-pressed={isSelected}
+                  >
+                    <h3 className="inventory-card-title" style={{ fontSize: `${getTitleFontSize(name)}px` }} title={name}>{name}</h3>
+                    <span className="inventory-stock-badge" title="Запас">{stockAmount}</span>
+                    {isSelected && <span className="inventory-check" aria-hidden="true">✓</span>}
+                    <div className="inventory-image-box">
                       {productImage ? (
-                        <img src={productImage} alt="" style={styles.productImage} draggable={false} />
+                        <img src={productImage} alt="" className="inventory-product-image" draggable={false} />
                       ) : (
-                        <span style={styles.productIcon}>{item.yieldIcon ?? item.shopIcon ?? '📦'}</span>
+                        <span className="inventory-product-emoji">{item.yieldIcon ?? item.shopIcon ?? '📦'}</span>
                       )}
                     </div>
-                    <div className="inventory-stock-line" style={styles.stockLine}><span>Запас</span><strong>{stockAmount}</strong></div>
-                    <div className="inventory-stock-line" style={styles.stockLine}><span>Ціна / шт.</span><strong className="currency-inline inventory-unit-price" style={styles.unitPrice}>{item.sellPrice ?? 0}<img src="/assets/ui/coin.png" alt="" draggable={false} /></strong></div>
-                    <div style={styles.stepper}>
+                    <div className="inventory-price-line"><span className="inventory-coin-label"><img className="inventory-coin" src="/assets/ui/coin.png" alt="" draggable={false} />Ціна / шт.</span><strong>{item.sellPrice ?? 0}</strong></div>
+                    <div className="inventory-stepper" onClick={(event) => event.stopPropagation()}>
                       <button
                         type="button"
                         className="inventory-step-button"
-                        style={styles.stepButton}
                         onPointerDown={startAmountHold(itemId, -1, stockAmount)}
                         onPointerUp={stopAmountHold}
                         onPointerCancel={stopAmountHold}
                         onLostPointerCapture={stopAmountHold}
                         onContextMenu={(event) => event.preventDefault()}
-                        disabled={amount <= 0 || isSelling}
-                        aria-label={`Зменшити кількість ${item.yieldName ?? item.name}`}
+                        disabled={amount <= 1 || isSelling}
+                        aria-label={`Зменшити кількість ${name}`}
                       >
                         <Minus size={14} />
                       </button>
-                      <output className="inventory-step-value" style={styles.stepValue}>{amount}</output>
+                      <output className="inventory-step-value">{amount}</output>
                       <button
                         type="button"
                         className="inventory-step-button"
-                        style={styles.stepButton}
                         onPointerDown={startAmountHold(itemId, 1, stockAmount)}
                         onPointerUp={stopAmountHold}
                         onPointerCancel={stopAmountHold}
                         onLostPointerCapture={stopAmountHold}
                         onContextMenu={(event) => event.preventDefault()}
                         disabled={amount >= stockAmount || isSelling}
-                        aria-label={`Збільшити кількість ${item.yieldName ?? item.name}`}
+                        aria-label={`Збільшити кількість ${name}`}
                       >
                         <Plus size={14} />
                       </button>
                     </div>
-                    <div style={styles.sellActions}>
-                      <button
-                        type="button"
-                        className="inventory-sell-button"
-                        style={styles.sellButton}
-                        onClick={() => void handleSell(itemId, amount)}
-                        disabled={!item.sellPrice || amount <= 0 || isSelling}
-                      >
-                        <span>{isSelling ? '...' : `${amount} шт.`}</span>
-                        <small style={styles.sellPrice}>+{totalCoins.toLocaleString('uk-UA')}<img src="/assets/ui/coin.png" alt="" style={styles.sellPriceCoin} draggable={false} /></small>
-                      </button>
-                      <button
-                        type="button"
-                        className="inventory-sell-all-button"
-                        style={styles.sellAllButton}
-                        onClick={() => void handleSell(itemId, stockAmount)}
-                        disabled={!item.sellPrice || stockAmount <= 0 || isSelling}
-                      >
-                        <span>{isSelling ? '...' : 'Продати все'}</span>
-                        <small style={styles.sellPrice}>+{(stockAmount * (item.sellPrice ?? 0)).toLocaleString('uk-UA')}<img src="/assets/ui/coin.png" alt="" style={styles.sellPriceCoin} draggable={false} /></small>
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className="inventory-sell-button inventory-card-sell"
+                      onClick={(event) => { event.stopPropagation(); void handleSell(itemId, amount); }}
+                      disabled={!item.sellPrice || amount <= 0 || isSelling}
+                    >
+                      <img className="inventory-btn-icon" src="/assets/ui/inventory/skl7.png" alt="" draggable={false} />
+                      <span className="inventory-sell-copy"><b>{isSelling ? '…' : 'Продати'}</b><small>+{totalCoins.toLocaleString('uk-UA')} <img className="inventory-coin" src="/assets/ui/coin.png" alt="" draggable={false} /></small></span>
+                    </button>
                   </article>
                 );
               })}
@@ -405,17 +461,30 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({ isOpen, onClose 
                   </article>
                 );
               })}
-              {((visibleCategory === 'harvest' && stockedItems.length === 0) ||
+              {((visibleCategory === 'harvest' && harvestList.length === 0) ||
                 (visibleCategory === 'farm' && stockedPlaceableItems.length === 0) ||
                 (visibleCategory === 'other' && stockedOtherItems.length === 0) ||
                 (visibleCategory === 'styles' && (styleSection === 'grass' ? grassStyles.length === 0 : backgroundStyles.length === 0))) && (
                 <div className="inventory-category-empty">
                   <span className="inventory-category-empty-icon"><PackageOpen size={30} strokeWidth={1.8} /></span>
-                  <strong>У цій категорії поки що порожньо</strong>
-                  <span>Тут з’являться ваші предмети</span>
+                  <strong>{visibleCategory === 'harvest' && stockedItems.length > 0 ? 'Нічого не знайдено' : 'У цій категорії поки що порожньо'}</strong>
+                  <span>{visibleCategory === 'harvest' && stockedItems.length > 0 ? 'Спробуй інший запит' : 'Тут з’являться ваші предмети'}</span>
                 </div>
               )}
           </div>
+          {visibleCategory === 'harvest' && stockedItems.length > 0 && (
+            <div className="inventory-footer">
+              <button type="button" className="inventory-sell-all-bar" onClick={() => void sellSelected()} disabled={selectedItems.length === 0 || sellingSelected}>
+                <img className="inventory-btn-icon" src="/assets/ui/inventory/skl7.png" alt="" draggable={false} />
+                <span className="inventory-sell-copy"><b>{sellingSelected ? 'Продаємо…' : 'Продати все'}</b><small>+{selectedTotal.toLocaleString('uk-UA')} <img className="inventory-coin" src="/assets/ui/coin.png" alt="" draggable={false} /></small></span>
+              </button>
+              <div className="inventory-selected-info">
+                <img className="inventory-btn-icon" src="/assets/ui/inventory/skl1.png" alt="" draggable={false} />
+                <span className="inventory-sell-copy"><b>Вибрано: {selectedItems.length}</b><small>На суму: {selectedTotal.toLocaleString('uk-UA')} <img className="inventory-coin" src="/assets/ui/coin.png" alt="" draggable={false} /></small></span>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </section>
     </div>
@@ -429,7 +498,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   window: {
     width: 'min(100%, 720px)', maxHeight: '88vh', color: '#402b1a',
-    overflow: 'hidden',
+    overflow: 'hidden', display: 'flex', flexDirection: 'column',
   },
   header: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px',
@@ -439,7 +508,7 @@ const styles: Record<string, React.CSSProperties> = {
   headerIcon: { fontSize: 22 },
   title: { margin: 0, color: '#1f2e42', fontFamily: 'Georgia, serif', fontSize: 19, fontWeight: 900 },
   resources: { display: 'flex', alignItems: 'center', gap: 7 },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12, padding: 16, overflowY: 'auto', maxHeight: '76vh' },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: 12, padding: 16, overflowY: 'auto', flex: '1 1 auto', minHeight: 0, alignContent: 'start' },
   sectionTitle: { gridColumn: '1 / -1', margin: '2px 0', color: '#47674d', font: '700 14px Georgia, serif' },
   card: { background: 'linear-gradient(145deg, #fff9e6, #ecd6aa)', border: '2px solid #d8b77e', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 3px 0 rgba(129, 81, 42, 0.16)' },
   cardTitle: { width: '100%', margin: 0, overflow: 'hidden', color: '#2b394d', textAlign: 'center', fontFamily: 'Trebuchet MS, sans-serif', fontSize: 13, fontWeight: 900, whiteSpace: 'nowrap' },
