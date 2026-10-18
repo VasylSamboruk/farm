@@ -82,7 +82,7 @@ export const getMovedOccupiedCells = (
 };
 
 export interface PlacedItemTile {
-  type: 'dirt' | 'item';
+  type: 'dirt' | 'water' | 'item';
   quadrant?: number;
   occupiedQuadrants?: number[];
   occupiedCells?: FootprintCell[];

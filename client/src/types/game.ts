@@ -91,7 +91,7 @@ export interface GameItemConfig {
   yieldImage?: string;
   yieldAmount?: number;
   sellPrice?: number | null;
-  placementSurface?: 'grass' | 'soil';
+  placementSurface?: 'grass' | 'soil' | 'water';
   access?: 'all' | 'admin';
   giftOnly?: boolean;
   custom?: boolean;

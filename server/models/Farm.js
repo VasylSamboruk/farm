@@ -13,6 +13,7 @@ const tileSchema = new mongoose.Schema({
     },
     flipX: { type: Boolean, default: false },
     itemId: { type: String, required: true },
+    surfaceType: { type: String, enum: ['water'], default: undefined },
     skinId: { type: String, default: null },
     unlockedSkinIds: { type: [String], default: [] },
     isDirt: { type: Boolean, default: false },

@@ -17,6 +17,7 @@ export interface SocialFarmTile {
   y: number;
   quadrant: number;
   isDirt: boolean;
+  surfaceType?: 'water';
   itemId: string;
   skinId?: string | null;
   stage: number;

@@ -197,9 +197,12 @@ export const App: React.FC = () => {
           onBack={() => { returnToProfile(); navigate('/'); }}
         >
           {adminSection === 'shop'
-            ? <AdminShop onAddItem={() => navigate('/admin/items/new')} />
+            ? <AdminShop onAddItem={(placementSurface) => navigate(
+                placementSurface === 'water' ? '/admin/items/new?surface=water' : '/admin/items/new'
+              )} />
             : adminSection === 'create'
               ? <AdminCreateItem
+                  initialPlacementSurface={new URLSearchParams(location.search).get('surface') === 'water' ? 'water' : undefined}
                   onCancel={() => navigate('/admin/shop')}
                   onCreated={() => navigate('/admin/shop')}
                 />

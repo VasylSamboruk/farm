@@ -23,7 +23,9 @@ const formatNumber = (value: number) => value.toLocaleString('uk-UA');
 const toFarmPreviewTiles = (farmItems: AdminFarmItem[]): Record<string, TileData> => {
   const tiles: Record<string, TileData> = {};
   for (const item of farmItems) {
-    if (item.isDirt) {
+    if (item.surfaceType === 'water') {
+      tiles[`${item.y},${item.x},-1`] = { type: 'water' };
+    } else if (item.isDirt) {
       tiles[`${item.y},${item.x},-1`] = { type: 'dirt', flipX: item.flipX ?? false };
     } else {
       tiles[`${item.y},${item.x},${item.quadrant}`] = {

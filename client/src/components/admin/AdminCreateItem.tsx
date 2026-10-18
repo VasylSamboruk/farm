@@ -50,6 +50,7 @@ const getErrorMessage = (error: unknown) => {
 interface AdminCreateItemProps {
   onCancel: () => void;
   onCreated: () => void;
+  initialPlacementSurface?: 'grass' | 'soil' | 'water';
 }
 
 interface PreviewSelection {
@@ -105,7 +106,7 @@ const AdminPreviewSprite: React.FC<AdminPreviewSpriteProps> = ({ type, image, ic
   return <canvas ref={canvasRef} className="admin-preview-sprite-canvas" width={200} height={300} aria-hidden="true" />;
 };
 
-export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCreated }) => {
+export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCreated, initialPlacementSurface = 'grass' }) => {
   const showToast = useAdminToast();
   const [assetBaseUrl, setAssetBaseUrl] = useState('');
   const [availableAnimals, setAvailableAnimals] = useState<AdminCatalogItem[]>([]);
@@ -137,7 +138,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
   const [yieldIcon, setYieldIcon] = useState('');
   const [yieldAmount, setYieldAmount] = useState('1');
   const [yieldImage, setYieldImage] = useState('');
-  const [placementSurface, setPlacementSurface] = useState<'grass' | 'soil'>('grass');
+  const [placementSurface, setPlacementSurface] = useState<'grass' | 'soil' | 'water'>(initialPlacementSurface);
   const [spriteScale, setSpriteScale] = useState('1');
   const [firstStageScale, setFirstStageScale] = useState('1');
   const [canFlip, setCanFlip] = useState(true);
@@ -283,7 +284,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
         }}>
           <AdminPreviewSprite type={type} image={resolveImageUrl(image, assetBaseUrl)} icon={icon} spriteScale={Number(spriteScale) || 1} firstStageScale={previewStageScale} footprint={previewFootprint} />
         </div>
-        <span className="admin-preview-surface-label">{placementSurface === 'grass' ? 'ТРАВА' : 'ГРЯДКА'}</span>
+        <span className="admin-preview-surface-label">{placementSurface === 'grass' ? 'ТРАВА' : placementSurface === 'soil' ? 'ГРЯДКА' : 'ВОДА'}</span>
         {!isBuilding && type !== 'ANIMAL' && growthImages.length > 1 && <button className="admin-preview-replay" type="button" onClick={restartPreviewCycle}><RotateCcw size={13} /><span>Повторити ріст</span></button>}
       </div>
     );
@@ -530,6 +531,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
               <fieldset className="admin-choice-field"><legend>Поверхня</legend><div className="admin-choice-row">
                 <button className={placementSurface === 'grass' ? 'is-active' : ''} type="button" aria-pressed={placementSurface === 'grass'} onClick={() => setPlacementSurface('grass')}><span className="admin-surface-swatch is-grass" />Трава</button>
                 <button className={placementSurface === 'soil' ? 'is-active' : ''} type="button" aria-pressed={placementSurface === 'soil'} onClick={() => setPlacementSurface('soil')}><span className="admin-surface-swatch is-soil" />Грядка</button>
+                <button className={placementSurface === 'water' ? 'is-active' : ''} type="button" aria-pressed={placementSurface === 'water'} onClick={() => setPlacementSurface('water')}><span className="admin-surface-swatch is-water" />Вода</button>
               </div></fieldset>
               <label>Доступ<select value={access} onChange={(event) => setAccess(event.target.value as 'all' | 'admin' | 'gift')}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option>{type !== 'OTHER' && <option value="gift">Лише як подарунок</option>}</select></label>
             </div>
@@ -712,7 +714,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
             {growthImages.map((source, index) => <button type="button" key={`${source}-${index}`} onClick={() => setPreviewSelection({ title: `Стадія ${index + 1}`, image: source, stageIndex: index })} aria-label={`Збільшити стадію ${index + 1}`}><img src={resolveImageUrl(source, assetBaseUrl)} alt="" /><small>{index + 1}</small></button>)}
             {yieldImage.trim() && <button type="button" onClick={() => setPreviewSelection({ title: 'Зображення врожаю', image: yieldImage.trim(), icon: yieldIcon })} aria-label="Збільшити зображення врожаю"><img src={resolveImageUrl(yieldImage.trim(), assetBaseUrl)} alt="" /><small>Врожай</small></button>}
           </div>
-          <div className="admin-create-preview-meta"><span>Поверхня</span><strong>{placementSurface === 'grass' ? 'Трава' : 'Грядка'}</strong><span>Ціна</span><strong>{Number(price || 0).toLocaleString('uk-UA')} {priceCurrency === 'rubies' ? 'рубінів' : 'монет'}</strong></div>
+          <div className="admin-create-preview-meta"><span>Поверхня</span><strong>{placementSurface === 'grass' ? 'Трава' : placementSurface === 'soil' ? 'Грядка' : 'Вода'}</strong><span>Ціна</span><strong>{Number(price || 0).toLocaleString('uk-UA')} {priceCurrency === 'rubies' ? 'рубінів' : 'монет'}</strong></div>
         </aside>
       </form>
       {previewSelection && <div className="admin-preview-lightbox" role="presentation" onClick={() => setPreviewSelection(null)}>
@@ -726,7 +728,7 @@ export const AdminCreateItem: React.FC<AdminCreateItemProps> = ({ onCancel, onCr
               ? (type === 'CROP' && growthImages.length > 1 ? 0.55 : 1) * (Number(firstStageScale) || 1)
               : 1,
           )}
-          <p>{type === 'CROP' && placementSurface === 'soil' ? 'Рослина росте на грядці' : placementSurface === 'grass' ? 'Об’єкт стоїть на траві' : 'Об’єкт розміщений на грядці'}</p>
+          <p>{type === 'CROP' && placementSurface === 'soil' ? 'Рослина росте на грядці' : placementSurface === 'grass' ? 'Об’єкт стоїть на траві' : placementSurface === 'water' ? 'Об’єкт розміщується тільки на воді' : 'Об’єкт розміщений на грядці'}</p>
         </section>
       </div>}
     </section>

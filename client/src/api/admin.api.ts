@@ -11,6 +11,7 @@ export interface AdminFarmItem {
   y: number;
   quadrant: number;
   isDirt?: boolean;
+  surfaceType?: 'water';
   stage?: number;
   occupiedQuadrants?: number[];
   occupiedCells?: { x: number; y: number; quadrant: number }[];
@@ -53,7 +54,7 @@ export interface AdminCatalogItem {
   yieldAmount?: number;
   shopImage?: string | null;
   shopIcon?: string;
-  placementSurface?: 'grass' | 'soil';
+  placementSurface?: 'grass' | 'soil' | 'water';
   price: number;
   priceCurrency?: 'coins' | 'rubies';
   sellPrice?: number | null;

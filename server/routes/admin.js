@@ -111,6 +111,7 @@ const serializeAdminUser = (user, farm, mediaSettings = {}) => ({
                 y: tile.y,
                 quadrant: tile.quadrant,
                 isDirt: tile.isDirt ?? false,
+                surfaceType: tile.surfaceType,
                 stage: tile.stage ?? 0,
                 occupiedQuadrants: tile.occupiedQuadrants ?? [],
                 occupiedCells: tile.occupiedCells ?? [],
@@ -616,7 +617,7 @@ router.post('/catalog', async (req, res) => {
         (yieldIcon !== undefined && (typeof yieldIcon !== 'string' || yieldIcon.length > 16)) ||
         (producesItems && (!Number.isSafeInteger(yieldAmount) || yieldAmount < 1)) ||
         (sellPrice !== undefined && (!Number.isSafeInteger(sellPrice) || sellPrice < 0)) ||
-        !['grass', 'soil'].includes(placementSurface) ||
+        !['grass', 'soil', 'water'].includes(placementSurface) ||
         !Number.isFinite(spriteScale) || spriteScale < 0.1 || spriteScale > 8 ||
         (firstStageScale !== undefined && (!['TREE', 'CROP'].includes(type) ||
             !Number.isFinite(firstStageScale) || firstStageScale < 0.1 || firstStageScale > 5)) ||
@@ -942,7 +943,7 @@ router.patch('/catalog/:itemId/config', async (req, res) => {
                 continue;
             }
             if (field === 'placementSurface') {
-                if (value !== 'grass' && value !== 'soil') return res.status(400).json({ message: 'Поверхня має бути grass або soil' });
+                if (!['grass', 'soil', 'water'].includes(value)) return res.status(400).json({ message: 'Поверхня має бути grass, soil або water' });
                 updates[field] = value;
                 continue;
             }
@@ -1358,15 +1359,24 @@ router.patch('/users/:userId/farm-items/:x/:y/:quadrant', async (req, res) => {
         const occupiedDirtCells = new Set(farm.tiles
             .filter((entry) => entry.isDirt && occupiedCells.some((cell) => cell.x === entry.x && cell.y === entry.y))
             .map((entry) => `${entry.x},${entry.y}`));
+        const occupiedWaterCells = new Set(farm.tiles
+            .filter((entry) => entry.surfaceType === 'water' && occupiedCells.some((cell) => cell.x === entry.x && cell.y === entry.y))
+            .map((entry) => `${entry.x},${entry.y}`));
         if (item.placementSurface === 'soil' && [...uniqueSurfaceCells].some((cell) => !occupiedDirtCells.has(cell))) {
             return res.status(400).json({ message: 'Цю культуру можна розмістити лише на грядці' });
+        }
+        if (item.placementSurface === 'water' && [...uniqueSurfaceCells].some((cell) => !occupiedWaterCells.has(cell))) {
+            return res.status(400).json({ message: 'Цей предмет можна розмістити лише на воді' });
+        }
+        if (item.placementSurface !== 'water' && occupiedWaterCells.size > 0) {
+            return res.status(400).json({ message: 'На воду можна ставити лише предмети для води' });
         }
         if (item.placementSurface === 'grass' && occupiedDirtCells.size > 0) {
             return res.status(400).json({ message: 'Предмет можна розмістити лише на траві' });
         }
 
         const overlaps = farm.tiles.some((entry) => {
-            if (entry === tile || entry.isDirt) return false;
+            if (entry === tile || entry.isDirt || entry.surfaceType) return false;
             const otherItem = getGameItem(entry.itemId);
             const otherCells = getOccupiedCells(entry.x, entry.y, entry.quadrant, otherItem, entry.flipX ?? false) ?? [
                 { x: entry.x, y: entry.y, quadrant: entry.quadrant },
@@ -1552,11 +1562,16 @@ router.post('/users/:userId/farm-items', async (req, res) => {
             const occupiedDirtCells = new Set(farm.tiles
                 .filter((tile) => tile.isDirt && occupiedCells.some((cell) => cell.x === tile.x && cell.y === tile.y))
                 .map((tile) => `${tile.x},${tile.y}`));
+            const occupiedWaterCells = new Set(farm.tiles
+                .filter((tile) => tile.surfaceType === 'water' && occupiedCells.some((cell) => cell.x === tile.x && cell.y === tile.y))
+                .map((tile) => `${tile.x},${tile.y}`));
             if (item.placementSurface === 'soil' && [...uniqueSurfaceCells].some((cell) => !occupiedDirtCells.has(cell))) return null;
+            if (item.placementSurface === 'water' && [...uniqueSurfaceCells].some((cell) => !occupiedWaterCells.has(cell))) return null;
+            if (item.placementSurface !== 'water' && occupiedWaterCells.size > 0) return null;
             if (item.placementSurface === 'grass' && occupiedDirtCells.size > 0) return null;
 
             const overlaps = farm.tiles.some((tile) => {
-                if (tile.isDirt) return false;
+                if (tile.isDirt || tile.surfaceType) return false;
                 const existingItem = getGameItem(tile.itemId);
                 const existingCells = getOccupiedCells(tile.x, tile.y, tile.quadrant, existingItem, tile.flipX ?? false) ?? [
                     { x: tile.x, y: tile.y, quadrant: tile.quadrant },

@@ -597,6 +597,7 @@
 .admin-surface-swatch { width: 15px; height: 15px; border: 1px solid rgba(35, 60, 40, .16); border-radius: 3px; }
 .admin-surface-swatch.is-grass { background: repeating-linear-gradient(45deg, #92b879 0 3px, #83a969 3px 6px); }
 .admin-surface-swatch.is-soil { background: repeating-linear-gradient(45deg, #a7774d 0 3px, #916644 3px 6px); }
+.admin-surface-swatch.is-water { background: repeating-linear-gradient(45deg, #54c7ee 0 3px, #238bc5 3px 6px); }
 .admin-create-check { display: flex; align-items: center; gap: 8px; margin-top: 13px; color: #566a58; font-size: 10px; font-weight: 700; }
 .admin-create-check input { width: 15px; height: 15px; accent-color: var(--admin-green); }
 .admin-footprint-section { padding-bottom: 17px; }

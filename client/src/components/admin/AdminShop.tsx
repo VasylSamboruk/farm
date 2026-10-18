@@ -11,13 +11,14 @@ import { useAdminToast } from './adminToast';
 import { resolveImageUrl } from '../../game/assetUrls';
 import { durationPartsToMilliseconds, millisecondsToDurationParts, type DurationParts } from '../../game/durationInput';
 
-type AdminShopCategory = 'ALL' | AdminCatalogItem['type'] | 'DECOR' | 'HOUSING_BUILDING' | 'FACTORIES' | 'GIFTS';
+type AdminShopCategory = 'ALL' | AdminCatalogItem['type'] | 'DECOR' | 'HOUSING_BUILDING' | 'FACTORIES' | 'WATER' | 'GIFTS';
 
 const categories: { type: AdminShopCategory; label: string }[] = [
   { type: 'ALL', label: 'Усі товари' },
   { type: 'TREE', label: 'Дерева' },
   { type: 'CROP', label: 'Рослини' },
   { type: 'ANIMAL', label: 'Тварини' },
+  { type: 'WATER', label: 'Вода' },
   { type: 'DECOR', label: 'Декор' },
   { type: 'FACTORIES', label: 'Фабрики' },
   { type: 'HOUSING_BUILDING', label: 'Будівлі' },
@@ -41,7 +42,7 @@ interface ItemDraft {
   yieldName: string;
   yieldIcon: string;
   yieldAmount: string;
-  placementSurface: 'grass' | 'soil';
+  placementSurface: 'grass' | 'soil' | 'water';
   flipX: boolean;
   canFlip: boolean;
   footprintWidth: string;
@@ -134,7 +135,7 @@ const getErrorMessage = (error: unknown) => axios.isAxiosError<{ message?: strin
   : error instanceof Error ? error.message : 'Сталася невідома помилка.';
 
 interface AdminShopProps {
-  onAddItem: () => void;
+  onAddItem: (placementSurface?: 'water') => void;
 }
 
 export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
@@ -421,25 +422,29 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
     category === 'GIFTS' ? Boolean(item.giftOnly)
       : category === 'ALL' ? true
       : item.giftOnly ? false
-      : category === 'DECOR' ? item.type === 'BUILDING' && (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR'
-        : category === 'FACTORIES' ? item.type === 'BUILDING' && item.buildingCategory === 'FACTORY'
-        : category === 'HOUSING_BUILDING' ? item.type === 'BUILDING' && (item.buildingCategory === 'PEN' || (!item.buildingCategory && Boolean(item.housing)))
-          : item.type === category
+      : category === 'WATER' ? item.placementSurface === 'water'
+        : item.placementSurface !== 'water' && (
+          category === 'DECOR' ? item.type === 'BUILDING' && (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR'
+            : category === 'FACTORIES' ? item.type === 'BUILDING' && item.buildingCategory === 'FACTORY'
+              : category === 'HOUSING_BUILDING' ? item.type === 'BUILDING' && (item.buildingCategory === 'PEN' || (!item.buildingCategory && Boolean(item.housing)))
+                : item.type === category
+        )
   )
     .sort((left, right) => left.sortOrder - right.sortOrder);
 
   const getCategoryCount = (categoryType: AdminShopCategory) => categoryType === 'ALL' ? catalog.length
     : categoryType === 'GIFTS' ? catalog.filter((item) => item.giftOnly).length
-      : categoryType === 'DECOR' ? catalog.filter((item) => !item.giftOnly && item.type === 'BUILDING' && !item.housing).length
-        : categoryType === 'FACTORIES' ? catalog.filter((item) => !item.giftOnly && item.type === 'BUILDING' && item.buildingCategory === 'FACTORY').length
-        : categoryType === 'HOUSING_BUILDING' ? catalog.filter((item) => !item.giftOnly && item.type === 'BUILDING' && item.housing).length
-          : catalog.filter((item) => !item.giftOnly && item.type === categoryType).length;
+      : categoryType === 'WATER' ? catalog.filter((item) => !item.giftOnly && item.placementSurface === 'water').length
+      : categoryType === 'DECOR' ? catalog.filter((item) => !item.giftOnly && item.placementSurface !== 'water' && item.type === 'BUILDING' && !item.housing).length
+        : categoryType === 'FACTORIES' ? catalog.filter((item) => !item.giftOnly && item.placementSurface !== 'water' && item.type === 'BUILDING' && item.buildingCategory === 'FACTORY').length
+        : categoryType === 'HOUSING_BUILDING' ? catalog.filter((item) => !item.giftOnly && item.placementSurface !== 'water' && item.type === 'BUILDING' && item.housing).length
+          : catalog.filter((item) => !item.giftOnly && item.placementSurface !== 'water' && item.type === categoryType).length;
 
   return (
     <section className="admin-shop-page" aria-labelledby="admin-shop-title">
       <header className="admin-shop-heading">
         <div><span className="admin-eyebrow">КАТАЛОГ ГРИ</span><h1 id="admin-shop-title">Магазин</h1><p>Налаштовуй товари, доступ і подарунковий асортимент</p></div>
-        <div className="admin-shop-heading-actions"><button className="admin-create-link" type="button" onClick={onAddItem}><PackagePlus size={16} />Додати товар</button><div className="admin-shop-total"><ShoppingBasket size={18} /><strong>{catalog.length}</strong><span>товарів</span></div></div>
+        <div className="admin-shop-heading-actions"><button className="admin-create-link" type="button" onClick={() => onAddItem(category === 'WATER' ? 'water' : undefined)}><PackagePlus size={16} />Додати товар</button><div className="admin-shop-total"><ShoppingBasket size={18} /><strong>{catalog.length}</strong><span>товарів</span></div></div>
       </header>
       {error && <p className="admin-alert is-error" role="alert">{error}</p>}
       {notice && <p className="admin-alert is-success" role="status">{notice}</p>}
@@ -537,7 +542,7 @@ export const AdminShop: React.FC<AdminShopProps> = ({ onAddItem }) => {
                     <label>Назва урожаю<input value={draft.yieldName} onChange={(event) => updateDraft(item.id, { yieldName: event.target.value })} /></label>
                     <label>{item.type === 'ANIMAL' ? 'Іконка продукції' : 'Іконка урожаю'}<input value={draft.yieldIcon} maxLength={16} onChange={(event) => updateDraft(item.id, { yieldIcon: event.target.value })} placeholder="🍎" /></label>
                     <label>Доступ<select value={draft.access} onChange={(event) => updateDraft(item.id, { access: event.target.value as ItemDraft['access'] })}><option value="all">Усім гравцям</option><option value="admin">Лише адміністратору</option>{item.type !== 'OTHER' && <option value="gift">Лише як подарунок</option>}</select></label>
-                    <label>Поверхня<select value={draft.placementSurface} onChange={(event) => updateDraft(item.id, { placementSurface: event.target.value as ItemDraft['placementSurface'] })}><option value="grass">Трава</option><option value="soil">Грядка</option></select></label>
+                    <label>Поверхня<select value={draft.placementSurface} onChange={(event) => updateDraft(item.id, { placementSurface: event.target.value as ItemDraft['placementSurface'] })}><option value="grass">Трава</option><option value="soil">Грядка</option><option value="water">Вода</option></select></label>
                     <div className="admin-product-footprint-editor">
                       <div className="admin-product-footprint-heading">
                         <strong>Зайнята площа на фермі</strong>

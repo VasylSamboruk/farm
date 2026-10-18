@@ -22,7 +22,7 @@ import {
   formatGameDuration,
   TREE_RENDER_HEIGHT,
 } from '../../game/trees';
-import { getGameSpriteSize, getLoadedGameImage, getPlacedItemImage, preloadGameImages } from '../../game/sprites';
+import { getGameSpriteSize, getLoadedGameImage, getPlacedItemImage, loadGameImage, preloadGameImages } from '../../game/sprites';
 import type { TileData } from '../../store/useFarmStore';
 import type { GameItemConfig } from '../../types/game';
 import { HousingModal } from './HousingModal';
@@ -39,10 +39,115 @@ interface FloatingText {
   targetX?: number;
   targetY?: number;
 }
-
 type FloatingTarget = 'inventory' | 'level';
 
 const GRID_TILE_SIZE = { tileWidth: 200, tileHeight: 100 };
+const WATER_TILE_SCALE = 1.5;
+const WATER_BACKING_SCALE = 1.62;
+const WATER_SHORE_BLUR = 4;
+const WATER_CORNER_ROUNDNESS = 10;
+const WATER_NEIGHBOR_DIRECTIONS = [[-1, 0], [0, 1], [1, 0], [0, -1]] as const;
+const STANDARD_BUTTERFLY_IMAGES = [
+  '/assets/butterflies/butterfly_1.png',
+  '/assets/butterflies/butterfly_2.png',
+  '/assets/butterflies/butterfly_3.png',
+  '/assets/butterflies/butterfly_4.png',
+];
+const WINTER_BUTTERFLY_IMAGES = [
+  '/assets/butterflies/winter/butterfly_1.png',
+  '/assets/butterflies/winter/butterfly_2.png',
+  '/assets/butterflies/winter/butterfly_3.png',
+  '/assets/butterflies/winter/butterfly_4.png',
+];
+const getWaterNeighborMask = (
+  tiles: Record<string, TileData>,
+  row: number,
+  col: number,
+  excludedCell?: { row: number; col: number }
+) =>
+  WATER_NEIGHBOR_DIRECTIONS.reduce(
+    (mask, [rowOffset, colOffset], direction) => {
+      const neighborRow = row + rowOffset;
+      const neighborCol = col + colOffset;
+      const isExcluded = excludedCell?.row === neighborRow && excludedCell.col === neighborCol;
+      return !isExcluded && tiles[`${neighborRow},${neighborCol},-1`]?.type === 'water'
+        ? mask | (1 << direction)
+        : mask;
+    },
+    0
+  );
+const getWaterOutlinePoints = (width: number, height: number, waterMask: number, variation: number) => {
+  const center = { x: width / 2, y: height / 2 };
+  const corners = [
+    { x: width / 2, y: 0 },
+    { x: width, y: height / 2 },
+    { x: width / 2, y: height },
+    { x: 0, y: height / 2 },
+  ];
+  const points: { x: number; y: number }[] = [];
+
+  for (let edge = 0; edge < corners.length; edge++) {
+    const start = corners[edge];
+    const end = corners[(edge + 1) % corners.length];
+    const isExposedEdge = (waterMask & (1 << edge)) === 0;
+    const startIsExposedCorner = isExposedEdge &&
+      (waterMask & (1 << ((edge + corners.length - 1) % corners.length))) === 0;
+    const endIsExposedCorner = isExposedEdge &&
+      (waterMask & (1 << ((edge + 1) % corners.length))) === 0;
+    for (let segment = edge === 0 ? 0 : 1; segment <= 20; segment++) {
+      const progress = segment / 20;
+      const x = start.x + (end.x - start.x) * progress;
+      const y = start.y + (end.y - start.y) * progress;
+      if (!isExposedEdge) {
+        points.push({ x, y });
+        continue;
+      }
+
+      const waveFade = Math.sin(progress * Math.PI) ** 2;
+      const wave = Math.sin(progress * Math.PI * 2 + variation * Math.PI / 4 + edge * 0.8);
+      const smallerWave = Math.sin(progress * Math.PI * 4 + variation * 0.6 + edge * 1.3);
+      const startFadeProgress = Math.min(1, progress / 0.2);
+      const endFadeProgress = Math.min(1, (1 - progress) / 0.2);
+      const startRoundFade = startIsExposedCorner
+        ? 1 - startFadeProgress ** 2 * (3 - 2 * startFadeProgress)
+        : 0;
+      const endRoundFade = endIsExposedCorner
+        ? 1 - endFadeProgress ** 2 * (3 - 2 * endFadeProgress)
+        : 0;
+      const cornerInset = WATER_CORNER_ROUNDNESS * Math.max(startRoundFade, endRoundFade);
+      const inset = Math.max(0.5, cornerInset + 1.5 + (wave * 5.5 + smallerWave * 1.2) * waveFade);
+      const directionX = center.x - x;
+      const directionY = center.y - y;
+      const directionLength = Math.hypot(directionX, directionY);
+      points.push({
+        x: x + directionX / directionLength * inset,
+        y: y + directionY / directionLength * inset,
+      });
+    }
+  }
+
+  return points;
+};
+const traceWaterOutline = (
+  context: CanvasRenderingContext2D,
+  points: { x: number; y: number }[],
+  beginPath = true
+) => {
+  if (!points.length) return;
+
+  const midpoint = (first: { x: number; y: number }, second: { x: number; y: number }) => ({
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  });
+  if (beginPath) context.beginPath();
+  const firstMidpoint = midpoint(points[points.length - 1], points[0]);
+  context.moveTo(firstMidpoint.x, firstMidpoint.y);
+  points.forEach((point, index) => {
+    const nextMidpoint = midpoint(point, points[(index + 1) % points.length]);
+    context.quadraticCurveTo(point.x, point.y, nextMidpoint.x, nextMidpoint.y);
+  });
+  context.closePath();
+};
 const getPlacementItemId = (tool: string) => tool.replace(/^place_(?:inventory_)?/, '');
 const isInventoryPlacement = (tool: string) => tool.startsWith('place_inventory_');
 const getReadyHousedAnimals = (tile: TileData, items: Record<string, GameItemConfig>, now: number) =>
@@ -95,6 +200,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
     backgroundStyle: storedBackgroundStyle,
     backgroundIsNight: storedBackgroundIsNight,
     digTile,
+    toggleWaterTile,
     removeTile,
     placeItem,
     rotateTile,
@@ -114,7 +220,9 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
   const gameItems = useGameConfigStore((state) => state.items);
   const displayedTiles = previewTiles ?? tiles;
   const farmSize = previewFarmSize ?? storedFarmSize;
-  const grassStyleConfig = gameItems[previewGrassStyle ?? storedGrassStyle];
+  const activeGrassStyle = previewGrassStyle ?? storedGrassStyle;
+  const grassStyleConfig = gameItems[activeGrassStyle];
+  const isWinterGrass = activeGrassStyle === 'grass_winter';
   const grassTexture = grassStyleConfig?.grassTexture;
   const grassEdgeOverlap = grassStyleConfig?.grassEdgeOverlap ?? 12;
   const grassEdgeBlur = grassStyleConfig?.grassEdgeBlur ?? 0;
@@ -134,7 +242,13 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
   const startPan = useRef({ x: 0, y: 0 });
   const hoveredTile = useRef<{ row: number; col: number; quadrant: number } | null>(null);
   const lastPinchRef = useRef<{ distance: number; centerX: number; centerY: number } | null>(null);
-  const touchMoveSourceRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
+  const touchMoveSourceRef = useRef<{
+    row: number;
+    col: number;
+    quadrant: number;
+    isDirt?: boolean;
+    isWater?: boolean;
+  } | null>(null);
   const touchObjectDragRef = useRef(false);
 
   const activeToolRef = useRef(activeTool);
@@ -143,7 +257,13 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
   const gameItemsRef = useRef(gameItems);
   const harvestQueueRef = useRef(harvestQueue);
   const activeHarvestStartedAtRef = useRef(activeHarvestStartedAt);
-  const movingItemRef = useRef<{ row: number; col: number; quadrant: number; isDirt?: boolean } | null>(null);
+  const movingItemRef = useRef<{
+    row: number;
+    col: number;
+    quadrant: number;
+    isDirt?: boolean;
+    isWater?: boolean;
+  } | null>(null);
   const hoveredTrashItemRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
   const hoveredHousingItemRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
   const contextTargetRef = useRef<{ row: number; col: number; quadrant: number } | null>(null);
@@ -183,6 +303,13 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
     });
   }, [gameItems]);
 
+  useEffect(() => {
+    const butterflyImages = isWinterGrass ? WINTER_BUTTERFLY_IMAGES : STANDARD_BUTTERFLY_IMAGES;
+    void Promise.all(butterflyImages.map(loadGameImage)).catch((error: unknown) => {
+      console.error('Не вдалося завантажити зображення метеликів:', error);
+    });
+  }, [isWinterGrass]);
+
   // Масив для збереження анімацій тексту
   const floatingTextsRef = useRef<FloatingText[]>([]);
   const floatingIdCounter = useRef(0);
@@ -209,6 +336,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
     const grassEdgeFeather = grassEdgeOverlap;
     let featheredGrassTexture: HTMLCanvasElement | null = null;
     const dirtImage = getLoadedGameImage('/assets/tiles/dirt_tile.png');
+    let waterImage: HTMLImageElement | undefined;
+    const waterTileVariants = new Map<string, HTMLCanvasElement>();
     const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
     const hardwareConcurrency = navigator.hardwareConcurrency ?? 0;
     const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
@@ -232,6 +361,22 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
         phase: Math.random() * Math.PI * 2,
       })
     );
+    const butterflyImages = isWinterGrass ? WINTER_BUTTERFLY_IMAGES : STANDARD_BUTTERFLY_IMAGES;
+    const butterflyHalfWidth = gridConfig.tileWidth / 2;
+    const butterflyHalfHeight = gridConfig.tileHeight / 2;
+    const butterflyMaxX = (gridConfig.cols - 1) * butterflyHalfWidth;
+    const butterflyMaxY = (gridConfig.rows + gridConfig.cols + 1) * butterflyHalfHeight;
+    const butterflies = Array.from({ length: lowEndDevice ? 3 : 5 }, (_, index) => ({
+      image: butterflyImages[index % butterflyImages.length],
+      centerX: (Math.random() * 2 - 1) * butterflyMaxX * 0.68,
+      centerY: butterflyHalfHeight + Math.random() * butterflyMaxY * 0.78,
+      rangeX: butterflyHalfWidth * (1.5 + Math.random() * 2.5),
+      rangeY: butterflyHalfHeight * (1 + Math.random() * 2),
+      phase: Math.random() * Math.PI * 2,
+      secondaryPhase: Math.random() * Math.PI * 2,
+      speed: 0.22 + Math.random() * 0.2,
+      size: 13 + Math.random() * 6,
+    }));
 
     const resizeCanvas = () => {
       const bounds = canvas.getBoundingClientRect();
@@ -359,6 +504,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
       animationFrameId = requestAnimationFrame(render);
       if (frameTime - lastRenderedAt < targetFrameInterval) return;
       lastRenderedAt = frameTime;
+      waterImage ??= getLoadedGameImage('/assets/tiles/water/tile-15.png');
 
       ctx.clearRect(0, 0, viewportWidth, viewportHeight);
 
@@ -388,6 +534,60 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
       const { cols, rows, tileWidth, tileHeight } = gridConfig;
       const halfW = tileWidth / 2;
       const halfH = tileHeight / 2;
+      const clipToWaterCells = () => {
+        ctx.beginPath();
+        const movingWater = activeToolRef.current === 'move' && movingItemRef.current?.isWater
+          ? movingItemRef.current
+          : null;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (movingWater?.row === r && movingWater.col === c) continue;
+            if (tilesRef.current[`${r},${c},-1`]?.type !== 'water') continue;
+            const waterMask = getWaterNeighborMask(tilesRef.current, r, c, movingWater ?? undefined);
+            const variation = (r * 31 + c * 17) % 8;
+            const outline = getWaterOutlinePoints(tileWidth, tileHeight, waterMask, variation);
+            const centerX = (c - r) * halfW;
+            const centerY = (c + r) * halfH + halfH;
+            traceWaterOutline(ctx, outline.map((point) => ({
+              x: centerX + point.x - halfW,
+              y: centerY + point.y - halfH,
+            })), false);
+          }
+        }
+        ctx.clip();
+      };
+      const getWaterTileVariant = (waterMask: number, row: number, col: number) => {
+        if (!waterImage) return undefined;
+
+        const variation = (row * 31 + col * 17) % 8;
+        const cacheKey = `${waterMask}:${variation}`;
+        const cachedVariant = waterTileVariants.get(cacheKey);
+        if (cachedVariant) return cachedVariant;
+
+        const variant = document.createElement('canvas');
+        variant.width = waterImage.naturalWidth;
+        variant.height = waterImage.naturalHeight;
+        const variantContext = variant.getContext('2d');
+        const mask = document.createElement('canvas');
+        mask.width = variant.width;
+        mask.height = variant.height;
+        const maskContext = mask.getContext('2d');
+        if (!variantContext || !maskContext) return undefined;
+
+        const width = variant.width;
+        const height = variant.height;
+        const outline = getWaterOutlinePoints(width, height, waterMask, variation);
+        traceWaterOutline(maskContext, outline);
+        maskContext.fillStyle = '#fff';
+        maskContext.filter = `blur(${WATER_SHORE_BLUR}px)`;
+        maskContext.fill();
+
+        variantContext.drawImage(waterImage, 0, 0, width, height);
+        variantContext.globalCompositeOperation = 'destination-in';
+        variantContext.drawImage(mask, 0, 0);
+        waterTileVariants.set(cacheKey, variant);
+        return variant;
+      };
       const now = Date.now();
       let pendingTooltip: { name: string; status: string; centerX: number; anchorY: number } | null = null;
       const gridCellKeys = new Set<string>();
@@ -502,7 +702,8 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
           // 2. Грядка
           const dirtKey = `${r},${c},-1`;
           const dirtData = tilesRef.current[dirtKey];
-          if (dirtData && dirtData.type === 'dirt') {
+          const isMovingSource = movingItemRef.current?.row === r && movingItemRef.current.col === c;
+          if (dirtData && dirtData.type === 'dirt' && !(isMovingSource && movingItemRef.current?.isDirt)) {
             if (dirtImage?.complete && dirtImage.naturalWidth !== 0) {
               ctx.drawImage(dirtImage, isoX - halfW, isoY, tileWidth, tileHeight);
             } else {
@@ -511,7 +712,185 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
               ctx.strokeStyle = '#4e342e'; ctx.lineWidth = 2; ctx.stroke();
             }
           }
+        }
+      }
 
+      ctx.save();
+      clipToWaterCells();
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const dirtData = tilesRef.current[`${r},${c},-1`];
+          if (dirtData?.type !== 'water') continue;
+          if (movingItemRef.current?.isWater && movingItemRef.current.row === r && movingItemRef.current.col === c) continue;
+
+          const isoX = (c - r) * halfW;
+          const isoY = (c + r) * halfH;
+          const waterMask = getWaterNeighborMask(tilesRef.current, r, c, movingItemRef.current?.isWater ? movingItemRef.current : undefined);
+          const waterWidth = tileWidth * WATER_BACKING_SCALE;
+          const waterHeight = tileHeight * WATER_BACKING_SCALE;
+          const outline = getWaterOutlinePoints(
+            waterWidth,
+            waterHeight,
+            waterMask,
+            (r * 31 + c * 17) % 8
+          );
+          traceWaterOutline(ctx, outline.map((point) => ({
+            x: isoX + point.x - waterWidth / 2,
+            y: isoY + halfH + point.y - waterHeight / 2,
+          })));
+          ctx.save();
+          ctx.filter = 'blur(2px)';
+          ctx.fillStyle = '#16b7f1';
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const dirtData = tilesRef.current[`${r},${c},-1`];
+          if (dirtData?.type !== 'water') continue;
+          if (movingItemRef.current?.isWater && movingItemRef.current.row === r && movingItemRef.current.col === c) continue;
+
+          const isoX = (c - r) * halfW;
+          const isoY = (c + r) * halfH;
+          if (waterImage?.complete && waterImage.naturalWidth > 0) {
+            const waterMask = getWaterNeighborMask(tilesRef.current, r, c, movingItemRef.current?.isWater ? movingItemRef.current : undefined);
+            const waterTile = getWaterTileVariant(waterMask, r, c);
+            if (!waterTile) continue;
+            const waterWidth = tileWidth * WATER_TILE_SCALE;
+            const waterHeight = tileHeight * WATER_TILE_SCALE;
+            ctx.drawImage(
+              waterTile,
+              isoX - waterWidth / 2,
+              isoY + halfH - waterHeight / 2,
+              waterWidth,
+              waterHeight
+            );
+          }
+        }
+      }
+      ctx.restore();
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (tilesRef.current[`${r},${c},-1`]?.type !== 'water') continue;
+          if (movingItemRef.current?.isWater && movingItemRef.current.row === r && movingItemRef.current.col === c) continue;
+
+          const centerX = (c - r) * halfW;
+          const centerY = (c + r) * halfH + halfH;
+          const variation = (r * 31 + c * 17) % 11;
+          const phase = frameTime / 1400 + variation;
+          const drift = Math.sin(phase) * halfW * 0.12;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(centerX, centerY - halfH * 0.62);
+          ctx.lineTo(centerX + halfW * 0.62, centerY);
+          ctx.lineTo(centerX, centerY + halfH * 0.62);
+          ctx.lineTo(centerX - halfW * 0.62, centerY);
+          ctx.closePath();
+          ctx.clip();
+          ctx.globalAlpha = 0.14 + (Math.sin(phase * 1.7) + 1) * 0.065;
+          ctx.strokeStyle = '#e7fbff';
+          ctx.lineWidth = 2;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(centerX - halfW * 0.34 + drift, centerY - halfH * 0.13);
+          ctx.bezierCurveTo(
+            centerX - halfW * 0.2 + drift,
+            centerY - halfH * 0.25,
+            centerX - halfW * 0.03 + drift,
+            centerY - halfH * 0.02,
+            centerX + halfW * 0.12 + drift,
+            centerY - halfH * 0.12
+          );
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(centerX - halfW * 0.18 - drift, centerY + halfH * 0.18);
+          ctx.bezierCurveTo(
+            centerX - halfW * 0.04 - drift,
+            centerY + halfH * 0.06,
+            centerX + halfW * 0.12 - drift,
+            centerY + halfH * 0.28,
+            centerX + halfW * 0.28 - drift,
+            centerY + halfH * 0.15
+          );
+          ctx.stroke();
+          ctx.restore();
+
+          const splashPhase = ((frameTime / 1000 + variation * 1.37) % 6.5) / 6.5;
+          if (splashPhase < 0.15) {
+            const progress = splashPhase / 0.15;
+            const splashX = centerX + (((variation % 5) - 2) * halfW * 0.11);
+            const splashY = centerY + ((Math.floor(variation / 2) % 3) - 1) * halfH * 0.12;
+            const rippleRadius = 3 + progress * 13;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY - halfH * 0.62);
+            ctx.lineTo(centerX + halfW * 0.62, centerY);
+            ctx.lineTo(centerX, centerY + halfH * 0.62);
+            ctx.lineTo(centerX - halfW * 0.62, centerY);
+            ctx.closePath();
+            ctx.clip();
+            ctx.globalAlpha = (1 - progress) * 0.46;
+            ctx.strokeStyle = '#e8fbff';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.ellipse(splashX, splashY, rippleRadius, rippleRadius * 0.42, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = (1 - progress) * 0.72;
+            ctx.fillStyle = '#f2fdff';
+            for (let drop = 0; drop < 3; drop++) {
+              const dropPhase = progress * Math.PI * 2 + drop * (Math.PI * 2 / 3);
+              const dropX = splashX + Math.cos(dropPhase) * halfW * 0.12;
+              const dropY = splashY - Math.abs(Math.sin(dropPhase)) * halfH * 0.22;
+              ctx.beginPath();
+              ctx.arc(dropX, dropY, 1.2 + (drop % 2) * 0.35, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.restore();
+          }
+
+          const shimmerPhase = (frameTime / 2600 + variation * 0.19) % 1;
+          const shimmerX = centerX - halfW * 0.36 + shimmerPhase * halfW * 0.72;
+          const shimmerY = centerY + Math.sin(shimmerPhase * Math.PI * 2 + variation) * halfH * 0.2;
+          const sparkleAlpha = (Math.sin(frameTime / 370 + variation * 2.1) + 1) * 0.5;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(centerX, centerY - halfH * 0.62);
+          ctx.lineTo(centerX + halfW * 0.62, centerY);
+          ctx.lineTo(centerX, centerY + halfH * 0.62);
+          ctx.lineTo(centerX - halfW * 0.62, centerY);
+          ctx.closePath();
+          ctx.clip();
+          ctx.globalAlpha = 0.1 + sparkleAlpha * 0.24;
+          ctx.strokeStyle = '#f4fdff';
+          ctx.lineWidth = 2.2;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(shimmerX - halfW * 0.1, shimmerY + halfH * 0.045);
+          ctx.quadraticCurveTo(shimmerX, shimmerY - halfH * 0.025, shimmerX + halfW * 0.1, shimmerY);
+          ctx.stroke();
+          ctx.globalAlpha = sparkleAlpha * 0.68;
+          ctx.fillStyle = '#ffffff';
+          for (let sparkle = 0; sparkle < 2; sparkle++) {
+            const sparkleX = centerX + (sparkle === 0 ? -0.19 : 0.22) * halfW;
+            const sparkleY = centerY + Math.sin(frameTime / 520 + variation + sparkle * 2) * halfH * 0.16;
+            ctx.beginPath();
+            ctx.ellipse(sparkleX, sparkleY, 1.8, 1.1, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const isoX = (c - r) * halfW;
+          const isoY = (c + r) * halfH;
+          const dirtData = tilesRef.current[`${r},${c},-1`];
           if (gridCellKeys.has(`${r},${c}`)) {
             drawMiniGrid(isoX, isoY, halfW, halfH);
           }
@@ -539,6 +918,12 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
                 ? treeData.occupiedCells
                 : getOccupiedCells(r, c, q, item) ?? [{ row: r, col: c, quadrant: q }];
               if (occupiedCells.some((cell) => cell.row !== r || cell.col !== c)) continue;
+              if (
+                (movingItemRef.current?.isWater || movingItemRef.current?.isDirt) &&
+                occupiedCells.some((cell) =>
+                  cell.row === movingItemRef.current?.row && cell.col === movingItemRef.current?.col
+                )
+              ) continue;
               const occupiedPositions = occupiedCells.map((cell) => {
                 const cellIsoX = (cell.col - cell.row) * halfW;
                 const cellIsoY = (cell.col + cell.row) * halfH;
@@ -621,19 +1006,64 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
               : movingTile?.itemId ?? housingReleaseItem?.id;
             const previewItem = previewItemId ? gameItemsRef.current[previewItemId] : undefined;
 
-            if (isMovePreview && movingTile?.type === 'dirt') {
+            if (isMovePreview && (movingTile?.type === 'dirt' || movingTile?.type === 'water')) {
+              const source = movingItemRef.current!;
               const destinationHasTile = Object.entries(tilesRef.current).some(([key]) => {
-                const [tileRow, tileCol] = key.split(',').map(Number);
-                return tileRow === r && tileCol === c;
+                const [tileRow, tileCol, quadrant] = key.split(',').map(Number);
+                return tileRow === r && tileCol === c &&
+                  !(tileRow === source.row && tileCol === source.col &&
+                    (quadrant === source.quadrant ||
+                      ((source.isWater || source.isDirt) && tilesRef.current[key]?.type === 'item')));
               });
-              const isValidDirtMove = r >= 0 && r < rows && c >= 0 && c < cols && (!destinationHasTile ||
-                (movingItemRef.current?.row === r && movingItemRef.current.col === c));
+              const isValidGroundMove = r >= 0 && r < rows && c >= 0 && c < cols && !destinationHasTile;
               drawIsometricDiamond(isoX, isoY, halfW, halfH);
-              ctx.fillStyle = isValidDirtMove ? 'rgba(129, 199, 132, 0.42)' : 'rgba(244, 67, 54, 0.48)';
+              ctx.fillStyle = isValidGroundMove ? 'rgba(129, 199, 132, 0.34)' : 'rgba(244, 67, 54, 0.42)';
               ctx.fill();
-              ctx.strokeStyle = isValidDirtMove ? '#9be7a0' : '#f44336';
+              ctx.strokeStyle = isValidGroundMove ? '#9be7a0' : '#f44336';
               ctx.lineWidth = 2;
               ctx.stroke();
+              ctx.save();
+              ctx.globalAlpha = isValidGroundMove ? 0.76 : 0.5;
+              if (movingTile.type === 'dirt') {
+                if (dirtImage?.complete && dirtImage.naturalWidth > 0) {
+                  ctx.drawImage(dirtImage, isoX - halfW, isoY, tileWidth, tileHeight);
+                } else {
+                  drawIsometricDiamond(isoX, isoY, halfW, halfH);
+                  ctx.fillStyle = '#6d4c41';
+                  ctx.fill();
+                }
+              } else if (waterImage?.complete && waterImage.naturalWidth > 0) {
+                const waterMask = getWaterNeighborMask(tilesRef.current, r, c, source);
+                const waterTile = getWaterTileVariant(waterMask, r, c);
+                if (waterTile) {
+                  const waterWidth = tileWidth * WATER_TILE_SCALE;
+                  const waterHeight = tileHeight * WATER_TILE_SCALE;
+                  ctx.drawImage(
+                    waterTile,
+                    isoX - waterWidth / 2,
+                    isoY + halfH - waterHeight / 2,
+                    waterWidth,
+                    waterHeight
+                  );
+                }
+              }
+              ctx.restore();
+              if (movingTile.type === 'water' || movingTile.type === 'dirt') {
+                for (const [key, contentTile] of Object.entries(tilesRef.current)) {
+                  const [contentRow, contentCol, contentQuadrant] = key.split(',').map(Number);
+                  if (contentRow !== source.row || contentCol !== source.col || contentTile.type !== 'item' || !contentTile.itemId) continue;
+                  const contentItem = gameItemsRef.current[contentTile.itemId];
+                  if (!contentItem) continue;
+                  const { dx, dy } = getQuadrantOffset(contentTile.quadrant ?? contentQuadrant, halfW, halfH);
+                  const contentCenterX = isoX + dx;
+                  const contentGroundY = isoY + halfH + dy;
+                  if (contentItem.type === 'TREE') {
+                    drawTreePreview(ctx, { ...contentItem, flipX: contentTile.flipX }, contentCenterX, contentGroundY, isValidGroundMove);
+                  } else {
+                    drawPlacedItemPreview(ctx, { ...contentItem, flipX: contentTile.flipX }, contentCenterX, contentGroundY, isValidGroundMove);
+                  }
+                }
+              }
             } else if (previewItem && (activeToolRef.current?.startsWith('place_') || isMovePreview || isHousingReleasePreview)) {
               const previewQuadrant = hoveredTile.current.quadrant;
               const calculatedPreviewCells = (isMovePreview && movingTile
@@ -657,10 +1087,12 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
                 cell.row >= 0 && cell.row < rows && cell.col >= 0 && cell.col < cols
               );
               const previewSurfaceCells = previewCells.map((cell) => tilesRef.current[`${cell.row},${cell.col},-1`]);
-              const surfaceIsValid = previewItem.placementSurface === 'soil'
-                ? previewCells.every((_, index) => Boolean(previewSurfaceCells[index]))
-                : previewCells.every((cell) => !tilesRef.current[`${cell.row},${cell.col},-1`]);
-              const cropBedIsFree = previewItem.type !== 'CROP' || previewCells.every((cell) =>
+              const surfaceIsValid = previewItem.placementSurface === 'water'
+                ? previewSurfaceCells.every((surface) => surface?.type === 'water')
+                : previewItem.placementSurface === 'soil'
+                  ? previewCells.every((_, index) => previewSurfaceCells[index]?.type === 'dirt')
+                  : previewCells.every((cell) => !tilesRef.current[`${cell.row},${cell.col},-1`]);
+              const cropBedIsFree = previewItem.type !== 'CROP' || previewItem.placementSurface !== 'soil' || previewCells.every((cell) =>
                 !Object.entries(tilesRef.current).some(([key, placedTile]) => {
                   if (placedTile.type !== 'item' || !placedTile.itemId) return false;
                   const [placedRow, placedCol] = key.split(',').map(Number);
@@ -708,7 +1140,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
             } 
             else {
               drawIsometricDiamond(isoX, isoY, halfW, halfH);
-              if (activeToolRef.current === 'shovel' && !dirtData) {
+              if ((activeToolRef.current === 'shovel' || activeToolRef.current === 'water') && !dirtData) {
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'; ctx.fill();
               } else if (activeToolRef.current === 'trash') {
                 ctx.fillStyle = 'rgba(255, 82, 82, 0.45)'; ctx.fill();
@@ -933,6 +1365,44 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
             if (isInFrontOf(plant, structure)) drawPlacedObject(plant, false);
           }
         }
+      }
+
+      for (const butterfly of butterflies) {
+        const image = getLoadedGameImage(butterfly.image);
+        if (!image) continue;
+
+        const flightTime = frameTime / 1000 * butterfly.speed;
+        const phase = flightTime + butterfly.phase;
+        const secondaryPhase = flightTime * 0.63 + butterfly.secondaryPhase;
+        const x = Math.max(
+          -butterflyMaxX,
+          Math.min(
+            butterflyMaxX,
+            butterfly.centerX +
+              Math.sin(phase) * butterfly.rangeX +
+              Math.sin(secondaryPhase) * butterfly.rangeX * 0.28
+          )
+        );
+        const y = Math.max(
+          butterflyHalfHeight,
+          Math.min(
+            butterflyMaxY,
+            butterfly.centerY +
+              Math.cos(phase * 0.73) * butterfly.rangeY +
+              Math.sin(secondaryPhase * 0.8) * butterfly.rangeY * 0.3
+          )
+        );
+        const flightDirection = Math.cos(phase) + Math.cos(secondaryPhase) * 0.18 >= 0 ? 1 : -1;
+        const wingScale = 0.3 + Math.abs(Math.sin(frameTime / 68 + butterfly.phase)) * 0.7;
+        const width = butterfly.size / cameraRef.current.zoom;
+        const height = width * image.naturalHeight / image.naturalWidth;
+
+        ctx.save();
+        ctx.translate(x, y + Math.sin(frameTime / 170 + butterfly.phase) * 2 / cameraRef.current.zoom);
+        ctx.scale(flightDirection * wingScale, 1);
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(image, -width / 2, -height / 2, width, height);
+        ctx.restore();
       }
 
       fertilizerEffectsRef.current = fertilizerEffectsRef.current.filter((effect) => {
@@ -1379,7 +1849,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) {
         const activeTool = activeToolRef.current;
-        const isGridOnlyTool = activeTool?.startsWith('place_') || activeTool === 'shovel';
+        const isGridOnlyTool = activeTool?.startsWith('place_') || activeTool === 'shovel' || activeTool === 'water';
         const housingOverlayHit = getHousingOverlayHitAtScreen(e.clientX, e.clientY);
         hoveredHousingItemRef.current = housingOverlayHit?.position ?? null;
         const hitItem = isGridOnlyTool || (activeTool === 'move' && movingItemRef.current)
@@ -1580,25 +2050,21 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
               if (target) {
                 const targetData = tilesRef.current[`${target.row},${target.col},${target.quadrant}`];
                 const targetItem = targetData?.itemId ? gameItemsRef.current[targetData.itemId] : undefined;
-                if (targetItem?.type === 'CROP' && targetData && Date.now() < getTreeHarvestReadyAt(targetData, targetItem)) {
+                const underlyingSurface = tilesRef.current[`${target.row},${target.col},-1`];
+                if (targetItem?.type === 'CROP' && targetItem.placementSurface === 'soil' && underlyingSurface?.type === 'dirt') {
+                  movingItemRef.current = { row: target.row, col: target.col, quadrant: -1, isDirt: true };
+                } else if (targetItem?.type === 'CROP' && targetData && Date.now() < getTreeHarvestReadyAt(targetData, targetItem)) {
                   notifyGameMessage('Культуру можна переміщати лише після дозрівання');
                   return;
+                } else {
+                  movingItemRef.current = target;
                 }
-                movingItemRef.current = target;
               } else {
                 const dirt = tilesRef.current[`${tile.row},${tile.col},-1`];
                 if (dirt?.type === 'dirt') {
-                  const hasCrop = Object.entries(tilesRef.current).some(([key, placedTile]) => {
-                    if (placedTile.type !== 'item' || !placedTile.itemId) return false;
-                    const [cropRow, cropCol] = key.split(',').map(Number);
-                    return cropRow === tile.row && cropCol === tile.col &&
-                      gameItemsRef.current[placedTile.itemId]?.type === 'CROP';
-                  });
-                  if (hasCrop) {
-                    notifyGameMessage('Грядку з культурою не можна переміщати');
-                    return;
-                  }
                   movingItemRef.current = { row: tile.row, col: tile.col, quadrant: -1, isDirt: true };
+                } else if (dirt?.type === 'water') {
+                  movingItemRef.current = { row: tile.row, col: tile.col, quadrant: -1, isWater: true };
                 }
               }
             } else {
@@ -1609,11 +2075,13 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
                 source.quadrant,
                 tile.row,
                 tile.col,
-                source.isDirt ? -1 : tile.quadrant,
+                source.isDirt || source.isWater ? -1 : tile.quadrant,
                 userRef.current.id
               );
               if (success) movingItemRef.current = null;
             }
+          } else if (tool === 'water') {
+            await toggleWaterTile(tile.row, tile.col, userRef.current.id);
           } else if (tool === 'shovel') {
             const hasObjectInCell = Object.entries(tilesRef.current).some(([key, placedTile]) => {
               const [row, col] = key.split(',').map(Number);
@@ -1758,9 +2226,32 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
       isDragging.current = true;
       pointerDownPosition.current = { x: touch.clientX, y: touch.clientY };
       startPan.current = { x: touch.clientX - cameraRef.current.x, y: touch.clientY - cameraRef.current.y };
-      touchMoveSourceRef.current = !readOnly && activeToolRef.current === 'move'
-        ? getReadyItemAtScreen(touch.clientX, touch.clientY, false)
-        : null;
+      touchMoveSourceRef.current = null;
+      if (!readOnly && activeToolRef.current === 'move') {
+        const itemSource = getReadyItemAtScreen(touch.clientX, touch.clientY, false);
+        if (itemSource) {
+          const sourceItem = tilesRef.current[`${itemSource.row},${itemSource.col},${itemSource.quadrant}`];
+          const sourceConfig = sourceItem?.itemId ? gameItemsRef.current[sourceItem.itemId] : undefined;
+          const groundTile = tilesRef.current[`${itemSource.row},${itemSource.col},-1`];
+          touchMoveSourceRef.current = sourceConfig?.type === 'CROP' &&
+            sourceConfig.placementSurface === 'soil' && groundTile?.type === 'dirt'
+            ? { row: itemSource.row, col: itemSource.col, quadrant: -1, isDirt: true }
+            : itemSource;
+        } else {
+          const groundPosition = getGridTileFromScreen(touch.clientX, touch.clientY);
+          const groundTile = groundPosition
+            ? tilesRef.current[`${groundPosition.row},${groundPosition.col},-1`]
+            : undefined;
+          if (groundPosition && (groundTile?.type === 'dirt' || groundTile?.type === 'water')) {
+            touchMoveSourceRef.current = {
+              ...groundPosition,
+              quadrant: -1,
+              isDirt: groundTile.type === 'dirt',
+              isWater: groundTile.type === 'water',
+            };
+          }
+        }
+      }
       touchObjectDragRef.current = false;
     };
 
@@ -1834,7 +2325,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
             moveSource.quadrant,
             target.row,
             target.col,
-            target.quadrant,
+            moveSource.isDirt || moveSource.isWater ? -1 : target.quadrant,
             userRef.current.id
           );
           if (moved) movingItemRef.current = null;
@@ -1864,7 +2355,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [digTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, houseAnimal, releaseHousedAnimal, collectHousedAnimals, collectFactory, fertilizeItem, readOnly, gridConfig, setActiveTool, grassTexture, grassEdgeOverlap, grassEdgeBlur, backgroundImagePath, backgroundIsNight, appearanceAnimation]);
+  }, [digTile, toggleWaterTile, removeTile, placeItem, rotateTile, moveTile, enqueueHarvest, notifyGameMessage, houseAnimal, releaseHousedAnimal, collectHousedAnimals, collectFactory, fertilizeItem, readOnly, gridConfig, setActiveTool, grassTexture, grassEdgeOverlap, grassEdgeBlur, backgroundImagePath, backgroundIsNight, appearanceAnimation, isWinterGrass]);
 
   const canvas = (
     <canvas
@@ -1872,7 +2363,7 @@ export const FarmCanvas: React.FC<FarmCanvasProps> = ({
       className={readOnly ? 'friend-farm-canvas' : undefined}
       style={{
         position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 0, backgroundColor: '#1b222d',
-        cursor: readOnly ? 'grab' : activeTool?.startsWith('place_') ? 'cell' : activeTool === 'shovel' ? 'crosshair' : activeTool === 'trash' || activeTool === 'rotate' ? 'pointer' : activeTool === 'move' ? 'move' : 'grab',
+        cursor: readOnly ? 'grab' : activeTool?.startsWith('place_') ? 'cell' : activeTool === 'shovel' || activeTool === 'water' ? 'crosshair' : activeTool === 'trash' || activeTool === 'rotate' ? 'pointer' : activeTool === 'move' ? 'move' : 'grab',
         touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none',
       }}
     />

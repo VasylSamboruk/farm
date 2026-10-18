@@ -3,7 +3,7 @@ import { useAuthStore } from './authStore';
 import { API_BASE_URL } from '../api/axios';
 
 export interface TileData {
-  type: 'dirt' | 'item';
+  type: 'dirt' | 'water' | 'item';
   itemId?: string;
   skinId?: string | null;
   unlockedSkinIds?: string[];
@@ -44,6 +44,7 @@ interface FarmTileResponse {
   y: number;
   quadrant: number;
   isDirt: boolean;
+  surfaceType?: 'water';
   itemId: string;
   skinId?: string | null;
   unlockedSkinIds?: string[];
@@ -96,6 +97,7 @@ interface FarmState {
   buyFertilizer: (userId: string, itemId: string, quantity?: number) => Promise<boolean>;
   fertilizeItem: (userId: string, itemId: string, target: { row: number; col: number; quadrant: number }) => Promise<{ appliedTo: string; acceleratedMs: number } | null>;
   digTile: (row: number, col: number, userId: string) => void;
+  toggleWaterTile: (row: number, col: number, userId: string) => Promise<boolean>;
   removeTile: (row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
   placeItem: (row: number, col: number, quadrant: number, itemId: string, userId: string, fromInventory?: boolean) => Promise<boolean>;
   rotateTile: (row: number, col: number, quadrant: number, userId: string) => Promise<boolean>;
@@ -112,7 +114,8 @@ const convertToDbArray = (tiles: Record<string, TileData>) => {
       x: col, y: row,
       quadrant: Number.isFinite(quad) ? quad : -1,
       isDirt: data.type === 'dirt',
-      itemId: data.itemId || 'dirt',
+      surfaceType: data.type === 'water' ? 'water' : undefined,
+      itemId: data.itemId || (data.type === 'water' ? 'water' : 'dirt'),
       occupiedQuadrants: data.occupiedQuadrants ?? (data.quadrant === undefined ? [] : [data.quadrant]),
       occupiedCells: data.occupiedCells?.map((cell) => ({ x: cell.col, y: cell.row, quadrant: cell.quadrant })),
       flipX: data.flipX ?? false,
@@ -132,8 +135,10 @@ const convertToDbArray = (tiles: Record<string, TileData>) => {
 const toFarmTileMap = (tiles: FarmTileResponse[]) => {
   const tileMap: Record<string, TileData> = {};
   for (const tile of tiles) {
-    const key = `${tile.y},${tile.x},${tile.isDirt ? -1 : tile.quadrant}`;
-    tileMap[key] = tile.isDirt ? { type: 'dirt', flipX: tile.flipX ?? false } : {
+    const isGroundTile = tile.isDirt || tile.surfaceType === 'water';
+    const key = `${tile.y},${tile.x},${isGroundTile ? -1 : tile.quadrant}`;
+    tileMap[key] = tile.isDirt ? { type: 'dirt', flipX: tile.flipX ?? false }
+      : tile.surfaceType === 'water' ? { type: 'water' } : {
       type: 'item',
       itemId: tile.itemId,
       stage: tile.stage,
@@ -647,6 +652,33 @@ export const useFarmStore = create<FarmState>((set, get) => {
     });
   },
 
+  toggleWaterTile: async (row, col, userId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/farm/water`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, x: col, y: row }),
+      });
+      const data = await response.json() as { message?: string; surfaceType?: 'water' | null };
+      if (!response.ok) {
+        set({ gameMessage: data.message || 'Не вдалося змінити водну поверхню' });
+        return false;
+      }
+      const key = `${row},${col},-1`;
+      set((state) => {
+        const tiles = { ...state.tiles };
+        if (data.surfaceType === 'water') tiles[key] = { type: 'water' };
+        else delete tiles[key];
+        return { tiles };
+      });
+      return true;
+    } catch (error) {
+      console.error('Помилка зміни водної поверхні:', error);
+      set({ gameMessage: 'Не вдалося змінити водну поверхню. Перевір з’єднання із сервером.' });
+      return false;
+    }
+  },
+
   removeTile: async (row, col, quadrant, userId) => {
     try {
       const response = await fetch(`${API_BASE_URL}/farm/remove`, {
@@ -788,6 +820,19 @@ export const useFarmStore = create<FarmState>((set, get) => {
 
       const fromKey = `${fromRow},${fromCol},${fromQuadrant}`;
       const movedTile = data.tile as { x?: number; y?: number; quadrant?: number };
+      const movedItems = data.movedItems as Array<{
+        fromX: number;
+        fromY: number;
+        fromQuadrant: number;
+        tile: {
+          x: number;
+          y: number;
+          quadrant: number;
+          occupiedQuadrants?: number[];
+          occupiedCells?: { x: number; y: number; quadrant: number }[];
+          flipX?: boolean;
+        };
+      }> | undefined;
       const movedQuadrant = movedTile.quadrant ?? quadrant;
       const toKey = `${movedTile.y ?? row},${movedTile.x ?? col},${movedQuadrant}`;
       set((state) => {
@@ -809,6 +854,20 @@ export const useFarmStore = create<FarmState>((set, get) => {
           occupiedCells: data.tile.occupiedCells?.map((cell: { x: number; y: number; quadrant: number }) => ({ row: cell.y, col: cell.x, quadrant: cell.quadrant })),
           flipX: data.tile.flipX ?? source.flipX
         };
+        for (const movedItem of movedItems ?? []) {
+          const itemFromKey = `${movedItem.fromY},${movedItem.fromX},${movedItem.fromQuadrant}`;
+          const itemSource = newTiles[itemFromKey];
+          if (!itemSource) continue;
+          delete newTiles[itemFromKey];
+          const itemTile = movedItem.tile;
+          newTiles[`${itemTile.y},${itemTile.x},${itemTile.quadrant}`] = {
+            ...itemSource,
+            quadrant: itemTile.quadrant,
+            occupiedQuadrants: itemTile.occupiedQuadrants,
+            occupiedCells: itemTile.occupiedCells?.map((cell) => ({ row: cell.y, col: cell.x, quadrant: cell.quadrant })),
+            flipX: itemTile.flipX ?? itemSource.flipX,
+          };
+        }
         return { tiles: newTiles };
       });
       return true;

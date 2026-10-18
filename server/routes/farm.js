@@ -753,6 +753,54 @@ router.post('/fertilize', async (req, res) => {
 });
 
 // ПОСАДКА: Знімає гроші, дає XP
+router.post('/water', async (req, res) => {
+    try {
+        const { userId, x, y } = req.body ?? {};
+        if (!mongoose.isValidObjectId(userId) || !Number.isInteger(x) || !Number.isInteger(y)) {
+            return res.status(400).json({ message: 'Некоректна клітинка води' });
+        }
+        const farm = await Farm.findOne({ userId });
+        if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
+        if (x < 0 || y < 0 || x >= farm.size || y >= farm.size) {
+            return res.status(400).json({ message: 'Клітинка поза межами ферми' });
+        }
+        const surfaceTile = farm.tiles.find((tile) =>
+            tile.x === x && tile.y === y && (tile.isDirt || tile.surfaceType === 'water')
+        );
+        if (surfaceTile?.surfaceType === 'water') {
+            const hasWaterItem = farm.tiles.some((tile) =>
+                !tile.isDirt && !tile.surfaceType &&
+                getTileOccupiedCells(tile).some((cell) => cell.x === x && cell.y === y)
+            );
+            if (hasWaterItem) {
+                return res.status(400).json({ message: 'Спочатку прибери предмет із води' });
+            }
+            farm.tiles = farm.tiles.filter((tile) => tile !== surfaceTile);
+            await farm.save();
+            return res.json({ success: true, surfaceType: null });
+        }
+        if (surfaceTile || farm.tiles.some((tile) =>
+            !tile.isDirt && !tile.surfaceType &&
+            getTileOccupiedCells(tile).some((cell) => cell.x === x && cell.y === y)
+        )) {
+            return res.status(400).json({ message: 'Воду можна створити лише на вільній клітинці' });
+        }
+        farm.tiles.push({
+            x,
+            y,
+            quadrant: -1,
+            itemId: 'water',
+            isDirt: false,
+            surfaceType: 'water',
+            stage: 0,
+        });
+        await farm.save();
+        return res.json({ success: true, surfaceType: 'water' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Не вдалося змінити водну поверхню', error: error.message });
+    }
+});
+
 router.post('/place', async (req, res) => {
     try {
         const { userId, x, y, quadrant, itemId, fromInventory = false } = req.body;
@@ -787,6 +835,16 @@ router.post('/place', async (req, res) => {
         }
 
         const occupiedDirtTiles = farm.tiles.filter(t => t.isDirt && occupiedCells.some(cell => cell.x === t.x && cell.y === t.y));
+        const occupiedWaterTiles = farm.tiles.filter(t => t.surfaceType === 'water' && occupiedCells.some(cell => cell.x === t.x && cell.y === t.y));
+        if (occupiedWaterTiles.length && item.placementSurface !== 'water') {
+            return res.status(400).json({ message: 'Цей товар не можна ставити на воду!' });
+        }
+        if (item.placementSurface === 'water' && (
+            occupiedWaterTiles.length !== new Set(occupiedCells.map(cell => `${cell.x},${cell.y}`)).size ||
+            occupiedDirtTiles.length > 0
+        )) {
+            return res.status(400).json({ message: 'Цей товар можна ставити лише на воду' });
+        }
         if (item.placementSurface === 'soil' && occupiedDirtTiles.length !== new Set(occupiedCells.map(cell => `${cell.x},${cell.y}`)).size) {
             return res.status(400).json({ message: 'Цей товар можна садити лише на грядку' });
         }
@@ -794,7 +852,7 @@ router.post('/place', async (req, res) => {
             return res.status(400).json({ message: 'Цей товар можна ставити лише на траву' });
         }
 
-        const isOccupied = farm.tiles.find(t => !t.isDirt && getTileOccupiedCells(t).some(existingCell =>
+        const isOccupied = farm.tiles.find(t => !t.isDirt && !t.surfaceType && getTileOccupiedCells(t).some(existingCell =>
             occupiedCells.some(cell => cell.x === existingCell.x && cell.y === existingCell.y && cell.quadrant === existingCell.quadrant)
         ));
         if (isOccupied) return res.status(400).json({ message: 'Місце зайняте!' });
@@ -844,6 +902,12 @@ router.post('/remove', async (req, res) => {
         if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
         let targetTile = farm.tiles.find(t => !t.isDirt && t.x === x && t.y === y && t.quadrant === quadrant);
         const dirtTile = farm.tiles.find(t => t.isDirt && t.x === x && t.y === y);
+        if (targetTile?.surfaceType && farm.tiles.some((tile) =>
+            !tile.isDirt && !tile.surfaceType &&
+            getTileOccupiedCells(tile).some((cell) => cell.x === x && cell.y === y)
+        )) {
+            return res.status(400).json({ message: 'Спочатку прибери предмет із води' });
+        }
         if (!targetTile && quadrant !== -1) {
             return res.status(404).json({ message: 'Предмет не знайдено' });
         }
@@ -916,7 +980,7 @@ router.post('/rotate', async (req, res) => {
         if (!farm) return res.status(404).json({ message: 'Ферму не знайдено' });
 
         const tile = farm.tiles.find(t => {
-            if (t.isDirt) return false;
+            if (t.isDirt || t.surfaceType) return false;
             if (t.x === x && t.y === y && t.quadrant === quadrant) return true;
             return t.occupiedCells?.some(cell => cell.x === x && cell.y === y && cell.quadrant === quadrant);
         });
@@ -948,19 +1012,93 @@ router.post('/move', async (req, res) => {
         const isSourceTile = (candidate) =>
             candidate.x === fromX && candidate.y === fromY && candidate.quadrant === fromQuadrant;
 
-        if (tile.isDirt) {
-            const hasCrop = farm.tiles.some(t =>
-                !t.isDirt && t.x === tile.x && t.y === tile.y && getGameItem(t.itemId)?.type === 'CROP'
+        if (tile.surfaceType === 'water') {
+            const waterContents = farm.tiles.filter(candidate =>
+                !candidate.isDirt && !candidate.surfaceType &&
+                getTileOccupiedCells(candidate).some(cell => cell.x === fromX && cell.y === fromY)
             );
-            if (hasCrop) return res.status(400).json({ message: 'Грядку з культурою не можна переміщати' });
-            const destinationOccupied = farm.tiles.some(t => !isSourceTile(t) && t.x === x && t.y === y);
+            const contentsFitWaterCell = waterContents.every(candidate =>
+                candidate.x === fromX && candidate.y === fromY &&
+                getTileOccupiedCells(candidate).every(cell => cell.x === fromX && cell.y === fromY) &&
+                getGameItem(candidate.itemId)?.placementSurface === 'water'
+            );
+            if (!contentsFitWaterCell) {
+                return res.status(400).json({ message: 'Перемісти предмет на воді окремо, перш ніж рухати цю клітинку' });
+            }
+            const movingContents = new Set(waterContents);
+            const destinationOccupied = farm.tiles.some(candidate => {
+                if (isSourceTile(candidate) || movingContents.has(candidate)) return false;
+                if (candidate.isDirt || candidate.surfaceType) {
+                    return candidate.x === x && candidate.y === y;
+                }
+                return getTileOccupiedCells(candidate).some(cell => cell.x === x && cell.y === y);
+            });
+            if (quadrant !== -1 || x < 0 || x >= farm.size || y < 0 || y >= farm.size || destinationOccupied) {
+                return res.status(400).json({ message: 'Воду не можна перемістити в це місце' });
+            }
+            tile.x = x;
+            tile.y = y;
+            for (const content of waterContents) {
+                content.x = x;
+                content.y = y;
+                content.occupiedCells = getOccupiedCells(x, y, content.quadrant, getGameItem(content.itemId), content.flipX ?? false);
+            }
+            await farm.save();
+            return res.json({
+                success: true,
+                tile,
+                movedItems: waterContents.map(content => ({
+                    fromX,
+                    fromY,
+                    fromQuadrant: content.quadrant,
+                    tile: content,
+                })),
+            });
+        }
+
+        if (tile.isDirt) {
+            const soilContents = farm.tiles.filter(candidate =>
+                !candidate.isDirt && !candidate.surfaceType &&
+                getTileOccupiedCells(candidate).some(cell => cell.x === fromX && cell.y === fromY)
+            );
+            const contentsFitSoilCell = soilContents.every(candidate =>
+                candidate.x === fromX && candidate.y === fromY &&
+                getTileOccupiedCells(candidate).every(cell => cell.x === fromX && cell.y === fromY) &&
+                getGameItem(candidate.itemId)?.type === 'CROP' &&
+                getGameItem(candidate.itemId)?.placementSurface === 'soil'
+            );
+            if (!contentsFitSoilCell) {
+                return res.status(400).json({ message: 'Перемісти предмет із грядки окремо, перш ніж рухати її' });
+            }
+            const movingContents = new Set(soilContents);
+            const destinationOccupied = farm.tiles.some(candidate => {
+                if (isSourceTile(candidate) || movingContents.has(candidate)) return false;
+                if (candidate.isDirt || candidate.surfaceType) {
+                    return candidate.x === x && candidate.y === y;
+                }
+                return getTileOccupiedCells(candidate).some(cell => cell.x === x && cell.y === y);
+            });
             if (quadrant !== -1 || x < 0 || x >= farm.size || y < 0 || y >= farm.size || destinationOccupied) {
                 return res.status(400).json({ message: 'Ця грядка не поміщається в це місце' });
             }
             tile.x = x;
             tile.y = y;
+            for (const content of soilContents) {
+                content.x = x;
+                content.y = y;
+                content.occupiedCells = getOccupiedCells(x, y, content.quadrant, getGameItem(content.itemId), content.flipX ?? false);
+            }
             await farm.save();
-            return res.json({ success: true, tile });
+            return res.json({
+                success: true,
+                tile,
+                movedItems: soilContents.map(content => ({
+                    fromX,
+                    fromY,
+                    fromQuadrant: content.quadrant,
+                    tile: content,
+                })),
+            });
         }
 
         const item = tile.isDirt ? null : getGameItem(tile.itemId);
@@ -984,10 +1122,20 @@ router.post('/move', async (req, res) => {
         }
 
         const occupiedDirtTiles = farm.tiles.filter(t => t.isDirt && occupiedCells.some(cell => cell.x === t.x && cell.y === t.y));
+        const occupiedWaterTiles = farm.tiles.filter(t => t.surfaceType === 'water' && occupiedCells.some(cell => cell.x === t.x && cell.y === t.y));
         if (item.placementSurface === 'soil' && occupiedDirtTiles.length !== new Set(occupiedCells.map(cell => `${cell.x},${cell.y}`)).size) {
             return res.status(400).json({ message: 'Цей товар можна ставити лише на грядку' });
         }
-        if (item.type === 'CROP' && farm.tiles.some(t =>
+        if (occupiedWaterTiles.length && item.placementSurface !== 'water') {
+            return res.status(400).json({ message: 'Цей товар не можна ставити на воду!' });
+        }
+        if (item.placementSurface === 'water' && (
+            occupiedWaterTiles.length !== new Set(occupiedCells.map(cell => `${cell.x},${cell.y}`)).size ||
+            occupiedDirtTiles.length > 0
+        )) {
+            return res.status(400).json({ message: 'Цей товар можна ставити лише на воду' });
+        }
+        if (item.type === 'CROP' && item.placementSurface === 'soil' && farm.tiles.some(t =>
             !t.isDirt && !isSourceTile(t) && t.x === x && t.y === y && getGameItem(t.itemId)?.type === 'CROP'
         )) {
             return res.status(400).json({ message: 'На цій грядці вже росте культура' });
@@ -997,7 +1145,7 @@ router.post('/move', async (req, res) => {
         }
 
         const isOccupied = farm.tiles.some(t =>
-            !isSourceTile(t) && !t.isDirt && getTileOccupiedCells(t).some(existingCell =>
+            !isSourceTile(t) && !t.isDirt && !t.surfaceType && getTileOccupiedCells(t).some(existingCell =>
                 occupiedCells.some(cell => cell.x === existingCell.x && cell.y === existingCell.y && cell.quadrant === existingCell.quadrant)
             )
         );

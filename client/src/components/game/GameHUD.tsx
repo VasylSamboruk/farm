@@ -20,7 +20,7 @@ import { LeaderboardModal } from './LeaderboardModal';
 import { AchievementsModal } from './AchievementsModal';
 import { leaderboardApi, type CompetitionReward, type LeaderboardPlayer } from '../../api/leaderboard.api';
 
-type ToolType = 'shovel' | 'trash' | 'move' | 'rotate' | null;
+type ToolType = 'shovel' | 'water' | 'trash' | 'move' | 'rotate' | null;
 
 interface GameHUDProps {
   onReturnToProfile: () => void;
@@ -61,7 +61,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ onReturnToProfile }) => {
       cancelInteraction();
     } else {
       setActiveTool(tool);
-      if (tool === 'shovel') setSettingsOpen(false);
+      if (tool === 'shovel' || tool === 'water') setSettingsOpen(false);
     }
   };
 
@@ -395,6 +395,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ onReturnToProfile }) => {
             {activeTool === 'move' ? 'Обери предмет, а потім вкажи нове місце або перетягни його'
               : activeTool === 'rotate' ? 'Натисни на предмет, щоб перевернути його'
                 : activeTool === 'shovel' ? 'Натисни на вільну клітинку, щоб створити грядку'
+                  : activeTool === 'water' ? 'Обери вільну клітинку для води або натисни на воду, щоб прибрати її'
                   : activeTool === 'trash' ? 'Натисни на предмет або грядку, щоб прибрати її'
                   : activeTool.startsWith('fertilize_') ? `Обери рослину, тварину або будівлю з твариною для добрива${gameItems[activeTool.slice('fertilize_'.length)]?.accelerationMs ? ` · прискорення ${formatGameDuration(gameItems[activeTool.slice('fertilize_'.length)].accelerationMs ?? 0)}` : ''}`
                     : activeTool.startsWith('place_') ? 'Обери вільну клітинку для розміщення'
@@ -486,6 +487,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({ onReturnToProfile }) => {
             >
               <img src="/assets/ui/lopata_ico.png" alt="Лопата" style={styles.bottomIconImg} draggable={false} />
               {activeTool === 'shovel' && <span style={styles.toolCancelBadge}>×</span>}
+            </button>
+            <button
+              className="hud-pressable"
+              style={activeTool === 'water' ? { ...styles.actionIconBtn, ...styles.activeToolGlow } : styles.actionIconBtn}
+              onClick={() => toggleTool('water')}
+              aria-label={activeTool === 'water' ? 'Скасувати створення води' : 'Створити воду'}
+              title="Створити воду"
+            >
+              <img src="/assets/ui/water_shovel.png" alt="Лопата для ставка" style={styles.bottomIconImg} draggable={false} />
+              {activeTool === 'water' && <span style={styles.toolCancelBadge}>×</span>}
             </button>
             <button
               className="hud-pressable"

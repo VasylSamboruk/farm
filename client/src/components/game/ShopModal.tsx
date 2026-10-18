@@ -14,9 +14,10 @@ interface ShopModalProps {
   onClose: () => void;
 }
 
-type ShopCategory = GameItemType | 'DECOR';
+type ShopCategory = GameItemType | 'DECOR' | 'WATER';
 type BuildingSubcategory = 'FACTORIES' | 'PENS';
 type OtherSubcategory = 'items' | 'styles';
+type WaterSubcategory = 'all' | 'animals' | 'plants' | 'decor';
 
 const CATEGORIES: { type: ShopCategory; label: string; icon: string }[] = [
   { type: 'TREE', label: 'Дерева', icon: '/assets/ui/shop_cat_tree.png' },
@@ -24,6 +25,7 @@ const CATEGORIES: { type: ShopCategory; label: string; icon: string }[] = [
   { type: 'ANIMAL', label: 'Тварини', icon: '/assets/ui/shop_cat_animal.png' },
   { type: 'BUILDING', label: 'Будівлі', icon: '/assets/ui/shop_cat_building.png' },
   { type: 'DECOR', label: 'Декор', icon: '/assets/ui/shop_cat_decor.png' },
+  { type: 'WATER', label: 'Вода', icon: '/assets/ui/water_shovel.png' },
   { type: 'OTHER', label: 'Інше', icon: '/assets/ui/shop_cat_other.png' },
 ];
 
@@ -48,6 +50,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<ShopCategory>('TREE');
   const [buildingSubcategory, setBuildingSubcategory] = useState<BuildingSubcategory>('PENS');
   const [otherSubcategory, setOtherSubcategory] = useState<OtherSubcategory>('items');
+  const [waterSubcategory, setWaterSubcategory] = useState<WaterSubcategory>('all');
   const [pendingPurchase, setPendingPurchase] = useState<GameItemConfig | null>(null);
   const [pendingFertilizer, setPendingFertilizer] = useState<GameItemConfig | null>(null);
   const [purchasingItemId, setPurchasingItemId] = useState<string | null>(null);
@@ -58,6 +61,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   const [promoBase, setPromoBase] = useState('');
   const [promoSale, setPromoSale] = useState('');
   const [promoScale, setPromoScale] = useState('1');
+  const [promoRequiredLevel, setPromoRequiredLevel] = useState('1');
   const [promoVisibility, setPromoVisibility] = useState<'all' | 'admin' | 'hidden'>('all');
   const [promoTime, setPromoTime] = useState('');
   const [promoXp, setPromoXp] = useState('');
@@ -83,6 +87,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
     setPromoBase(String(item.originalPrice ?? item.price));
     setPromoSale(item.originalPrice && item.originalPrice > item.price ? String(item.price) : '');
     setPromoScale(String(item.spriteScale ?? 1));
+    setPromoRequiredLevel(String(item.requiredLevel ?? 1));
     setPromoVisibility(item.disabled ? 'hidden' : item.access === 'admin' ? 'admin' : 'all');
     setPromoTime(item.productionTimeMs ? String(Math.round(item.productionTimeMs / 1000)) : '');
     setPromoXp(String(item.plantingXp ?? 0));
@@ -104,6 +109,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
     const base = Number(promoBase);
     const sale = promoSale.trim() === '' ? null : Number(promoSale);
     const scale = Number(promoScale);
+    const requiredLevel = Number(promoRequiredLevel);
     if (!name || name.length > 80) { notifyGameMessage('Вкажи назву товару (до 80 символів).'); return; }
     if (!Number.isSafeInteger(base) || base < 0) { notifyGameMessage('Початкова ціна має бути цілим числом.'); return; }
     if (sale !== null && (!Number.isSafeInteger(sale) || sale < 1 || sale >= base)) {
@@ -111,6 +117,10 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
       return;
     }
     if (!Number.isFinite(scale) || scale < 0.1 || scale > 5) { notifyGameMessage('Розмір має бути від 0.1 до 5.'); return; }
+    if (!Number.isSafeInteger(requiredLevel) || requiredLevel < 1 || requiredLevel > 999) {
+      notifyGameMessage('Рівень доступу має бути цілим числом від 1 до 999.');
+      return;
+    }
     const hasTime = Boolean(item.productionTimeMs);
     const timeSec = Number(promoTime);
     const xp = Number(promoXp);
@@ -123,6 +133,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
         price: base,
         salePrice: sale,
         spriteScale: scale,
+        requiredLevel,
         plantingXp: xp,
         ...(hasTime ? { productionTimeMs: Math.round(timeSec * 1000) } : {}),
         shopBadge: promoBadge || null,
@@ -140,12 +151,21 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
   };
 
   const filteredItems = Object.values(items).filter((item) =>
-    (activeCategory === 'DECOR'
-      ? item.type === 'BUILDING' && (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR'
-      : item.type === activeCategory && (activeCategory !== 'BUILDING' ||
-        (buildingSubcategory === 'FACTORIES'
-          ? item.buildingCategory === 'FACTORY'
-          : item.buildingCategory === 'PEN' || (!item.buildingCategory && Boolean(item.housing))))) &&
+    (activeCategory === 'WATER' || item.placementSurface !== 'water') &&
+    (activeCategory === 'WATER'
+      ? item.placementSurface === 'water' && (
+        waterSubcategory === 'all' ||
+        (waterSubcategory === 'animals' && item.type === 'ANIMAL') ||
+        (waterSubcategory === 'plants' && (item.type === 'TREE' || item.type === 'CROP')) ||
+        (waterSubcategory === 'decor' && item.type === 'BUILDING' &&
+          (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR')
+      )
+      : activeCategory === 'DECOR'
+        ? item.type === 'BUILDING' && (item.buildingCategory ?? (item.housing ? 'PEN' : 'DECOR')) === 'DECOR'
+        : item.type === activeCategory && (activeCategory !== 'BUILDING' ||
+          (buildingSubcategory === 'FACTORIES'
+            ? item.buildingCategory === 'FACTORY'
+            : item.buildingCategory === 'PEN' || (!item.buildingCategory && Boolean(item.housing))))) &&
     (activeCategory !== 'OTHER' ||
       (otherSubcategory === 'styles'
         ? item.mechanic === 'grass_style' || item.mechanic === 'background_style'
@@ -373,6 +393,25 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
             ))}
           </div>
         )}
+        {activeCategory === 'WATER' && (
+          <div className="shop-building-subcategories">
+            {([
+              ['all', 'Усе'],
+              ['animals', 'Тварини'],
+              ['plants', 'Рослини'],
+              ['decor', 'Декор'],
+            ] as const).map(([subcategory, label]) => (
+              <button
+                key={subcategory}
+                type="button"
+                className={`shop-building-subcategory${waterSubcategory === subcategory ? ' is-active' : ''}`}
+                onClick={() => setWaterSubcategory(subcategory)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="shop-modal-grid modal-scrollbar-hidden" style={styles.gridContainer}>
           {filteredItems.map((item) => {
@@ -468,6 +507,9 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                     <div className="shop-admin-popover" onClick={(event) => event.stopPropagation()}>
                       <div className="shop-admin-popover-title">Назва</div>
                       <input className="shop-admin-input" value={promoName} maxLength={80} onChange={(event) => setPromoName(event.target.value)} />
+                      <label className="shop-admin-field"><span className="shop-admin-popover-title">Рівень для покупки</span>
+                        <input className="shop-admin-input" type="number" min="1" max="999" step="1" value={promoRequiredLevel} onChange={(event) => setPromoRequiredLevel(event.target.value)} />
+                      </label>
                       <div className="shop-admin-row">
                         <label className="shop-admin-field"><span className="shop-admin-popover-title">Початкова ціна</span>
                           <input className="shop-admin-input" type="number" min="0" value={promoBase} onChange={(event) => setPromoBase(event.target.value)} />

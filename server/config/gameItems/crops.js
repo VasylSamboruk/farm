@@ -1,5 +1,31 @@
 export const crops = [
 	{
+		id: 'rogiz',
+		name: 'Рогіз',
+		type: 'CROP',
+		footprint: { width: 1, height: 1 },
+		price: 100,
+		plantingXp: 1,
+		spriteScale: 0.9,
+		firstStageScale: 0.7,
+		sortOrder: 1,
+		shopImage: '/assets/gradka/rogiz/stage_4.png',
+		growthImages: [
+			'/assets/gradka/rogiz/growth_1.png',
+			'/assets/gradka/rogiz/growth_2.png',
+			'/assets/gradka/rogiz/growth_3.png',
+			'/assets/gradka/rogiz/growth_4.png'
+		],
+		productionTimeMs: 3 * 60 * 60 * 1000,
+		yieldItem: 'rogiz',
+		yieldName: 'Рогіз',
+		yieldIcon: '🌾',
+		yieldImage: '/assets/gradka/rogiz/basket.png',
+		yieldAmount: 1,
+		sellPrice: 85,
+		placementSurface: 'water'
+	},
+	{
 		id: 'wheat',
 		name: 'Пшениця',
 		type: 'CROP',

@@ -63,6 +63,10 @@ const getErrorMessage = (error: unknown) => {
 const toTileMap = (tiles: FriendFarm['tiles']): Record<string, TileData> => {
   const tileMap: Record<string, TileData> = {};
   for (const tile of tiles) {
+    if (tile.surfaceType === 'water') {
+      tileMap[`${tile.y},${tile.x},-1`] = { type: 'water' };
+      continue;
+    }
     if (tile.isDirt) {
       tileMap[`${tile.y},${tile.x},-1`] = { type: 'dirt', flipX: tile.flipX ?? false };
       continue;

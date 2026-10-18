@@ -123,6 +123,7 @@ export const preloadGameImages = async (items: GameItemConfig[]) => {
   sources.add('/assets/ui/musor_ico.png');
   sources.add('/assets/ui/drapdrog.png');
   sources.add('/assets/ui/rotate.png');
+  sources.add('/assets/tiles/water/tile-15.png');
   sources.add('/assets/fonik1.png');
   sources.add('/assets/fonik1n.png');
   if (items.some((item) => item.yieldItem === 'flour')) {
