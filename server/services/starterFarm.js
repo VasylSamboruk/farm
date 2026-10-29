@@ -28,15 +28,20 @@ const getPlacedAt = (itemId, now, remainingMs) => {
     return new Date(now.getTime() - productionTimeMs + remaining);
 };
 
+// Повертає null, якщо товар видалений/змінений в адмінці — такий елемент просто пропускаємо.
 const createPlacedItem = (x, y, quadrant, itemId, placedAt) => {
     const item = getGameItem(itemId);
-    if (!item) throw new Error(`Стартовий товар відсутній у каталозі: ${itemId}`);
+    if (!item) return null;
 
-    const occupiedCells = getOccupiedCells(x, y, quadrant, item);
-    const occupiedQuadrants = getOccupiedQuadrants(quadrant, item);
-    if (!occupiedCells || !occupiedQuadrants) {
-        throw new Error(`Некоректний footprint стартового товару: ${itemId}`);
+    let occupiedCells;
+    let occupiedQuadrants;
+    try {
+        occupiedCells = getOccupiedCells(x, y, quadrant, item);
+        occupiedQuadrants = getOccupiedQuadrants(quadrant, item);
+    } catch {
+        return null;
     }
+    if (!occupiedCells || !occupiedQuadrants) return null;
 
     return {
         x,
@@ -69,24 +74,26 @@ export const createStarterFarmTiles = () => {
         });
 
         for (let quadrant = 0; quadrant < 4; quadrant++) {
-            tiles.push(createPlacedItem(
+            const placed = createPlacedItem(
                 bed.x,
                 bed.y,
                 quadrant,
                 bed.itemId,
                 getPlacedAt(bed.itemId, placedAt, bed.remainingByQuadrant[quadrant])
-            ));
+            );
+            if (placed) tiles.push(placed);
         }
     }
 
     for (const plant of starterPlants) {
-        tiles.push(createPlacedItem(
+        const placed = createPlacedItem(
             plant.x,
             plant.y,
             plant.quadrant,
             plant.itemId,
             getPlacedAt(plant.itemId, placedAt, plant.remainingMs)
-        ));
+        );
+        if (placed) tiles.push(placed);
     }
 
     return tiles;
