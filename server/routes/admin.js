@@ -1294,6 +1294,11 @@ router.post('/users/:userId/reset-progress', async (req, res) => {
         user.unlockedGrassStyles = ['classic'];
         user.unlockedBackgroundStyles = ['classic'];
         user.claimedLevelRewards = [];
+        user.unlockedSkins = [];
+        user.plantedVegetableCount = 0;
+        user.placedAnimalCount = 0;
+        user.plantedTreeCount = 0;
+        user.claimedAchievementTiers = [];
 
         await Promise.all([
             user.save(),

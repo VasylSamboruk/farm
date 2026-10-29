@@ -236,7 +236,11 @@ router.post('/admin-gifts/claim', async (req, res) => {
 // === РЕЄСТРАЦІЯ ===
 router.post('/register', async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+        const password = typeof req.body?.password === 'string' ? req.body.password : '';
+        if (!username || !password) {
+            return res.status(400).json({ message: 'Вкажіть логін і пароль' });
+        }
 
         // 1. Перевіряємо чи є такий гравець
         const existingUser = await User.findOne({ username });
@@ -257,12 +261,16 @@ router.post('/register', async (req, res) => {
 
         await newUser.save();
 
-        // 4. Створюємо стартову ферму з посадженими культурами та тваринами
-        const newFarm = new Farm({
-            userId: newUser._id,
-            tiles: createStarterFarmTiles()
-        });
-        await newFarm.save();
+        // 4. Створюємо стартову ферму; якщо не вдалося — відкочуємо акаунт
+        try {
+            await Farm.create({
+                userId: newUser._id,
+                tiles: createStarterFarmTiles()
+            });
+        } catch (farmError) {
+            await User.deleteOne({ _id: newUser._id });
+            throw farmError;
+        }
 
         res.status(201).json({ message: 'Реєстрація успішна! Ферма створена.' });
     } catch (error) {

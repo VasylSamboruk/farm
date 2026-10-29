@@ -9,6 +9,7 @@ import { getTreeHarvestReadyAt } from '../services/treeMechanics.js';
 import { getMovedOccupiedCells, getOccupiedCells, getOccupiedQuadrants } from '../services/footprint.js';
 import { getFarmTilesWithOccupiedCells, getTileOccupiedCells } from '../services/farmTiles.js';
 import { recordLeaderboardXp } from '../services/leaderboard.js';
+import { createStarterFarmTiles } from '../services/starterFarm.js';
 
 const router = express.Router();
 
@@ -45,10 +46,19 @@ router.use(async (req, res, next) => {
 
 router.get('/:userId', async (req, res) => {
     try {
-        const [farm, user] = await Promise.all([
+        if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ message: 'Ферму або гравця не знайдено' });
+        let [farm, user] = await Promise.all([
             Farm.findOne({ userId: req.params.userId }),
             User.findById(req.params.userId).select('unlockedSkins'),
         ]);
+        // Самовідновлення: акаунт є, а ферми немає
+        if (!farm && user) {
+            farm = await Farm.findOneAndUpdate(
+                { userId: user._id },
+                { $setOnInsert: { tiles: createStarterFarmTiles() } },
+                { new: true, upsert: true, setDefaultsOnInsert: true }
+            );
+        }
         if (!farm || !user) return res.status(404).json({ message: 'Ферму або гравця не знайдено' });
         const responseFarm = farm.toObject();
         responseFarm.tiles = getFarmTilesWithOccupiedCells(responseFarm.tiles);
